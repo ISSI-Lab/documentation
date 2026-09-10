@@ -1,0 +1,33 @@
+# Exclude version control and agent memory
+.git/
+.gitignore
+.gitattributes
+.agents/
+
+# Exclude documentation, designs, and specifications from container build context
+docs/
+*.md
+!src/**/README.md
+
+# Exclude tests and development scripts from runtime images
+tests/
+scripts/
+
+# Exclude developer-private scratchpads and environment files
+*.local.*
+.env*
+!.env.example
+scratch/
+
+# Exclude IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Exclude local dependency caches (these must be installed inside the container)
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage

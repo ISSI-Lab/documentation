@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+.next/
+npm-debug.log*
+yarn-debug.log*
+.DS_Store
+*.local.*
+.git/

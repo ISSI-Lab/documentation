@@ -216,3 +216,56 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==============================================================================
+# Cross-Machine & Local Memory Boundaries
+# ==============================================================================
+# Developer-private scratchpads and local notes (never committed to git)
+docs/memory/local/*
+!docs/memory/local/.gitkeep
+!docs/memory/local/README.md
+*.local.md
+*.local.txt
+scratch/
+
+# Local AI agent state & overrides
+.agents/local/
+.agents/*.local.*
+
+# Environment secrets and credentials (use .env.example instead)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS-specific junk (macOS, Windows, Linux)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE & Editor caches
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.sublime-project
+*.sublime-workspace
+
+# Node / Frontend dependencies & build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.next/
+out/
+dist/
+
+# Docker local volumes & compose overrides
+docker-compose.override.yml
