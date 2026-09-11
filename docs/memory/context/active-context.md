@@ -5,7 +5,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 ---
 
 ## Current Sprint Focus
-- **Goal**: Complete document templating, element configuration, and dual-mode authoring system on Nginx + ReactJS -> NodeJS -> MySQL.
+- **Goal**: Complete document templating, element configuration, item hierarchy levels, and repeatable dynamic items with "+" button on Nginx + ReactJS -> NodeJS -> MySQL.
 - **Active Branch**: `main`
 
 ---
@@ -14,10 +14,11 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Workstream | Owner | Status | Current Focus |
 | :--- | :--- | :--- | :--- |
 | Project Scaffolding | Team | Completed | Root layout, docs hub, Docker Compose orchestration |
-| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, seed templates |
-| Backend Service | AI Agent | Completed | Node 20 / Express API, MySQL pool, Markdown compilation |
-| Frontend Service | AI Agent | Completed | React 18 SPA, Container Nginx reverse proxy, Template builder, Dual-mode doc editor/viewer |
+| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, seed templates with levels |
+| Backend Service | AI Agent | Completed | Node 20 / Express API, MySQL pool, Markdown compilation with heading depths |
+| Frontend Service | AI Agent | Completed | Template builder with levels/indent, Document editor with "+" repeatable item button |
 | Host Nginx Config | AI Agent | Completed | Production reverse proxy guide (`host-nginx-example.conf`) |
+
 
 ---
 

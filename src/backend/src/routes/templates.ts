@@ -17,6 +17,13 @@ function formatTemplateRow(row: any): Template {
     elements = row.document_elements;
   }
 
+  // Ensure level property exists
+  elements = elements.map((e, idx) => ({
+    ...e,
+    level: typeof e.level === 'number' ? e.level : 1,
+    order: typeof e.order === 'number' ? e.order : idx,
+  }));
+
   return {
     id: row.id,
     title: row.title,
@@ -69,8 +76,9 @@ templatesRouter.post('/', async (req: Request, res: Response) => {
           label: elem.label || `Section ${idx + 1}`,
           description: elem.description || '',
           field_type: elem.field_type || 'markdown',
+          level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
           placeholder: elem.placeholder || '',
-          default_value: elem.default_value || '',
+          default_value: elem.default_value !== undefined ? elem.default_value : '',
           required: Boolean(elem.required),
           order: idx,
           options: Array.isArray(elem.options) ? elem.options : null,
@@ -117,8 +125,9 @@ templatesRouter.put('/:id', async (req: Request, res: Response) => {
             label: elem.label || `Section ${idx + 1}`,
             description: elem.description || '',
             field_type: elem.field_type || 'markdown',
+            level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
             placeholder: elem.placeholder || '',
-            default_value: elem.default_value || '',
+            default_value: elem.default_value !== undefined ? elem.default_value : '',
             required: Boolean(elem.required),
             order: idx,
             options: Array.isArray(elem.options) ? elem.options : null,

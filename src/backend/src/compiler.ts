@@ -1,4 +1,10 @@
-import { DocumentElementConfig, Template } from './models';
+import { DocumentElementConfig, RepeatableSubItem, Template } from './models';
+
+function getHeadingPrefix(level: number): string {
+  const safeLevel = Math.max(1, Math.min(level || 1, 5));
+  // level 1 = ##, level 2 = ###, level 3 = ####
+  return '#'.repeat(safeLevel + 1);
+}
 
 export function compileDocumentMarkdown(
   title: string,
@@ -57,11 +63,34 @@ export function compileDocumentMarkdown(
   );
 
   for (const elem of sorted) {
+    const headingPrefix = getHeadingPrefix(elem.level || 1);
     const val = elementsData[elem.id] !== undefined ? elementsData[elem.id] : elem.default_value;
-    lines.push(`## ${elem.label}`);
+
+    lines.push(`${headingPrefix} ${elem.label}`);
     lines.push('');
 
     switch (elem.field_type) {
+      case 'repeatable_list': {
+        const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
+        if (Array.isArray(val) && val.length > 0) {
+          for (const item of val as RepeatableSubItem[]) {
+            const itemTitle = item.title && item.title.trim() ? item.title.trim() : 'Item';
+            lines.push(`${subHeadingPrefix} ${itemTitle}`);
+            lines.push('');
+            const itemContent = item.content && item.content.trim() ? item.content.trim() : '_No details provided._';
+            lines.push(itemContent);
+            lines.push('');
+          }
+        } else if (typeof val === 'string' && val.trim()) {
+          lines.push(val.trim());
+          lines.push('');
+        } else {
+          lines.push('_No items added yet._');
+          lines.push('');
+        }
+        break;
+      }
+
       case 'markdown': {
         const text = String(val || '').trim();
         lines.push(text ? text : '_No content provided._');

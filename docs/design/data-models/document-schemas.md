@@ -13,12 +13,24 @@ Each template defines an ordered collection of `DocumentElementConfig` items:
 | `id` | `string` | Unique identifier within the template (slug format, e.g. `elem_summary`). |
 | `label` | `string` | User-facing section title (e.g. "Executive Summary"). |
 | `description` | `string` | Guidance and instructions for the author when writing in this section. |
-| `field_type` | `string` | Type of field: `markdown`, `short_text`, `select`, `callout`, `code`, `checklist`. |
+| `field_type` | `string` | Type of field: `markdown`, `repeatable_list`, `short_text`, `select`, `callout`, `code`, `checklist`. |
+| `level` | `integer` | Hierarchy level: `1` (H2 Section), `2` (H3 Subsection), `3` (H4 Sub-item). |
 | `placeholder` | `string` | Hint text displayed inside the editor when empty. |
-| `default_value` | `string` | Initial markdown or starter boilerplate content pre-populated when a doc is created. |
+| `default_value` | `any` | Initial markdown text, or array of `RepeatableSubItem` objects for `repeatable_list`. |
 | `required` | `boolean` | Whether the author must supply content before publishing. |
 | `order` | `integer` | Sequence order for rendering in edit mode and view preview. |
 | `options` | `list[string]` | Available choices when `field_type` is `select`. |
+
+### Repeatable Sub-Item Schema (`RepeatableSubItem`)
+For elements with `field_type: "repeatable_list"`, items added dynamically via the `+` button follow this schema:
+```json
+{
+  "id": "sub_1726058400_1",
+  "title": "Option 1: PostgreSQL Database",
+  "content": "### Analysis\n- Low latency\n- Strong ACID guarantees"
+}
+```
+
 
 ---
 

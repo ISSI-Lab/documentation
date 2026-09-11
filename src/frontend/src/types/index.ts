@@ -4,15 +4,23 @@ export type DocumentElementType =
   | 'select'
   | 'callout'
   | 'code'
-  | 'checklist';
+  | 'checklist'
+  | 'repeatable_list';
+
+export interface RepeatableSubItem {
+  id: string;
+  title: string;
+  content: string;
+}
 
 export interface DocumentElementConfig {
   id: string;
   label: string;
   description: string;
   field_type: DocumentElementType;
+  level: number; // 1 = H2 Section, 2 = H3 Subsection, 3 = H4 Sub-subsection
   placeholder: string;
-  default_value: string;
+  default_value: any;
   required: boolean;
   order: number;
   options?: string[] | null;

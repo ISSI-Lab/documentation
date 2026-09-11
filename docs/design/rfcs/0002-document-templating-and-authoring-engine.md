@@ -35,25 +35,40 @@ Each template contains an ordered array of element configurations:
 
 ```json
 {
-  "id": "context",
-  "label": "1. Context & Problem Statement",
-  "description": "Describe the technical context motivating this change.",
-  "field_type": "markdown",
-  "placeholder": "What problem are we trying to solve?",
-  "default_value": "### Context\n- Current system limitations...",
+  "id": "options",
+  "label": "3. Considered Options",
+  "description": "Evaluated alternatives. Authors click '+' to add options while writing.",
+  "field_type": "repeatable_list",
+  "level": 1,
+  "placeholder": "Click + to add an option",
+  "default_value": [
+    {
+      "id": "opt-1",
+      "title": "Option A: Managed Cloud Service",
+      "content": "- Pros: Zero maintenance\n- Cons: High cost"
+    }
+  ],
   "required": true,
-  "order": 0,
+  "order": 2,
   "options": null
 }
 ```
 
+#### Hierarchy Levels:
+- **Level 1** (`level: 1`): Top-level major section &rarr; emits `## ` in compiled markdown.
+- **Level 2** (`level: 2`): Subsection &rarr; emits `### ` in compiled markdown.
+- **Level 3** (`level: 3`): Detailed sub-item &rarr; emits `#### ` in compiled markdown.
+- Managed in the template builder with visual tree indentation (`ml-0`, `ml-6`, `ml-12`) and **Indent (`>`)** / **Outdent (`<`)** controls.
+
 #### Supported Element Types:
-1. **`markdown`**: Multi-line markdown editor equipped with a formatting toolbar (H2, H3, Bold, Italic, Code, Lists, Quotes, Tables, Links) and per-section write/preview tabs.
-2. **`short_text`**: Clean single-line input for titles, versions, or short metadata.
-3. **`select`**: Controlled dropdown populated from a configurable options array.
-4. **`callout`**: Formatted note/alert block (`> [!NOTE]`).
-5. **`code`**: Monospace code snippet block with dark editor styling.
-6. **`checklist`**: Interactive task checklist with `- [ ]` and `- [x]` syntax.
+1. **`repeatable_list` (Special Item)**: Repeatable dynamic list container where authors can click a prominent **`+` (Add New Item)** button during document authoring to spawn new input items on the fly (each item containing an editable title and its own markdown area).
+2. **`markdown`**: Multi-line markdown editor equipped with a formatting toolbar (H2, H3, Bold, Italic, Code, Lists, Quotes, Tables, Links) and per-section write/preview tabs.
+3. **`short_text`**: Clean single-line input for titles, versions, or short metadata.
+4. **`select`**: Controlled dropdown populated from a configurable options array.
+5. **`callout`**: Formatted note/alert block (`> [!NOTE]`).
+6. **`code`**: Monospace code snippet block with dark editor styling.
+7. **`checklist`**: Interactive task checklist with `- [ ]` and `- [x]` syntax.
+
 
 ---
 
