@@ -1,30 +1,38 @@
 # ==============================================================================
-# Backend Service Container (Python / FastAPI / Flask / Express)
+# Backend Service Container (NodeJS 20 / Express / TypeScript)
 # ==============================================================================
 
-FROM python:3.11-slim AS base
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PORT=8000
+# Copy dependencies first for caching
+COPY src/backend/package*.json ./
+RUN npm install
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    netcat-traditional \
-    && rm -rf /var/lib/apt/lists/*
+# Copy source code
+COPY src/backend/ ./
 
-# Install python dependencies first for layer caching
-COPY src/backend/requirements.txt* ./
-RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+# Compile TypeScript to JavaScript in dist/
+RUN npm run build
 
-# Copy backend source
-COPY src/backend/ .
+# ==============================================================================
+# Production Runtime Stage
+# ==============================================================================
+FROM node:20-alpine AS runner
 
-EXPOSE 8000
+WORKDIR /app
 
-# Default command for development (overridden if main.py / app.py present)
-CMD ["sh", "-c", "if [ -f main.py ]; then python main.py; elif [ -f app/main.py ]; then python app/main.py; else echo 'Backend service listening on port 8000' && nc -lk -p 8000; fi"]
+ENV NODE_ENV=production \
+    PORT=5000
+
+COPY src/backend/package*.json ./
+RUN npm install --only=production
+
+# Copy compiled files and init db scripts from builder
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/db ./db
+
+EXPOSE 5000
+
+CMD ["node", "dist/index.js"]

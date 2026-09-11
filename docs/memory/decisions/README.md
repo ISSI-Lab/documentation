@@ -18,3 +18,5 @@ python3 scripts/new_record.py adr "decision-title"
 | :--- | :--- | :--- | :--- |
 | [0001](0001-record-architecture-decisions.md) | Record Architecture Decisions | Accepted | 2026-09-10 |
 | [0002](0002-multi-service-docker-architecture.md) | Multi-Service Docker Architecture with Clean Docs Hub | Accepted | 2026-09-10 |
+| [0003](0003-host-nginx-container-react-node-mysql-architecture.md) | Multi-Tier Host Nginx -> Container Nginx+ReactJS -> NodeJS -> MySQL Architecture | Accepted | 2026-09-11 |
+

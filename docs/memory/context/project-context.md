@@ -11,11 +11,14 @@ This project provides a robust, multi-service web platform designed for cross-pl
 
 ## 2. Technology Stack Overview
 - **Orchestration**: Docker Compose (v2+), Docker (v24+)
-- **Frontend**: Node 20 / TypeScript / Modern Web Framework (Vite / React)
-- **Backend**: Python 3.11 / FastAPI (or Flask / Node)
+- **Production Edge**: Host Nginx reverse proxy -> Docker Container Nginx
+- **Frontend**: Container Nginx + React 18 / TypeScript / Vite / Tailwind CSS
+- **Backend**: Node 20 / Express / TypeScript / mysql2
+- **Database**: MySQL 8.0 with persistent volume (`mysql_data`)
 - **Shared Network**: Bridge network (`app-net`)
 - **Documentation**: Markdown + Mermaid diagrams under `docs/`
 - **Automation Scripts**: Cross-platform Python 3.8+ (`scripts/`)
+
 
 ---
 

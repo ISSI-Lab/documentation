@@ -12,9 +12,7 @@ When switching from one workstation to another (or across team handoffs):
 
 ---
 
-## How to Create a Handoff Log
-Run:
-```bash
-python3 scripts/new_record.py handoff "feature-or-topic-name"
-```
-Or copy [`template.md`](template.md) to `YYYY-MM-DD-<author>-<topic>.md` and commit it to your feature branch.
+## Recent Handoff Logs
+- [`2026-09-10-initial-setup-complete.md`](2026-09-10-initial-setup-complete.md): Initial multi-service scaffolding setup.
+- [`2026-09-11-document-authoring-platform-implementation.md`](2026-09-11-document-authoring-platform-implementation.md): Complete Document Templating, Configuration & Markdown Authoring platform implementation.
+

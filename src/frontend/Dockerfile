@@ -1,27 +1,36 @@
 # ==============================================================================
-# Frontend Service Container (Multi-Stage Build)
+# Stage 1: Build ReactJS Application
 # ==============================================================================
-
-# Development stage with hot-reloading
-FROM node:20-alpine AS development
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install dependencies before copying source for Docker layer caching
+# Copy dependency manifests
 COPY src/frontend/package*.json ./
-RUN npm install --no-audit --prefer-offline 2>/dev/null || true
 
-# Copy source code
-COPY src/frontend/ .
+# Install dependencies
+RUN npm install
 
-ENV PORT=3000
-EXPOSE 3000
+# Copy frontend source code
+COPY src/frontend/ ./
 
-# Default command for development (overridden if npm scripts present)
-CMD ["sh", "-c", "if [ -f package.json ]; then npm run dev -- --host 0.0.0.0 --port 3000; else echo 'Frontend placeholder running on port 3000' && nc -lk -p 3000; fi"]
+# Build the production React SPA bundle into /app/dist
+RUN npm run build
 
-# Production stage
-FROM nginx:alpine AS production
-COPY --from=development /app/dist /usr/share/nginx/html 2>/dev/null || true
+# ==============================================================================
+# Stage 2: Production Nginx Server
+# ==============================================================================
+FROM nginx:alpine AS runner
+
+# Remove default nginx configurations
+RUN rm -rf /etc/nginx/conf.d/*
+
+# Copy custom Nginx configuration
+COPY src/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built React static bundle from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
 EXPOSE 80
+
 CMD ["nginx", "-g", "daemon off;"]

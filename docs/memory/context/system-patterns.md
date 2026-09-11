@@ -5,13 +5,23 @@ This document specifies reusable engineering patterns and code standards across 
 ---
 
 ## 1. Architectural Patterns
-- **API-First Integration**: Define endpoint contracts in [`docs/design/api/`](../../design/api/) before writing frontend UI components or backend route handlers.
-- **Stateless Services**: Frontend and backend containers must remain stateless; persistent data must reside in external databases or mounted volumes.
-- **Fail-Fast Configuration**: Services must validate required environment variables at startup and crash with a descriptive error if variables are missing.
+- **Multi-Tier Edge & Proxy Architecture**:
+  - In production: **Host Nginx** (`:80`/`:443`) &rarr; **Container Nginx** (`:80`, exposed as `:3000`) &rarr; **NodeJS Express** (`:5000`) &rarr; **MySQL** (`:3306`).
+  - In development: Developers directly access `http://localhost:3000`.
+  - Container Nginx serves React SPA static assets and proxies `/api/` traffic internally to `http://backend:5000/api/`, eliminating cross-origin (CORS) friction.
+- **Template-Driven Dynamic Authoring Pattern**:
+  - Document templates define ordered schemas of `document_elements` (markdown fields, short text, select, callouts, code, checklists).
+  - The document editor dynamically instantiates input fields and formatting tools directly from the template schema.
+  - The markdown compiler (`src/backend/src/compiler.ts`) stitches discrete elements deterministically into GitHub-Flavored Markdown.
+- **Self-Healing Database Pattern**:
+  - The backend verifies database tables on startup and automatically seeds industry-standard templates (ADR, PRD, Postmortem) if empty.
+  - Uses connection pooling (`mysql2/promise`) with retry logic to ensure smooth startup behind Docker healthchecks.
 
 ---
 
 ## 2. Docker & Container Patterns
-- **Layer Caching**: Always copy package manifests (`package.json`, `requirements.txt`) and install dependencies *before* copying application source code in `Dockerfile`s.
-- **Volume Mounts**: During development, host source directories are mounted (`./src/frontend:/app` and `./src/backend:/app`) to enable instant hot-reload without container rebuilds.
-- **Container Isolation**: Internal container ports are standard (`3000` for frontend, `8000` for backend). Host ports can be mapped differently using environment variables (`FRONTEND_PORT`, `BACKEND_PORT`).
+- **Multi-Stage Frontend Build**: Stage 1 uses Node 20 to compile the React TypeScript SPA; Stage 2 uses Nginx Alpine to serve static assets and handle reverse proxying.
+- **Layer Caching**: Always copy `package*.json` and run `npm install` *before* copying application source code in `Dockerfile`s.
+- **Volume Persistence**: MySQL data persists in Docker named volume `mysql_data`.
+- **Environment Parity**: Host ports are parameterized via environment variables (`FRONTEND_PORT`, `BACKEND_PORT`, `MYSQL_PORT`).
+

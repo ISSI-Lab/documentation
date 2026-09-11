@@ -5,7 +5,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 ---
 
 ## Current Sprint Focus
-- **Goal**: Initializing cross-platform multi-service scaffolding and documentation workspace.
+- **Goal**: Complete document templating, element configuration, and dual-mode authoring system on Nginx + ReactJS -> NodeJS -> MySQL.
 - **Active Branch**: `main`
 
 ---
@@ -14,11 +14,17 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Workstream | Owner | Status | Current Focus |
 | :--- | :--- | :--- | :--- |
 | Project Scaffolding | Team | Completed | Root layout, docs hub, Docker Compose orchestration |
-| Backend Skeleton | TBD | Pending | Implement initial FastAPI health routes in `src/backend` |
-| Frontend Skeleton | TBD | Pending | Implement initial Vite/React web client in `src/frontend` |
+| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, seed templates |
+| Backend Service | AI Agent | Completed | Node 20 / Express API, MySQL pool, Markdown compilation |
+| Frontend Service | AI Agent | Completed | React 18 SPA, Container Nginx reverse proxy, Template builder, Dual-mode doc editor/viewer |
+| Host Nginx Config | AI Agent | Completed | Production reverse proxy guide (`host-nginx-example.conf`) |
 
 ---
 
 ## Recent Significant Decisions
-- Adopted multi-service Option B with Docker Compose orchestration ([ADR-0002](../decisions/0002-multi-service-docker-architecture.md)).
-- Enforced all project memory and design inside `docs/` to keep root and code clean.
+- Adopted multi-tier architecture: Host Nginx -> Container Nginx + ReactJS -> NodeJS -> MySQL.
+- Exposed developer access port `3000` directly mapped to container Nginx.
+- Container Nginx proxies all `/api/` traffic internally to `http://backend:5000/api/`.
+- Pre-seeded industry standard templates (ADR, PRD, Incident Postmortem) for immediate use.
+
+
