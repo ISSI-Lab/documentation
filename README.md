@@ -53,20 +53,22 @@ cp docs/ops/config-templates/.env.example .env
 
 ### 3. Launch Services
 ```bash
-# Build and start all services in the background
+# Build and start all services (MySQL, NodeJS Backend, and Nginx+React Frontend)
 docker compose up --build -d
 
 # View live streaming logs
 docker compose logs -f
 ```
 
-- **Frontend Website**: [http://localhost:3000](http://localhost:3000)
-- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **Frontend & API (Container Nginx)**: [http://localhost:3000](http://localhost:3000) (Proxies `/api/` to backend)
+- **Backend API (Direct Debug)**: [http://localhost:5000](http://localhost:5000)
+- **MySQL Database**: `localhost:3306` (`docforge` database)
 
 ### 4. Stop Services
 ```bash
 docker compose down
 ```
+
 
 ---
 
