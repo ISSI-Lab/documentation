@@ -1,0 +1,31 @@
+{
+  "demoUsers": [
+    {
+      "id": "usr-demo-organizer",
+      "username": "demo_organizer",
+      "email": "organizer@docforge.local",
+      "password": "Password123!",
+      "name": "Demo Organizer",
+      "user_type": "organizer"
+    },
+    {
+      "id": "usr-demo-regular",
+      "username": "demo_regular",
+      "email": "regular@docforge.local",
+      "password": "Password123!",
+      "name": "Demo Regular Member",
+      "user_type": "regular"
+    }
+  ],
+  "defaultTeam": {
+    "id": "team-core-engineering",
+    "name": "Core Engineering Team",
+    "description": "Primary product engineering, architectural design, and infrastructure team.",
+    "join_code": "TEAM-CORE-2026"
+  },
+  "defaultProject": {
+    "id": "proj-platform-v1",
+    "name": "Documentation Platform v1.0",
+    "description": "Cross-service platform architecture, templates, and specifications."
+  }
+}

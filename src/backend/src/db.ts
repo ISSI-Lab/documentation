@@ -1,5 +1,9 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import bcrypt from 'bcryptjs';
+
 dotenv.config();
 
 const dbHost = process.env.DB_HOST || 'localhost';
@@ -19,6 +23,27 @@ export const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+async function ensureColumnExists(
+  conn: mysql.PoolConnection,
+  tableName: string,
+  columnName: string,
+  columnDef: string
+) {
+  try {
+    const [rows] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT COUNT(*) as cnt FROM information_schema.COLUMNS 
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [dbName, tableName, columnName]
+    );
+    if (rows && rows[0] && rows[0].cnt === 0) {
+      console.log(`[Database] Adding missing column ${columnName} to ${tableName}...`);
+      await conn.query(`ALTER TABLE \`${tableName}\` ADD COLUMN ${columnName} ${columnDef}`);
+    }
+  } catch (err: any) {
+    console.warn(`[Database] Notice on checking column ${columnName} in ${tableName}:`, err.message);
+  }
+}
+
 export async function initDatabase(): Promise<void> {
   let connected = false;
   let attempts = 0;
@@ -31,7 +56,64 @@ export async function initDatabase(): Promise<void> {
       const conn = await pool.getConnection();
       console.log('[Database] MySQL connection established successfully.');
 
-      // Ensure tables exist
+      // 1. Users Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(64) PRIMARY KEY,
+          username VARCHAR(64) NOT NULL UNIQUE,
+          email VARCHAR(255) NOT NULL UNIQUE,
+          password_hash VARCHAR(255) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          user_type ENUM('organizer', 'regular') NOT NULL DEFAULT 'regular',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_username (username),
+          INDEX idx_email (email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 2. Teams Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS teams (
+          id VARCHAR(64) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          join_code VARCHAR(64) NOT NULL UNIQUE,
+          created_by VARCHAR(64) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_join_code (join_code),
+          INDEX idx_created_by (created_by)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 3. Team Members Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS team_members (
+          team_id VARCHAR(64) NOT NULL,
+          user_id VARCHAR(64) NOT NULL,
+          role ENUM('manager', 'member') NOT NULL DEFAULT 'member',
+          joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, user_id),
+          INDEX idx_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 4. Projects Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id VARCHAR(64) PRIMARY KEY,
+          team_id VARCHAR(64) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          created_by VARCHAR(64) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_team_id (team_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 5. Templates Table
       await conn.query(`
         CREATE TABLE IF NOT EXISTS templates (
           id VARCHAR(64) PRIMARY KEY,
@@ -39,37 +121,58 @@ export async function initDatabase(): Promise<void> {
           description TEXT,
           category VARCHAR(100) NOT NULL DEFAULT 'General',
           icon VARCHAR(50) NOT NULL DEFAULT 'file-text',
+          visibility ENUM('private', 'public') NOT NULL DEFAULT 'private',
+          team_id VARCHAR(64) NULL,
+          created_by VARCHAR(64) NULL,
+          tags JSON NULL,
           document_elements JSON NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_team_id (team_id),
+          INDEX idx_visibility (visibility)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
+      // 6. Documents Table
       await conn.query(`
         CREATE TABLE IF NOT EXISTS documents (
           id VARCHAR(64) PRIMARY KEY,
           title VARCHAR(255) NOT NULL,
+          project_id VARCHAR(64) NULL,
+          team_id VARCHAR(64) NULL,
           template_id VARCHAR(64) NOT NULL,
           template_title VARCHAR(255) NOT NULL,
           status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
           author VARCHAR(255) DEFAULT 'Anonymous',
+          created_by VARCHAR(64) NULL,
+          last_edited_by VARCHAR(64) NULL,
           tags JSON,
           elements_data JSON NOT NULL,
           compiled_markdown LONGTEXT NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id),
+          INDEX idx_team_id (team_id),
           INDEX idx_template_id (template_id),
           INDEX idx_status (status),
           INDEX idx_updated_at (updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // Check if templates need seeding
-      const [rows] = await conn.query<mysql.RowDataPacket[]>('SELECT COUNT(*) as cnt FROM templates');
-      if (rows && rows[0] && rows[0].cnt === 0) {
-        console.log('[Database] No templates found. Inserting seed templates...');
-        await seedDefaultTemplates(conn);
-      }
+      // Column migrations for pre-existing tables if any
+      await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
+      await ensureColumnExists(conn, 'templates', 'team_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'templates', 'created_by', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'templates', 'tags', 'JSON NULL');
+
+      await ensureColumnExists(conn, 'documents', 'project_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'team_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'created_by', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'last_edited_by', 'VARCHAR(64) NULL');
+
+      // Seed config demo users, teams, projects, and templates
+      await seedConfigData(conn);
+      await seedDefaultTemplates(conn);
 
       conn.release();
       connected = true;
@@ -81,6 +184,135 @@ export async function initDatabase(): Promise<void> {
 
   if (!connected) {
     console.error('[Database] Could not connect to MySQL after maximum retries. Continuing startup...');
+  }
+}
+
+export function loadDefaultConfig(): any {
+  const possiblePaths = [
+    path.join(__dirname, '../config/default-config.json'),
+    path.join(__dirname, '../../config/default-config.json'),
+    path.join(process.cwd(), 'config/default-config.json'),
+    path.join(process.cwd(), 'src/backend/config/default-config.json'),
+  ];
+
+  for (const configPath of possiblePaths) {
+    if (fs.existsSync(configPath)) {
+      try {
+        const raw = fs.readFileSync(configPath, 'utf8');
+        return JSON.parse(raw);
+      } catch (err: any) {
+        console.warn(`[Config] Failed to parse ${configPath}:`, err.message);
+      }
+    }
+  }
+
+  // Fallback in-memory default config
+  return {
+    demoUsers: [
+      {
+        id: 'usr-demo-organizer',
+        username: 'demo_organizer',
+        email: 'organizer@docforge.local',
+        password: 'Password123!',
+        name: 'Demo Organizer',
+        user_type: 'organizer',
+      },
+      {
+        id: 'usr-demo-regular',
+        username: 'demo_regular',
+        email: 'regular@docforge.local',
+        password: 'Password123!',
+        name: 'Demo Regular Member',
+        user_type: 'regular',
+      },
+    ],
+    defaultTeam: {
+      id: 'team-core-engineering',
+      name: 'Core Engineering Team',
+      description: 'Primary product engineering, architectural design, and infrastructure team.',
+      join_code: 'TEAM-CORE-2026',
+    },
+    defaultProject: {
+      id: 'proj-platform-v1',
+      name: 'Documentation Platform v1.0',
+      description: 'Cross-service platform architecture, templates, and specifications.',
+    },
+  };
+}
+
+export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void> {
+  const runner = conn || (await pool.getConnection());
+  try {
+    const config = loadDefaultConfig();
+
+    // 1. Seed demo users
+    if (Array.isArray(config.demoUsers)) {
+      for (const u of config.demoUsers) {
+        const passwordHash = await bcrypt.hash(u.password || 'Password123!', 10);
+        await runner.query(
+          `INSERT INTO users (id, username, email, password_hash, name, user_type, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name),
+             user_type = VALUES(user_type)`,
+          [u.id, u.username, u.email, passwordHash, u.name, u.user_type || 'regular']
+        );
+      }
+    }
+
+    // 2. Seed default demo team
+    if (config.defaultTeam) {
+      const t = config.defaultTeam;
+      const creatorId = config.demoUsers?.[0]?.id || 'usr-demo-organizer';
+
+      await runner.query(
+        `INSERT INTO teams (id, name, description, join_code, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           name = VALUES(name),
+           description = VALUES(description),
+           join_code = VALUES(join_code)`,
+        [t.id, t.name, t.description || '', t.join_code || 'TEAM-CORE-2026', creatorId]
+      );
+
+      // Add organizer as manager
+      await runner.query(
+        `INSERT INTO team_members (team_id, user_id, role, joined_at)
+         VALUES (?, ?, 'manager', NOW())
+         ON DUPLICATE KEY UPDATE role = 'manager'`,
+        [t.id, creatorId]
+      );
+
+      // Add regular user as member
+      const regularId = config.demoUsers?.[1]?.id;
+      if (regularId) {
+        await runner.query(
+          `INSERT INTO team_members (team_id, user_id, role, joined_at)
+           VALUES (?, ?, 'member', NOW())
+           ON DUPLICATE KEY UPDATE role = 'member'`,
+          [t.id, regularId]
+        );
+      }
+
+      // 3. Seed default project in team
+      if (config.defaultProject) {
+        const p = config.defaultProject;
+        await runner.query(
+          `INSERT INTO projects (id, team_id, name, description, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name),
+             description = VALUES(description)`,
+          [p.id, t.id, p.name, p.description || '', creatorId]
+        );
+      }
+    }
+
+    console.log('[Database] Demo users, default team, and default project verified and seeded.');
+  } finally {
+    if (!conn) {
+      runner.release();
+    }
   }
 }
 
@@ -328,6 +560,8 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
         description: 'Capture architectural context, considered options, decision outcome, and trade-offs.',
         category: 'Architecture',
         icon: 'layers',
+        visibility: 'public',
+        tags: ['architecture', 'adr', 'decision', 'system-design'],
         elements: seedAdrElements,
       },
       {
@@ -336,6 +570,8 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
         description: 'Define product purpose, target audience, functional specifications, and release milestones.',
         category: 'Product',
         icon: 'file-text',
+        visibility: 'public',
+        tags: ['product', 'prd', 'specification', 'requirements'],
         elements: seedPrdElements,
       },
       {
@@ -344,22 +580,26 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
         description: 'Blameless postmortem analysis for tracking outages, root causes, and remediation roadmap.',
         category: 'Operations',
         icon: 'shield-alert',
+        visibility: 'public',
+        tags: ['operations', 'postmortem', 'incident', 'sre'],
         elements: seedPostmortemElements,
       },
     ];
 
     for (const t of templatesToSeed) {
       await runner.query(
-        `INSERT INTO templates (id, title, description, category, icon, document_elements, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+        `INSERT INTO templates (id, title, description, category, icon, visibility, team_id, created_by, tags, document_elements, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, 'usr-demo-organizer', ?, ?, NOW(), NOW())
          ON DUPLICATE KEY UPDATE 
            title = VALUES(title),
            description = VALUES(description),
            category = VALUES(category),
            icon = VALUES(icon),
+           visibility = VALUES(visibility),
+           tags = VALUES(tags),
            document_elements = VALUES(document_elements),
            updated_at = NOW()`,
-        [t.id, t.title, t.description, t.category, t.icon, JSON.stringify(t.elements)]
+        [t.id, t.title, t.description, t.category, t.icon, t.visibility, JSON.stringify(t.tags), JSON.stringify(t.elements)]
       );
     }
   } finally {

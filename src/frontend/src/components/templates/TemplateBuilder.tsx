@@ -25,16 +25,19 @@ import {
   DocumentElementType,
   Template,
   TemplateCreatePayload,
+  TemplateVisibility,
 } from '../../types';
 
 interface TemplateBuilderProps {
   initialTemplate?: Template | null;
+  activeTeamId?: string | null;
   onSave: (payload: TemplateCreatePayload) => Promise<void>;
   onCancel: () => void;
 }
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   initialTemplate,
+  activeTeamId,
   onSave,
   onCancel,
 }) => {
@@ -42,6 +45,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   const [description, setDescription] = useState(initialTemplate?.description || '');
   const [category, setCategory] = useState(initialTemplate?.category || 'Engineering');
   const [icon, setIcon] = useState(initialTemplate?.icon || 'file-text');
+  const [visibility, setVisibility] = useState<TemplateVisibility>(
+    initialTemplate?.visibility || 'private'
+  );
+  const [tagsInput, setTagsInput] = useState(
+    initialTemplate?.tags && Array.isArray(initialTemplate.tags)
+      ? initialTemplate.tags.join(', ')
+      : ''
+  );
 
   const [elements, setElements] = useState<DocumentElementConfig[]>(
     initialTemplate?.document_elements && initialTemplate.document_elements.length > 0
@@ -189,11 +200,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     try {
       setSaving(true);
       setError(null);
+      const cleanTags = tagsInput
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, ''))
+        .filter(Boolean);
+
       await onSave({
         title: title.trim(),
         description: description.trim(),
         category: category.trim() || 'General',
         icon,
+        visibility,
+        team_id: visibility === 'private' ? activeTeamId || initialTemplate?.team_id || null : null,
+        tags: cleanTags,
         document_elements: elements.map((elem, idx) => ({
           ...elem,
           order: idx,
@@ -337,6 +356,70 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
+              </div>
+
+              {/* Tags Input */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Tags (Comma separated)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. architecture, decision, backend, rfc"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+
+              {/* Visibility Type (Private vs Public) */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Template Visibility
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setVisibility('private')}
+                    className={`cursor-pointer p-3 rounded-xl border transition-all ${
+                      visibility === 'private'
+                        ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-slate-900">Team Private (Default)</span>
+                      {visibility === 'private' && (
+                        <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 rounded-full font-bold">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-tight">
+                      Edited and used exclusively by members of this team.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setVisibility('public')}
+                    className={`cursor-pointer p-3 rounded-xl border transition-all ${
+                      visibility === 'public'
+                        ? 'border-blue-600 bg-blue-50/70 ring-1 ring-blue-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-slate-900">Public Shared</span>
+                      {visibility === 'public' && (
+                        <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-bold">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-tight">
+                      Shared across the entire platform for all teams and users.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

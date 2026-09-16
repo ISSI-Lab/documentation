@@ -6,12 +6,24 @@ import { DocumentList } from './components/documents/DocumentList';
 import { DocumentEditor } from './components/documents/DocumentEditor';
 import { DocumentViewer } from './components/documents/DocumentViewer';
 import { CreateDocumentModal } from './components/documents/CreateDocumentModal';
-import { api } from './api/client';
-import { Document, DocumentCreatePayload, Template, TemplateCreatePayload } from './types';
+import { AuthModal } from './components/auth/AuthModal';
+import { AccountModal } from './components/auth/AccountModal';
+import { TeamManagement } from './components/teams/TeamManagement';
+import { api, getStoredToken } from './api/client';
+import {
+  Document,
+  DocumentCreatePayload,
+  Project,
+  Team,
+  Template,
+  TemplateCreatePayload,
+  User,
+} from './types';
 
 type ViewMode =
   | 'documents'
   | 'templates'
+  | 'teams'
   | 'create_template'
   | 'edit_template'
   | 'edit_document'
@@ -19,6 +31,12 @@ type ViewMode =
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('documents');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
   const [templates, setTemplates] = useState<Template[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
 
@@ -28,8 +46,12 @@ export const App: React.FC = () => {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  // Modals
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [modalInitialTemplateId, setModalInitialTemplateId] = useState<string | null>(null);
+  const [modalInitialProjectId, setModalInitialProjectId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -38,10 +60,57 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // Check auth session
+  const checkSession = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    try {
+      const data = await api.getMe();
+      setCurrentUser(data.user);
+      setTeams(data.teams || []);
+      if (data.teams && data.teams.length > 0 && !activeTeamId) {
+        setActiveTeamId(data.teams[0].id);
+      }
+    } catch {
+      api.logout();
+      setCurrentUser(null);
+    }
+  };
+
+  const loadTeams = async () => {
+    if (!currentUser) return;
+    try {
+      const list = await api.listTeams();
+      setTeams(list);
+      if (list.length > 0 && (!activeTeamId || !list.some((t) => t.id === activeTeamId))) {
+        setActiveTeamId(list[0].id);
+      }
+    } catch (err: any) {
+      // ignore
+    }
+  };
+
+  const loadProjects = async (teamId: string | null) => {
+    if (!teamId) {
+      setProjects([]);
+      setActiveProjectId(null);
+      return;
+    }
+    try {
+      const list = await api.listProjects(teamId);
+      setProjects(list);
+      if (activeProjectId && !list.some((p) => p.id === activeProjectId)) {
+        setActiveProjectId(null);
+      }
+    } catch (err: any) {
+      setProjects([]);
+    }
+  };
+
   const loadTemplates = async () => {
     try {
       setLoadingTemplates(true);
-      const list = await api.listTemplates();
+      const list = await api.listTemplates({ team_id: activeTeamId || undefined });
       setTemplates(list);
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch templates', 'error');
@@ -53,7 +122,10 @@ export const App: React.FC = () => {
   const loadDocuments = async () => {
     try {
       setLoadingDocs(true);
-      const list = await api.listDocuments();
+      const list = await api.listDocuments({
+        team_id: activeTeamId || undefined,
+        project_id: activeProjectId || undefined,
+      });
       setDocuments(list);
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch documents', 'error');
@@ -63,9 +135,42 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    checkSession();
+  }, []);
+
+  useEffect(() => {
+    if (activeTeamId) {
+      loadProjects(activeTeamId);
+    } else {
+      setProjects([]);
+      setActiveProjectId(null);
+    }
     loadTemplates();
     loadDocuments();
-  }, []);
+  }, [activeTeamId, activeProjectId, currentUser]);
+
+  const handleLoginSuccess = async (user: User) => {
+    setCurrentUser(user);
+    showToast(`Welcome back, ${user.name || user.username}!`);
+    await checkSession();
+    await loadTemplates();
+    await loadDocuments();
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setTeams([]);
+    setActiveTeamId(null);
+    setProjects([]);
+    setActiveProjectId(null);
+    showToast('Signed out successfully');
+  };
+
+  const handleUserUpdated = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    showToast(`Account updated! Role is now ${updatedUser.user_type}.`);
+  };
 
   // Template Handlers
   const handleSaveTemplate = async (payload: TemplateCreatePayload) => {
@@ -138,8 +243,10 @@ export const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
+  const activeTeam = teams.find((t) => t.id === activeTeamId) || null;
   const activeDoc = documents.find((d) => d.id === activeDocId) || null;
-  const activeTemplate = templates.find((t) => t.id === (activeDoc?.template_id || activeTemplateId)) || null;
+  const activeTemplate =
+    templates.find((t) => t.id === (activeDoc?.template_id || activeTemplateId)) || null;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -147,7 +254,7 @@ export const App: React.FC = () => {
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 animate-bounce">
           <div
-            className={`px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white ${
+            className={`px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white ${
               toast.type === 'error' ? 'bg-red-600' : 'bg-slate-900'
             }`}
           >
@@ -156,15 +263,29 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Show standard top navigation for list & builder views */}
+      {/* Top Navigation */}
       {currentView !== 'edit_document' && currentView !== 'view_document' && (
         <Navigation
           currentView={currentView}
+          currentUser={currentUser}
+          teams={teams}
+          activeTeamId={activeTeamId}
+          projects={projects}
+          activeProjectId={activeProjectId}
           onNavigate={(view) => setCurrentView(view as ViewMode)}
+          onSelectTeam={(teamId) => {
+            setActiveTeamId(teamId);
+            setActiveProjectId(null);
+          }}
+          onSelectProject={(projId) => setActiveProjectId(projId)}
           onOpenNewDocModal={() => {
             setModalInitialTemplateId(null);
+            setModalInitialProjectId(activeProjectId);
             setIsCreateModalOpen(true);
           }}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onOpenAccountModal={() => setIsAccountModalOpen(true)}
+          onLogout={handleLogout}
         />
       )}
 
@@ -174,9 +295,14 @@ export const App: React.FC = () => {
           <DocumentList
             documents={documents}
             templates={templates}
+            teams={teams}
+            projects={projects}
+            activeTeamId={activeTeamId}
+            activeProjectId={activeProjectId}
             loading={loadingDocs}
             onOpenCreateModal={() => {
               setModalInitialTemplateId(null);
+              setModalInitialProjectId(activeProjectId);
               setIsCreateModalOpen(true);
             }}
             onEditDocument={(id) => {
@@ -195,6 +321,8 @@ export const App: React.FC = () => {
         {currentView === 'templates' && (
           <TemplateList
             templates={templates}
+            currentUser={currentUser}
+            activeTeam={activeTeam}
             loading={loadingTemplates}
             onCreateNewTemplate={() => {
               setActiveTemplateId(null);
@@ -206,16 +334,44 @@ export const App: React.FC = () => {
             }}
             onDeleteTemplate={handleDeleteTemplate}
             onResetSeeds={handleResetSeeds}
+            onOpenAccountModal={() => setIsAccountModalOpen(true)}
             onSelectTemplateToCreate={(tpl) => {
               setModalInitialTemplateId(tpl.id);
+              setModalInitialProjectId(activeProjectId);
               setIsCreateModalOpen(true);
             }}
+          />
+        )}
+
+        {currentView === 'teams' && (
+          <TeamManagement
+            currentUser={currentUser}
+            teams={teams}
+            activeTeamId={activeTeamId}
+            onSelectTeam={(tId) => {
+              setActiveTeamId(tId);
+              setActiveProjectId(null);
+            }}
+            onRefreshTeams={loadTeams}
+            onOpenAccountModal={() => setIsAccountModalOpen(true)}
+            onOpenNewDocModal={(projId) => {
+              setModalInitialTemplateId(null);
+              setModalInitialProjectId(projId || null);
+              setIsCreateModalOpen(true);
+            }}
+            onViewProjectDocs={(teamId, projId) => {
+              setActiveTeamId(teamId);
+              setActiveProjectId(projId);
+              setCurrentView('documents');
+            }}
+            showToast={showToast}
           />
         )}
 
         {(currentView === 'create_template' || currentView === 'edit_template') && (
           <TemplateBuilder
             initialTemplate={currentView === 'edit_template' ? activeTemplate : null}
+            activeTeamId={activeTeamId}
             onSave={handleSaveTemplate}
             onCancel={() => {
               setActiveTemplateId(null);
@@ -252,13 +408,31 @@ export const App: React.FC = () => {
         )}
       </div>
 
-      {/* Modal to Create Document from Template */}
+      {/* Modal: Create Document */}
       <CreateDocumentModal
         isOpen={isCreateModalOpen}
         templates={templates}
+        projects={projects}
+        currentUser={currentUser}
         initialSelectedTemplateId={modalInitialTemplateId}
+        initialSelectedProjectId={modalInitialProjectId}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateDocument}
+      />
+
+      {/* Modal: Auth (Login/Register/Demo login) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={handleLoginSuccess}
+      />
+
+      {/* Modal: Account Settings & Role Switcher */}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        currentUser={currentUser}
+        onClose={() => setIsAccountModalOpen(false)}
+        onUserUpdated={handleUserUpdated}
       />
     </div>
   );

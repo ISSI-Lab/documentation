@@ -2,6 +2,9 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDatabase, pool } from './db';
+import { authRouter } from './routes/auth';
+import { teamsRouter } from './routes/teams';
+import { projectsRouter } from './routes/projects';
 import { templatesRouter } from './routes/templates';
 import { documentsRouter } from './routes/documents';
 
@@ -30,11 +33,14 @@ app.get('/api/v1/health', async (req: Request, res: Response) => {
     service: 'documentation-platform-backend',
     database: dbStatus,
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: '1.1.0',
   });
 });
 
 // Mount routes
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/teams', teamsRouter);
+app.use('/api/v1/projects', projectsRouter);
 app.use('/api/v1/templates', templatesRouter);
 app.use('/api/v1/documents', documentsRouter);
 
@@ -44,6 +50,9 @@ app.get('/', (req: Request, res: Response) => {
     name: 'DocForge Backend Service API',
     endpoints: {
       health: '/api/v1/health',
+      auth: '/api/v1/auth',
+      teams: '/api/v1/teams',
+      projects: '/api/v1/projects',
       templates: '/api/v1/templates',
       documents: '/api/v1/documents',
     },

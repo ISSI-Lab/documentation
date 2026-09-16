@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { X, FilePlus, Layers, FileText, ShieldAlert, Sparkles } from 'lucide-react';
-import { DocumentCreatePayload, Template } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { X, FilePlus, Sparkles, FolderKanban } from 'lucide-react';
+import { DocumentCreatePayload, Project, Template, User } from '../../types';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
   templates: Template[];
+  projects: Project[];
+  currentUser?: User | null;
   initialSelectedTemplateId?: string | null;
+  initialSelectedProjectId?: string | null;
   onClose: () => void;
   onCreate: (payload: DocumentCreatePayload) => Promise<void>;
 }
@@ -13,7 +16,10 @@ interface CreateDocumentModalProps {
 export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   isOpen,
   templates,
+  projects,
+  currentUser,
   initialSelectedTemplateId,
+  initialSelectedProjectId,
   onClose,
   onCreate,
 }) => {
@@ -21,19 +27,35 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const [templateId, setTemplateId] = useState(
     initialSelectedTemplateId || (templates.length > 0 ? templates[0].id : '')
   );
-  const [author, setAuthor] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(
+    initialSelectedProjectId || (projects.length > 0 ? projects[0].id : null)
+  );
+  const [author, setAuthor] = useState(currentUser?.name || currentUser?.username || '');
   const [tagsInput, setTagsInput] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync initial template ID if changed
-  React.useEffect(() => {
+  useEffect(() => {
     if (initialSelectedTemplateId) {
       setTemplateId(initialSelectedTemplateId);
     } else if (templates.length > 0 && !templateId) {
       setTemplateId(templates[0].id);
     }
   }, [initialSelectedTemplateId, templates]);
+
+  useEffect(() => {
+    if (initialSelectedProjectId) {
+      setProjectId(initialSelectedProjectId);
+    } else if (projects.length > 0 && !projectId) {
+      setProjectId(projects[0].id);
+    }
+  }, [initialSelectedProjectId, projects]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setAuthor(currentUser.name || currentUser.username || '');
+    }
+  }, [currentUser]);
 
   if (!isOpen) return null;
 
@@ -59,7 +81,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       await onCreate({
         title: title.trim(),
         template_id: templateId,
-        author: author.trim() || 'Anonymous',
+        project_id: projectId || null,
+        author: author.trim() || currentUser?.name || currentUser?.username || 'Anonymous',
         tags,
       });
 
@@ -95,7 +118,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
           <div>
             <h2 className="text-xl font-bold text-slate-900">Create New Document</h2>
             <p className="text-xs text-slate-500">
-              Select a template to configure your document's sections and markdown fields.
+              Select a project and template blueprint for co-authoring.
             </p>
           </div>
         </div>
@@ -118,9 +141,29 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
               placeholder="e.g. ADR-0004: Redis Cluster for Session Caching"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
+
+          {/* Project Selector */}
+          {projects.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <FolderKanban className="w-3.5 h-3.5 text-blue-600" /> Target Team Project
+              </label>
+              <select
+                value={projectId || ''}
+                onChange={(e) => setProjectId(e.target.value ? e.target.value : null)}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Template Selector */}
           <div>
@@ -130,35 +173,23 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             <select
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
             >
               {templates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
-                  {tpl.title} ({tpl.category} - {tpl.document_elements?.length || 0} sections)
+                  {tpl.title} ({tpl.visibility === 'public' ? 'Public' : 'Team'} - {tpl.document_elements?.length || 0} sections)
                 </option>
               ))}
             </select>
 
             {/* Template Info Card */}
             {selectedTemplate && (
-              <div className="mt-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
+              <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
                 <div className="flex items-center justify-between font-medium text-slate-800 mb-1">
                   <span>{selectedTemplate.description || 'Standard document template'}</span>
-                  <span className="text-blue-600 font-semibold">
-                    {selectedTemplate.document_elements?.length || 0} configured items
+                  <span className="text-blue-600 font-semibold text-[10px]">
+                    {selectedTemplate.document_elements?.length || 0} sections
                   </span>
-                </div>
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {selectedTemplate.document_elements?.slice(0, 4).map((elem, i) => (
-                    <span key={i} className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] text-slate-600">
-                      {elem.label}
-                    </span>
-                  ))}
-                  {(selectedTemplate.document_elements?.length || 0) > 4 && (
-                    <span className="text-[10px] text-slate-400 py-0.5">
-                      +{(selectedTemplate.document_elements?.length || 0) - 4} more
-                    </span>
-                  )}
                 </div>
               </div>
             )}
@@ -172,10 +203,10 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="e.g. Jane Doe, Tech Lead"
+                placeholder="e.g. Alex Morgan, Tech Lead"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
-                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
 
@@ -188,7 +219,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 placeholder="e.g. cache, redis, v2"
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
-                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
             </div>
           </div>
@@ -198,14 +229,14 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={creating}
-              className="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+              className="inline-flex items-center px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50 transition-colors"
             >
               <Sparkles className="w-4 h-4 mr-1.5" />
               {creating ? 'Creating Document...' : 'Create & Start Writing'}

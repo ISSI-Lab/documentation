@@ -5,37 +5,98 @@
 CREATE DATABASE IF NOT EXISTS docforge;
 USE docforge;
 
--- 1. Templates Table
+-- 1. Users Table
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(64) PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    user_type ENUM('organizer', 'regular') NOT NULL DEFAULT 'regular',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_username (username),
+    INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 2. Teams Table
+CREATE TABLE IF NOT EXISTS teams (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    join_code VARCHAR(64) NOT NULL UNIQUE,
+    created_by VARCHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_join_code (join_code),
+    INDEX idx_created_by (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3. Team Members Table
+CREATE TABLE IF NOT EXISTS team_members (
+    team_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    role ENUM('manager', 'member') NOT NULL DEFAULT 'member',
+    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, user_id),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4. Projects Table
+CREATE TABLE IF NOT EXISTS projects (
+    id VARCHAR(64) PRIMARY KEY,
+    team_id VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_by VARCHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_team_id (team_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5. Templates Table
 CREATE TABLE IF NOT EXISTS templates (
     id VARCHAR(64) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     category VARCHAR(100) NOT NULL DEFAULT 'General',
     icon VARCHAR(50) NOT NULL DEFAULT 'file-text',
+    visibility ENUM('private', 'public') NOT NULL DEFAULT 'private',
+    team_id VARCHAR(64) NULL,
+    created_by VARCHAR(64) NULL,
+    tags JSON NULL,
     document_elements JSON NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_team_id (team_id),
+    INDEX idx_visibility (visibility)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Documents Table
+-- 6. Documents Table
 CREATE TABLE IF NOT EXISTS documents (
     id VARCHAR(64) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
+    project_id VARCHAR(64) NULL,
+    team_id VARCHAR(64) NULL,
     template_id VARCHAR(64) NOT NULL,
     template_title VARCHAR(255) NOT NULL,
     status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
     author VARCHAR(255) DEFAULT 'Anonymous',
+    created_by VARCHAR(64) NULL,
+    last_edited_by VARCHAR(64) NULL,
     tags JSON,
     elements_data JSON NOT NULL,
     compiled_markdown LONGTEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id),
+    INDEX idx_team_id (team_id),
     INDEX idx_template_id (template_id),
     INDEX idx_status (status),
     INDEX idx_updated_at (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Default Seed Templates
+-- 7. Default Seed Templates
 INSERT INTO templates (id, title, description, category, icon, document_elements, created_at, updated_at)
 VALUES 
 (
