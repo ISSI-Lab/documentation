@@ -19,7 +19,7 @@ export interface DemoUser {
   user_type: UserType;
 }
 
-export type TeamRole = 'manager' | 'member';
+export type TeamRole = 'owner' | 'manager' | 'member';
 
 export interface TeamMember {
   team_id: string;

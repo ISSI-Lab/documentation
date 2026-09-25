@@ -25,13 +25,14 @@ teamsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Respons
   try {
     const userId = req.user!.id;
     const [rows] = await pool.query<any[]>(
-      `SELECT t.*, tm.role as user_role,
+      `SELECT t.*, 
+        CASE WHEN t.created_by = ? THEN 'owner' ELSE tm.role END as user_role,
         (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) as members_count
        FROM teams t
        JOIN team_members tm ON t.id = tm.team_id
        WHERE tm.user_id = ?
        ORDER BY t.created_at ASC`,
-      [userId]
+      [userId, userId]
     );
 
     res.json(rows.map(formatTeamRow));
@@ -40,16 +41,10 @@ teamsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Respons
   }
 });
 
-// POST /api/v1/teams - Create a new team (Only Organizer role)
+// POST /api/v1/teams - Create a new team (All users can create teams; creator is the Team Owner)
 teamsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    if (user.user_type !== 'organizer') {
-      return res.status(403).json({
-        error: 'Permission denied: Only users with the Organizer role can create teams. You can change your user type in your Account settings.',
-      });
-    }
-
     const { name, description } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Team name is required' });
@@ -65,10 +60,10 @@ teamsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Respon
       [teamId, name.trim(), description || '', joinCode, user.id]
     );
 
-    // Add creator as manager
+    // Add creator as owner
     await pool.query(
       `INSERT INTO team_members (team_id, user_id, role, joined_at)
-       VALUES (?, ?, 'manager', NOW())`,
+       VALUES (?, ?, 'owner', NOW())`,
       [teamId, user.id]
     );
 
@@ -81,7 +76,7 @@ teamsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Respon
     );
 
     const [rows] = await pool.query<any[]>(
-      `SELECT t.*, 'manager' as user_role, 1 as members_count
+      `SELECT t.*, 'owner' as user_role, 1 as members_count
        FROM teams t WHERE t.id = ?`,
       [teamId]
     );
@@ -167,12 +162,14 @@ teamsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     // Fetch members
     const [memberRows] = await pool.query<any[]>(
-      `SELECT tm.team_id, tm.user_id, tm.role, tm.joined_at,
-              u.username, u.name, u.email, u.user_type
+      `SELECT tm.team_id, tm.user_id,
+              CASE WHEN t.created_by = tm.user_id THEN 'owner' ELSE tm.role END as role,
+              tm.joined_at, u.username, u.name, u.email, u.user_type
        FROM team_members tm
+       JOIN teams t ON tm.team_id = t.id
        JOIN users u ON tm.user_id = u.id
        WHERE tm.team_id = ?
-       ORDER BY tm.role = 'manager' DESC, tm.joined_at ASC`,
+       ORDER BY (t.created_by = tm.user_id) DESC, (tm.role = 'manager') DESC, tm.joined_at ASC`,
       [teamId]
     );
 
@@ -209,10 +206,11 @@ teamsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Resp
     }));
 
     const userMembership = members.find((m) => m.user_id === userId);
+    const resolvedUserRole = team.created_by === userId ? 'owner' : (userMembership?.role || 'member');
 
     res.json({
       team: {
-        ...formatTeamRow({ ...team, user_role: userMembership?.role || 'member', members_count: members.length }),
+        ...formatTeamRow({ ...team, user_role: resolvedUserRole, members_count: members.length }),
         members,
         projects,
       },
@@ -326,7 +324,7 @@ teamsRouter.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
-// PUT /api/v1/teams/:id/members/:userId - Update member role (only manager)
+// PUT /api/v1/teams/:id/members/:userId - Update member role (Owner / Manager check)
 teamsRouter.put('/:id/members/:targetUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
@@ -335,7 +333,16 @@ teamsRouter.put('/:id/members/:targetUserId', requireAuth, async (req: Authentic
 
     const isManager = await isTeamManager(currentUserId, teamId);
     if (!isManager) {
-      return res.status(403).json({ error: 'Only team managers can change member roles' });
+      return res.status(403).json({ error: 'Only team managers or owners can change member roles' });
+    }
+
+    const [teamRows] = await pool.query<any[]>('SELECT created_by FROM teams WHERE id = ?', [teamId]);
+    if (!teamRows || teamRows.length === 0) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    if (teamRows[0].created_by === targetUserId) {
+      return res.status(400).json({ error: 'Cannot change the role of the original team owner' });
     }
 
     const { role } = req.body;
@@ -361,16 +368,16 @@ teamsRouter.delete('/:id/members/:targetUserId', requireAuth, async (req: Authen
     const teamId = req.params.id;
     const targetUserId = req.params.targetUserId;
 
-    // Allow user to leave team OR manager to remove member
+    // Allow user to leave team OR manager/owner to remove member
     const isManager = await isTeamManager(currentUserId, teamId);
     if (currentUserId !== targetUserId && !isManager) {
-      return res.status(403).json({ error: 'Only team managers can remove other members' });
+      return res.status(403).json({ error: 'Only team managers or owners can remove other members' });
     }
 
-    // Prevent removing creator if they are the only manager
+    // Prevent removing creator / owner
     const [teamRows] = await pool.query<any[]>('SELECT created_by FROM teams WHERE id = ?', [teamId]);
-    if (teamRows && teamRows.length > 0 && teamRows[0].created_by === targetUserId && currentUserId !== targetUserId) {
-      return res.status(400).json({ error: 'Cannot remove the original creator of the team' });
+    if (teamRows && teamRows.length > 0 && teamRows[0].created_by === targetUserId) {
+      return res.status(400).json({ error: 'Cannot remove the original owner of the team' });
     }
 
     await pool.query('DELETE FROM team_members WHERE team_id = ? AND user_id = ?', [teamId, targetUserId]);

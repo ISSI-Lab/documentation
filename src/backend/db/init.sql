@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS teams (
 CREATE TABLE IF NOT EXISTS team_members (
     team_id VARCHAR(64) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
-    role ENUM('manager', 'member') NOT NULL DEFAULT 'member',
+    role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member',
     joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (team_id, user_id),
     INDEX idx_user_id (user_id)
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS documents (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. Default Seed Templates
-INSERT INTO templates (id, title, description, category, icon, document_elements, created_at, updated_at)
+INSERT INTO templates (id, title, description, category, icon, visibility, tags, document_elements, created_at, updated_at)
 VALUES 
 (
   'tpl-adr',
@@ -105,6 +105,8 @@ VALUES
   'Capture architectural context, considered options, decision outcome, and trade-offs.',
   'Architecture',
   'layers',
+  'public',
+  JSON_ARRAY('architecture', 'adr', 'decision', 'system-design'),
   JSON_ARRAY(
     JSON_OBJECT(
       'id', 'context',
@@ -178,7 +180,7 @@ VALUES
 )
 ON DUPLICATE KEY UPDATE title=VALUES(title);
 
-INSERT INTO templates (id, title, description, category, icon, document_elements, created_at, updated_at)
+INSERT INTO templates (id, title, description, category, icon, visibility, tags, document_elements, created_at, updated_at)
 VALUES 
 (
   'tpl-prd',
@@ -186,6 +188,8 @@ VALUES
   'Define product purpose, target audience, functional specifications, and release milestones.',
   'Product',
   'file-text',
+  'public',
+  JSON_ARRAY('product', 'prd', 'specification', 'requirements'),
   JSON_ARRAY(
     JSON_OBJECT(
       'id', 'summary',
@@ -248,7 +252,7 @@ VALUES
 )
 ON DUPLICATE KEY UPDATE title=VALUES(title);
 
-INSERT INTO templates (id, title, description, category, icon, document_elements, created_at, updated_at)
+INSERT INTO templates (id, title, description, category, icon, visibility, tags, document_elements, created_at, updated_at)
 VALUES 
 (
   'tpl-postmortem',
@@ -256,6 +260,8 @@ VALUES
   'Blameless postmortem analysis for tracking outages, root causes, and remediation roadmap.',
   'Operations',
   'shield-alert',
+  'public',
+  JSON_ARRAY('operations', 'postmortem', 'incident', 'sre'),
   JSON_ARRAY(
     JSON_OBJECT(
       'id', 'incident_title',

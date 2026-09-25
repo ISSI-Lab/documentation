@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navigation } from './components/Navigation';
+import { PersonalHomepage } from './components/home/PersonalHomepage';
 import { TemplateList } from './components/templates/TemplateList';
 import { TemplateBuilder } from './components/templates/TemplateBuilder';
 import { DocumentList } from './components/documents/DocumentList';
@@ -21,6 +22,7 @@ import {
 } from './types';
 
 type ViewMode =
+  | 'home'
   | 'documents'
   | 'templates'
   | 'teams'
@@ -30,11 +32,12 @@ type ViewMode =
   | 'view_document';
 
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewMode>('documents');
+  const [currentView, setCurrentView] = useState<ViewMode>('templates');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -63,7 +66,10 @@ export const App: React.FC = () => {
   // Check auth session
   const checkSession = async () => {
     const token = getStoredToken();
-    if (!token) return;
+    if (!token) {
+      setCurrentView('templates');
+      return;
+    }
     try {
       const data = await api.getMe();
       setCurrentUser(data.user);
@@ -71,9 +77,12 @@ export const App: React.FC = () => {
       if (data.teams && data.teams.length > 0 && !activeTeamId) {
         setActiveTeamId(data.teams[0].id);
       }
+      setCurrentView('home');
+      await loadAllProjects();
     } catch {
       api.logout();
       setCurrentUser(null);
+      setCurrentView('templates');
     }
   };
 
@@ -85,8 +94,18 @@ export const App: React.FC = () => {
       if (list.length > 0 && (!activeTeamId || !list.some((t) => t.id === activeTeamId))) {
         setActiveTeamId(list[0].id);
       }
+      await loadAllProjects();
     } catch (err: any) {
       // ignore
+    }
+  };
+
+  const loadAllProjects = async () => {
+    try {
+      const list = await api.listProjects();
+      setAllProjects(list);
+    } catch {
+      setAllProjects([]);
     }
   };
 
@@ -145,6 +164,9 @@ export const App: React.FC = () => {
       setProjects([]);
       setActiveProjectId(null);
     }
+    if (currentUser) {
+      loadAllProjects();
+    }
     loadTemplates();
     loadDocuments();
   }, [activeTeamId, activeProjectId, currentUser]);
@@ -152,7 +174,9 @@ export const App: React.FC = () => {
   const handleLoginSuccess = async (user: User) => {
     setCurrentUser(user);
     showToast(`Welcome back, ${user.name || user.username}!`);
+    setCurrentView('home');
     await checkSession();
+    await loadAllProjects();
     await loadTemplates();
     await loadDocuments();
   };
@@ -163,7 +187,9 @@ export const App: React.FC = () => {
     setTeams([]);
     setActiveTeamId(null);
     setProjects([]);
+    setAllProjects([]);
     setActiveProjectId(null);
+    setCurrentView('templates');
     showToast('Signed out successfully');
   };
 
@@ -291,6 +317,47 @@ export const App: React.FC = () => {
 
       {/* Main View Router */}
       <div className="flex-1 flex flex-col">
+        {currentView === 'home' && currentUser && (
+          <PersonalHomepage
+            currentUser={currentUser}
+            teams={teams}
+            allProjects={allProjects}
+            documents={documents}
+            templates={templates}
+            onNavigateToTeams={() => setCurrentView('teams')}
+            onNavigateToDocuments={(tId, pId) => {
+              if (tId) setActiveTeamId(tId);
+              if (pId) setActiveProjectId(pId);
+              setCurrentView('documents');
+            }}
+            onNavigateToTemplates={() => setCurrentView('templates')}
+            onOpenCreateTeam={() => setCurrentView('teams')}
+            onOpenJoinTeam={() => setCurrentView('teams')}
+            onOpenCreateProject={(tId) => {
+              setActiveTeamId(tId);
+              setCurrentView('teams');
+            }}
+            onOpenNewDocModal={(tId, pId, tplId) => {
+              if (tId) setActiveTeamId(tId);
+              setModalInitialProjectId(pId || activeProjectId);
+              setModalInitialTemplateId(tplId || null);
+              setIsCreateModalOpen(true);
+            }}
+            onViewDocument={(id) => {
+              setActiveDocId(id);
+              setCurrentView('view_document');
+            }}
+            onEditDocument={(id) => {
+              setActiveDocId(id);
+              setCurrentView('edit_document');
+            }}
+            onSelectTeam={(tId) => {
+              setActiveTeamId(tId);
+              setActiveProjectId(null);
+            }}
+          />
+        )}
+
         {currentView === 'documents' && (
           <DocumentList
             documents={documents}
@@ -318,7 +385,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentView === 'templates' && (
+        {(currentView === 'templates' || (currentView === 'home' && !currentUser)) && (
           <TemplateList
             templates={templates}
             currentUser={currentUser}
@@ -335,10 +402,15 @@ export const App: React.FC = () => {
             onDeleteTemplate={handleDeleteTemplate}
             onResetSeeds={handleResetSeeds}
             onOpenAccountModal={() => setIsAccountModalOpen(true)}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
             onSelectTemplateToCreate={(tpl) => {
-              setModalInitialTemplateId(tpl.id);
-              setModalInitialProjectId(activeProjectId);
-              setIsCreateModalOpen(true);
+              if (!currentUser) {
+                setIsAuthModalOpen(true);
+              } else {
+                setModalInitialTemplateId(tpl.id);
+                setModalInitialProjectId(activeProjectId);
+                setIsCreateModalOpen(true);
+              }
             }}
           />
         )}

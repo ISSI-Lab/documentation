@@ -5,7 +5,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 ---
 
 ## Current Sprint Focus
-- **Goal**: Complete document templating, element configuration, item hierarchy levels, and repeatable dynamic items with "+" button on Nginx + ReactJS -> NodeJS -> MySQL.
+- **Goal**: Implement Public Document Template Pool for unauthenticated users, Personal Homepage showing teams & projects upon login, and open Team Creation with Owner / Manager / Member role assignment.
 - **Active Branch**: `main`
 
 ---
@@ -14,11 +14,10 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Workstream | Owner | Status | Current Focus |
 | :--- | :--- | :--- | :--- |
 | Project Scaffolding | Team | Completed | Root layout, docs hub, Docker Compose orchestration |
-| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, seed templates with levels |
-| Backend Service | AI Agent | Completed | Node 20 / Express API, MySQL pool, Markdown compilation with heading depths |
-| Frontend Service | AI Agent | Completed | Template builder with levels/indent, Document editor with "+" repeatable item button |
+| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, seed templates with public visibility, owner role support |
+| Backend Service | AI Agent | Completed | Node 20 / Express API, MySQL pool, open team creation for all users, role permissions |
+| Frontend Service | AI Agent | Completed | Public Template Pool view, Personal Homepage (Teams & Projects), Team Owner & Manager management |
 | Host Nginx Config | AI Agent | Completed | Production reverse proxy guide (`host-nginx-example.conf`) |
-
 
 ---
 
@@ -26,8 +25,9 @@ This file tracks the current sprint state, active workstreams, and recent change
 - Adopted multi-tier architecture: Host Nginx -> Container Nginx + ReactJS -> NodeJS -> MySQL ([ADR-0003](../decisions/0003-host-nginx-container-react-node-mysql-architecture.md)).
 - Exposed developer access port `3000` directly mapped to container Nginx.
 - Container Nginx proxies all `/api/` traffic internally to `http://backend:5000/api/`.
-- Pre-seeded industry standard templates (ADR, PRD, Incident Postmortem) for immediate use.
-- Implemented document item levels (L1, L2, L3) and special repeatable list items with "+" buttons ([RFC-0002](../../design/rfcs/0002-document-templating-and-authoring-engine.md)).
+- Unauthenticated visitors land directly on the **Public Document Template Pool** to explore blueprints and preview document structures before registering.
+- Logged-in users land on a **Personal Homepage** displaying their Teams, associated Projects, recent documents, and quick actions.
+- Enabled team creation for **all users** without Organizer restriction; creators are designated as **Team Owner** with authority to assign **Team Managers** and **Team Members**.
 
 ---
 

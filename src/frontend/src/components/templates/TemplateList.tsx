@@ -28,6 +28,7 @@ interface TemplateListProps {
   onCreateNewTemplate: () => void;
   onResetSeeds: () => void;
   onOpenAccountModal: () => void;
+  onOpenAuthModal?: () => void;
 }
 
 export const TemplateList: React.FC<TemplateListProps> = ({
@@ -41,6 +42,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   onCreateNewTemplate,
   onResetSeeds,
   onOpenAccountModal,
+  onOpenAuthModal,
 }) => {
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'private' | 'public'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,7 +65,10 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   );
 
   const canCreateOrEditTemplates =
-    activeTeam?.user_role === 'manager' || currentUser?.user_type === 'organizer';
+    currentUser &&
+    (activeTeam?.user_role === 'owner' ||
+      activeTeam?.user_role === 'manager' ||
+      currentUser?.user_type === 'organizer');
 
   // Filter templates
   const filteredTemplates = templates.filter((tpl) => {
@@ -88,49 +93,86 @@ export const TemplateList: React.FC<TemplateListProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Public Template Pool Hero Banner (Shown when not logged in) */}
+      {!currentUser && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-3xl p-6 sm:p-8 mb-8 shadow-xl border border-indigo-900/50 relative overflow-hidden">
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-400/20 inline-flex items-center gap-1.5 mb-3">
+                <Globe className="w-3.5 h-3.5 text-blue-400" /> Public Document Template Pool
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+                Public Document Templates & Architectural Blueprints
+              </h2>
+              <p className="text-slate-300 text-sm mt-2 max-w-2xl leading-relaxed">
+                Explore our public pool of document templates. Inspect the section structures, field types, and markdown generators. Sign in to start authoring documents, creating your own teams, and building custom templates.
+              </p>
+            </div>
+            {onOpenAuthModal && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onOpenAuthModal}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap cursor-pointer"
+                >
+                  Sign In / Register to Start
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header section */}
       <div className="sm:flex sm:items-center sm:justify-between pb-6 border-b border-slate-200 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <ListTree className="w-7 h-7 text-indigo-600" />
-            Document Templates
+            {currentUser ? 'Document Templates' : 'Public Template Pool'}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Predefined structure blueprints for team documentation. Private templates are scoped to your team; public templates are platform-wide.
+            {currentUser
+              ? 'Predefined structure blueprints for team documentation. Private templates are scoped to your team; public templates are platform-wide.'
+              : 'Browse public templates available for creating Architecture Decision Records, PRDs, and Incident Postmortems.'}
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex items-center space-x-2.5">
-          {canCreateOrEditTemplates ? (
-            <>
-              <button
-                type="button"
-                onClick={onResetSeeds}
-                title="Restore default ADR, PRD, and Postmortem templates"
-                className="inline-flex items-center px-3 py-2 border border-slate-300 shadow-xs text-xs font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
-                Restore Standard Seeds
-              </button>
-              <button
-                type="button"
-                onClick={onCreateNewTemplate}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-xs font-semibold rounded-xl shadow-xs text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
-              >
-                <PlusCircle className="w-4 h-4 mr-1.5" />
-                Create New Template
-              </button>
-            </>
+          {currentUser ? (
+            canCreateOrEditTemplates ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onResetSeeds}
+                  title="Restore default ADR, PRD, and Postmortem templates"
+                  className="inline-flex items-center px-3 py-2 border border-slate-300 shadow-xs text-xs font-semibold rounded-xl text-slate-700 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                  Restore Standard Seeds
+                </button>
+                <button
+                  type="button"
+                  onClick={onCreateNewTemplate}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-xs font-semibold rounded-xl shadow-xs text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4 mr-1.5" />
+                  Create New Template
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs text-amber-800">
+                <Shield className="w-4 h-4 text-amber-600" />
+                <span>Template creation is available to Team Owners, Managers, and Organizers.</span>
+              </div>
+            )
           ) : (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-xs text-amber-800">
-              <Shield className="w-4 h-4 text-amber-600" />
-              <span>Template creation restricted to Team Managers & Organizers.</span>
+            onOpenAuthModal && (
               <button
-                onClick={onOpenAccountModal}
-                className="font-bold underline ml-1 hover:text-amber-950"
+                type="button"
+                onClick={onOpenAuthModal}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-xs font-semibold rounded-xl shadow-xs text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
               >
-                Switch Role
+                Sign In to Use Templates
               </button>
-            </div>
+            )
           )}
         </div>
       </div>
@@ -358,11 +400,17 @@ export const TemplateList: React.FC<TemplateListProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onSelectTemplateToCreate(template)}
-                    className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-xs"
+                    onClick={() => {
+                      if (!currentUser && onOpenAuthModal) {
+                        onOpenAuthModal();
+                      } else {
+                        onSelectTemplateToCreate(template);
+                      }
+                    }}
+                    className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-xs cursor-pointer"
                   >
                     <PlusCircle className="w-3.5 h-3.5 mr-1" />
-                    Use Template
+                    {currentUser ? 'Use Template' : 'Use Template (Sign In)'}
                   </button>
                 </div>
               </div>

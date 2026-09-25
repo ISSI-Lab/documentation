@@ -14,7 +14,7 @@ export interface UserWithPassword extends User {
   password_hash: string;
 }
 
-export type TeamRole = 'manager' | 'member';
+export type TeamRole = 'owner' | 'manager' | 'member';
 
 export interface TeamMember {
   team_id: string;

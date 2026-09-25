@@ -10,6 +10,8 @@ import {
   LogIn,
   LogOut,
   Shield,
+  Home,
+  Globe,
 } from 'lucide-react';
 import { Project, Team, User } from '../types';
 
@@ -46,7 +48,10 @@ export const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const activeTeam = teams.find((t) => t.id === activeTeamId);
   const isManagerOrOrganizer =
-    activeTeam?.user_role === 'manager' || currentUser?.user_type === 'organizer';
+    currentUser &&
+    (activeTeam?.user_role === 'owner' ||
+      activeTeam?.user_role === 'manager' ||
+      currentUser?.user_type === 'organizer');
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
@@ -56,7 +61,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <div className="flex items-center space-x-4">
             <div
               className="flex items-center space-x-2.5 cursor-pointer"
-              onClick={() => onNavigate('documents')}
+              onClick={() => onNavigate(currentUser ? 'home' : 'templates')}
             >
               <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 text-white p-2 rounded-xl shadow-xs flex items-center justify-center">
                 <FileText className="w-5 h-5" />
@@ -112,49 +117,73 @@ export const Navigation: React.FC<NavigationProps> = ({
 
           {/* Nav Tabs */}
           <nav className="hidden sm:flex items-center space-x-1">
-            <button
-              onClick={() => onNavigate('documents')}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                currentView === 'documents' || currentView === 'edit_document' || currentView === 'view_document'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Documents</span>
-            </button>
+            {currentUser ? (
+              <>
+                <button
+                  onClick={() => onNavigate('home')}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    currentView === 'home'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Home className="w-4 h-4" />
+                  <span>Personal Home</span>
+                </button>
 
-            <button
-              onClick={() => onNavigate('templates')}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                currentView === 'templates' || currentView === 'create_template' || currentView === 'edit_template'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <LayoutTemplate className="w-4 h-4" />
-              <span>Templates</span>
-            </button>
+                <button
+                  onClick={() => onNavigate('documents')}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    currentView === 'documents' || currentView === 'edit_document' || currentView === 'view_document'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Documents</span>
+                </button>
 
-            <button
-              onClick={() => onNavigate('teams')}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                currentView === 'teams'
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Teams & Projects</span>
-            </button>
+                <button
+                  onClick={() => onNavigate('templates')}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    currentView === 'templates' || currentView === 'create_template' || currentView === 'edit_template'
+                      ? 'bg-blue-50 text-blue-700 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <LayoutTemplate className="w-4 h-4" />
+                  <span>Templates</span>
+                </button>
+
+                <button
+                  onClick={() => onNavigate('teams')}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    currentView === 'teams'
+                      ? 'bg-indigo-50 text-indigo-700 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Teams & Projects</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => onNavigate('templates')}
+                className="flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 transition-colors"
+              >
+                <Globe className="w-4 h-4 text-blue-600" />
+                <span>Public Template Pool</span>
+              </button>
+            )}
           </nav>
 
           {/* Right Action & User Controls */}
           <div className="flex items-center space-x-2.5">
-            {isManagerOrOrganizer && (
+            {currentUser && isManagerOrOrganizer && (
               <button
                 onClick={() => onNavigate('create_template')}
-                className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                 title="Create a new document template"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
@@ -164,7 +193,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
             <button
               onClick={onOpenNewDocModal}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
               <span>New Document</span>

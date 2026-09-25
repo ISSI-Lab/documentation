@@ -127,13 +127,14 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     // Fetch user's teams
     const [teamRows] = await pool.query<any[]>(
-      `SELECT t.*, tm.role as user_role,
+      `SELECT t.*, 
+        CASE WHEN t.created_by = ? THEN 'owner' ELSE tm.role END as user_role,
         (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) as members_count
        FROM teams t
        JOIN team_members tm ON t.id = tm.team_id
        WHERE tm.user_id = ?
        ORDER BY t.created_at ASC`,
-      [userId]
+      [userId, userId]
     );
 
     const teams = teamRows.map((row) => ({

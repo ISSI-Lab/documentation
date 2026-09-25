@@ -76,11 +76,19 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
 export async function getTeamRole(userId: string, teamId: string): Promise<TeamRole | null> {
   try {
     const [rows] = await pool.query<any[]>(
-      'SELECT role FROM team_members WHERE team_id = ? AND user_id = ?',
+      'SELECT tm.role, t.created_by FROM team_members tm JOIN teams t ON tm.team_id = t.id WHERE tm.team_id = ? AND tm.user_id = ?',
       [teamId, userId]
     );
     if (rows && rows.length > 0) {
+      if (rows[0].created_by === userId) {
+        return 'owner';
+      }
       return rows[0].role as TeamRole;
+    }
+    // Check if user is the team creator even if member row was missing
+    const [teamRows] = await pool.query<any[]>('SELECT created_by FROM teams WHERE id = ?', [teamId]);
+    if (teamRows && teamRows.length > 0 && teamRows[0].created_by === userId) {
+      return 'owner';
     }
     return null;
   } catch (err) {
@@ -88,9 +96,14 @@ export async function getTeamRole(userId: string, teamId: string): Promise<TeamR
   }
 }
 
+export async function isTeamOwner(userId: string, teamId: string): Promise<boolean> {
+  const role = await getTeamRole(userId, teamId);
+  return role === 'owner';
+}
+
 export async function isTeamManager(userId: string, teamId: string): Promise<boolean> {
   const role = await getTeamRole(userId, teamId);
-  return role === 'manager';
+  return role === 'owner' || role === 'manager';
 }
 
 export async function isTeamMember(userId: string, teamId: string): Promise<boolean> {

@@ -92,7 +92,7 @@ export async function initDatabase(): Promise<void> {
         CREATE TABLE IF NOT EXISTS team_members (
           team_id VARCHAR(64) NOT NULL,
           user_id VARCHAR(64) NOT NULL,
-          role ENUM('manager', 'member') NOT NULL DEFAULT 'member',
+          role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member',
           joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (team_id, user_id),
           INDEX idx_user_id (user_id)
@@ -160,6 +160,12 @@ export async function initDatabase(): Promise<void> {
       `);
 
       // Column migrations for pre-existing tables if any
+      try {
+        await conn.query(`ALTER TABLE \`team_members\` MODIFY COLUMN role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member'`);
+      } catch {
+        // ignore if already updated or table doesn't exist yet
+      }
+
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
       await ensureColumnExists(conn, 'templates', 'team_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'templates', 'created_by', 'VARCHAR(64) NULL');
@@ -275,11 +281,11 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
         [t.id, t.name, t.description || '', t.join_code || 'TEAM-CORE-2026', creatorId]
       );
 
-      // Add organizer as manager
+      // Add organizer as owner
       await runner.query(
         `INSERT INTO team_members (team_id, user_id, role, joined_at)
-         VALUES (?, ?, 'manager', NOW())
-         ON DUPLICATE KEY UPDATE role = 'manager'`,
+         VALUES (?, ?, 'owner', NOW())
+         ON DUPLICATE KEY UPDATE role = 'owner'`,
         [t.id, creatorId]
       );
 
