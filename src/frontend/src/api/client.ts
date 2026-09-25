@@ -200,7 +200,7 @@ export const api = {
     return request<Project>(`/projects/${encodeURIComponent(id)}`);
   },
 
-  async createProject(payload: { team_id: string; name: string; description?: string }): Promise<Project> {
+  async createProject(payload: { team_id?: string | null; name: string; description?: string }): Promise<Project> {
     return request<Project>('/projects', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -273,6 +273,7 @@ export const api = {
     template_id?: string;
     search?: string;
     tag?: string;
+    scope?: string;
   }): Promise<Document[]> {
     const sp = new URLSearchParams();
     if (params?.team_id) sp.append('team_id', params.team_id);
@@ -280,6 +281,7 @@ export const api = {
     if (params?.template_id) sp.append('template_id', params.template_id);
     if (params?.search) sp.append('search', params.search);
     if (params?.tag) sp.append('tag', params.tag);
+    if (params?.scope) sp.append('scope', params.scope);
     const query = sp.toString() ? `?${sp.toString()}` : '';
     return request<Document[]>(`/documents${query}`);
   },

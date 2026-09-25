@@ -129,7 +129,7 @@ export const App: React.FC = () => {
   const loadTemplates = async () => {
     try {
       setLoadingTemplates(true);
-      const list = await api.listTemplates({ team_id: activeTeamId || undefined });
+      const list = await api.listTemplates();
       setTemplates(list);
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch templates', 'error');
@@ -141,10 +141,7 @@ export const App: React.FC = () => {
   const loadDocuments = async () => {
     try {
       setLoadingDocs(true);
-      const list = await api.listDocuments({
-        team_id: activeTeamId || undefined,
-        project_id: activeProjectId || undefined,
-      });
+      const list = await api.listDocuments();
       setDocuments(list);
     } catch (err: any) {
       showToast(err.message || 'Failed to fetch documents', 'error');
@@ -294,21 +291,7 @@ export const App: React.FC = () => {
         <Navigation
           currentView={currentView}
           currentUser={currentUser}
-          teams={teams}
-          activeTeamId={activeTeamId}
-          projects={projects}
-          activeProjectId={activeProjectId}
           onNavigate={(view) => setCurrentView(view as ViewMode)}
-          onSelectTeam={(teamId) => {
-            setActiveTeamId(teamId);
-            setActiveProjectId(null);
-          }}
-          onSelectProject={(projId) => setActiveProjectId(projId)}
-          onOpenNewDocModal={() => {
-            setModalInitialTemplateId(null);
-            setModalInitialProjectId(activeProjectId);
-            setIsCreateModalOpen(true);
-          }}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onOpenAccountModal={() => setIsAccountModalOpen(true)}
           onLogout={handleLogout}
@@ -363,7 +346,8 @@ export const App: React.FC = () => {
             documents={documents}
             templates={templates}
             teams={teams}
-            projects={projects}
+            projects={allProjects}
+            currentUser={currentUser}
             activeTeamId={activeTeamId}
             activeProjectId={activeProjectId}
             loading={loadingDocs}
@@ -389,6 +373,7 @@ export const App: React.FC = () => {
           <TemplateList
             templates={templates}
             currentUser={currentUser}
+            teams={teams}
             activeTeam={activeTeam}
             loading={loadingTemplates}
             onCreateNewTemplate={() => {
@@ -444,6 +429,7 @@ export const App: React.FC = () => {
           <TemplateBuilder
             initialTemplate={currentView === 'edit_template' ? activeTemplate : null}
             activeTeamId={activeTeamId}
+            teams={teams}
             onSave={handleSaveTemplate}
             onCancel={() => {
               setActiveTemplateId(null);
@@ -484,10 +470,12 @@ export const App: React.FC = () => {
       <CreateDocumentModal
         isOpen={isCreateModalOpen}
         templates={templates}
-        projects={projects}
+        teams={teams}
+        projects={allProjects}
         currentUser={currentUser}
         initialSelectedTemplateId={modalInitialTemplateId}
         initialSelectedProjectId={modalInitialProjectId}
+        initialSelectedTeamId={activeTeamId}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateDocument}
       />

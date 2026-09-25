@@ -21,12 +21,12 @@ interface PersonalHomepageProps {
   documents: Document[];
   templates: Template[];
   onNavigateToTeams: () => void;
-  onNavigateToDocuments: (teamId?: string, projectId?: string) => void;
+  onNavigateToDocuments: (teamId?: string | null, projectId?: string | null) => void;
   onNavigateToTemplates: () => void;
   onOpenCreateTeam: () => void;
   onOpenJoinTeam: () => void;
   onOpenCreateProject: (teamId: string) => void;
-  onOpenNewDocModal: (teamId?: string, projectId?: string, templateId?: string) => void;
+  onOpenNewDocModal: (teamId?: string | null, projectId?: string | null, templateId?: string | null) => void;
   onViewDocument: (docId: string) => void;
   onEditDocument: (docId: string) => void;
   onSelectTeam: (teamId: string) => void;

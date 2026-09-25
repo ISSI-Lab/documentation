@@ -42,7 +42,7 @@ export interface Team {
 
 export interface Project {
   id: string;
-  team_id: string;
+  team_id: string | null;
   name: string;
   description: string;
   created_by: string;

@@ -48,7 +48,7 @@ export interface Team {
 
 export interface Project {
   id: string;
-  team_id: string;
+  team_id: string | null;
   name: string;
   description: string;
   created_by: string;
@@ -137,6 +137,7 @@ export interface DocumentCreatePayload {
   title: string;
   template_id: string;
   project_id?: string | null;
+  team_id?: string | null;
   author?: string;
   tags?: string[];
   elements_data?: Record<string, any>;

@@ -103,7 +103,7 @@ export async function initDatabase(): Promise<void> {
       await conn.query(`
         CREATE TABLE IF NOT EXISTS projects (
           id VARCHAR(64) PRIMARY KEY,
-          team_id VARCHAR(64) NOT NULL,
+          team_id VARCHAR(64) NULL,
           name VARCHAR(255) NOT NULL,
           description TEXT,
           created_by VARCHAR(64) NOT NULL,
@@ -163,7 +163,12 @@ export async function initDatabase(): Promise<void> {
       try {
         await conn.query(`ALTER TABLE \`team_members\` MODIFY COLUMN role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member'`);
       } catch {
-        // ignore if already updated or table doesn't exist yet
+        // ignore
+      }
+      try {
+        await conn.query(`ALTER TABLE \`projects\` MODIFY COLUMN team_id VARCHAR(64) NULL`);
+      } catch {
+        // ignore
       }
 
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
@@ -232,17 +237,6 @@ export function loadDefaultConfig(): any {
         user_type: 'regular',
       },
     ],
-    defaultTeam: {
-      id: 'team-core-engineering',
-      name: 'Core Engineering Team',
-      description: 'Primary product engineering, architectural design, and infrastructure team.',
-      join_code: 'TEAM-CORE-2026',
-    },
-    defaultProject: {
-      id: 'proj-platform-v1',
-      name: 'Documentation Platform v1.0',
-      description: 'Cross-service platform architecture, templates, and specifications.',
-    },
   };
 }
 

@@ -56,7 +56,7 @@ function formatTemplateRow(row: any): Template {
 templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { team_id, visibility, tag, search } = req.query;
+    const { team_id, visibility, tag, search, scope } = req.query;
 
     let query = 'SELECT * FROM templates WHERE ';
     const conditions: string[] = [];
@@ -64,17 +64,22 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     // Base visibility filter:
     if (userId) {
-      // Authenticated: can see public templates OR private templates of teams they belong to
+      // Authenticated: can see public templates OR their own personal templates OR private templates of teams they belong to
       conditions.push(
-        `(visibility = 'public' OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ?))`
+        `(visibility = 'public' OR created_by = ? OR (team_id IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)))`
       );
-      params.push(userId);
+      params.push(userId, userId);
     } else {
       // Unauthenticated: only public templates
       conditions.push(`visibility = 'public'`);
     }
 
-    if (team_id && typeof team_id === 'string') {
+    if (scope === 'personal' || team_id === 'personal' || team_id === 'null') {
+      if (userId) {
+        conditions.push('created_by = ? AND team_id IS NULL');
+        params.push(userId);
+      }
+    } else if (team_id && typeof team_id === 'string') {
       conditions.push('team_id = ?');
       params.push(team_id);
     }
@@ -121,7 +126,7 @@ templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   }
 });
 
-// POST /api/v1/templates - Create template (Manager or Organizer check)
+// POST /api/v1/templates - Create template (Personal, Team, or Public)
 templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
@@ -132,21 +137,22 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     }
 
     const finalVisibility: TemplateVisibility = visibility === 'public' ? 'public' : 'private';
+    const finalTeamId: string | null = finalVisibility === 'private' && team_id ? String(team_id) : null;
 
     // Permission check:
-    // If private template for a team: caller must be team creator or assigned manager in that team
     if (finalVisibility === 'private') {
-      if (!team_id) {
-        return res.status(400).json({ error: 'Team ID is required for private templates' });
+      if (finalTeamId) {
+        // Scoped to team: check team manager/creator
+        const isManager = await isTeamManager(user.id, finalTeamId);
+        if (!isManager && user.user_type !== 'organizer') {
+          return res.status(403).json({
+            error: 'Permission denied: Only team managers and creators can create templates for this team.',
+          });
+        }
       }
-      const isManager = await isTeamManager(user.id, team_id);
-      if (!isManager && user.user_type !== 'organizer') {
-        return res.status(403).json({
-          error: 'Permission denied: Only team managers and creators can create templates for this team.',
-        });
-      }
+      // If finalTeamId is null, it is a personal template. Any logged-in user can create personal templates!
     } else {
-      // Public template: requires user to be an organizer or manager
+      // Public template
       if (user.user_type !== 'organizer') {
         return res.status(403).json({
           error: 'Permission denied: Only organizers can publish public templates.',

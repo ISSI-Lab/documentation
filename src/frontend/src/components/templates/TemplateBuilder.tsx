@@ -23,6 +23,7 @@ import {
 import {
   DocumentElementConfig,
   DocumentElementType,
+  Team,
   Template,
   TemplateCreatePayload,
   TemplateVisibility,
@@ -31,6 +32,7 @@ import {
 interface TemplateBuilderProps {
   initialTemplate?: Template | null;
   activeTeamId?: string | null;
+  teams?: Team[];
   onSave: (payload: TemplateCreatePayload) => Promise<void>;
   onCancel: () => void;
 }
@@ -38,6 +40,7 @@ interface TemplateBuilderProps {
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   initialTemplate,
   activeTeamId,
+  teams = [],
   onSave,
   onCancel,
 }) => {
@@ -45,8 +48,20 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   const [description, setDescription] = useState(initialTemplate?.description || '');
   const [category, setCategory] = useState(initialTemplate?.category || 'Engineering');
   const [icon, setIcon] = useState(initialTemplate?.icon || 'file-text');
-  const [visibility, setVisibility] = useState<TemplateVisibility>(
-    initialTemplate?.visibility || 'private'
+
+  const initialScope: 'personal' | 'team' | 'public' = initialTemplate
+    ? initialTemplate.visibility === 'public'
+      ? 'public'
+      : initialTemplate.team_id
+      ? 'team'
+      : 'personal'
+    : teams.length > 0 && activeTeamId
+    ? 'team'
+    : 'personal';
+
+  const [scope, setScope] = useState<'personal' | 'team' | 'public'>(initialScope);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(
+    initialTemplate?.team_id || activeTeamId || (teams.length > 0 ? teams[0].id : '')
   );
   const [tagsInput, setTagsInput] = useState(
     initialTemplate?.tags && Array.isArray(initialTemplate.tags)
@@ -205,13 +220,16 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
         .map((t) => t.trim().replace(/^#/, ''))
         .filter(Boolean);
 
+      const finalVisibility: TemplateVisibility = scope === 'public' ? 'public' : 'private';
+      const finalTeamId: string | null = scope === 'team' ? (selectedTeamId || teams[0]?.id || null) : null;
+
       await onSave({
         title: title.trim(),
         description: description.trim(),
         category: category.trim() || 'General',
         icon,
-        visibility,
-        team_id: visibility === 'private' ? activeTeamId || initialTemplate?.team_id || null : null,
+        visibility: finalVisibility,
+        team_id: finalTeamId,
         tags: cleanTags,
         document_elements: elements.map((elem, idx) => ({
           ...elem,
@@ -372,55 +390,108 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 />
               </div>
 
-              {/* Visibility Type (Private vs Public) */}
+              {/* Scope Selection: Personal vs Team vs Public */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Template Visibility
+                  Template Ownership & Scope
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Personal */}
                   <div
-                    onClick={() => setVisibility('private')}
-                    className={`cursor-pointer p-3 rounded-xl border transition-all ${
-                      visibility === 'private'
-                        ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-600'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    onClick={() => setScope('personal')}
+                    className={`cursor-pointer p-3 border transition-all ${
+                      scope === 'personal'
+                        ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-600 shadow-sm'
+                        : 'border-slate-300 hover:border-slate-400 bg-white'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-900">Team Private (Default)</span>
-                      {visibility === 'private' && (
-                        <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 rounded-full font-bold">
+                      <span className="text-xs font-bold text-slate-900">👤 Personal Template</span>
+                      {scope === 'personal' && (
+                        <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 font-bold">
                           Selected
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 leading-tight">
-                      Edited and used exclusively by members of this team.
+                      Private to your personal account (without a team).
                     </p>
                   </div>
 
+                  {/* Team */}
                   <div
-                    onClick={() => setVisibility('public')}
-                    className={`cursor-pointer p-3 rounded-xl border transition-all ${
-                      visibility === 'public'
-                        ? 'border-blue-600 bg-blue-50/70 ring-1 ring-blue-600'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    onClick={() => setScope('team')}
+                    className={`cursor-pointer p-3 border transition-all ${
+                      scope === 'team'
+                        ? 'border-purple-600 bg-purple-50/70 ring-1 ring-purple-600 shadow-sm'
+                        : 'border-slate-300 hover:border-slate-400 bg-white'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-900">Public Shared</span>
-                      {visibility === 'public' && (
-                        <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-bold">
+                      <span className="text-xs font-bold text-slate-900">👥 Team Template</span>
+                      {scope === 'team' && (
+                        <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.2 font-bold">
                           Selected
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 leading-tight">
-                      Shared across the entire platform for all teams and users.
+                      Shared and used exclusively by members of a specific team.
+                    </p>
+                  </div>
+
+                  {/* Public */}
+                  <div
+                    onClick={() => setScope('public')}
+                    className={`cursor-pointer p-3 border transition-all ${
+                      scope === 'public'
+                        ? 'border-blue-600 bg-blue-50/70 ring-1 ring-blue-600 shadow-sm'
+                        : 'border-slate-300 hover:border-slate-400 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-slate-900">🌐 Public Pool</span>
+                      {scope === 'public' && (
+                        <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 font-bold">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-tight">
+                      Available to all developers and users platform-wide.
                     </p>
                   </div>
                 </div>
               </div>
+
+              {/* Team Selector when scope === 'team' */}
+              {scope === 'team' && (
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Select Owning Team *
+                  </label>
+                  {teams.length > 0 ? (
+                    <select
+                      value={selectedTeamId}
+                      onChange={(e) => setSelectedTeamId(e.target.value)}
+                      className="w-full px-3.5 py-2 border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                    >
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} {t.user_role ? `(${t.user_role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                      You are not currently in any team. Create a team first to publish team templates, or select Personal Template.
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Members of this team will be able to create documents from this template.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

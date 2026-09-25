@@ -53,21 +53,28 @@ function formatDocumentRow(row: any): Document {
 documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { team_id, project_id, template_id, search, tag } = req.query;
+    const { team_id, project_id, template_id, search, tag, scope } = req.query;
 
     let query = 'SELECT * FROM documents';
     const params: any[] = [];
     const conditions: string[] = [];
 
-    // Filter by team membership if user is authenticated
+    // Filter by ownership/membership if user is authenticated
     if (userId) {
       conditions.push(
-        `(team_id IS NULL OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ?))`
+        `((team_id IS NULL AND created_by = ?) OR (team_id IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)))`
       );
-      params.push(userId);
+      params.push(userId, userId);
+    } else {
+      conditions.push('1 = 0');
     }
 
-    if (team_id && typeof team_id === 'string') {
+    if (scope === 'personal' || team_id === 'personal' || team_id === 'null') {
+      if (userId) {
+        conditions.push('team_id IS NULL AND created_by = ?');
+        params.push(userId);
+      }
+    } else if (team_id && typeof team_id === 'string') {
       conditions.push('team_id = ?');
       params.push(team_id);
     }
@@ -121,11 +128,11 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   }
 });
 
-// POST /api/v1/documents - Create document in project/team
+// POST /api/v1/documents - Create document in project/team or personal
 documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const { title, template_id, project_id, author, tags, elements_data } = req.body;
+    const { title, template_id, project_id, team_id, author, tags, elements_data } = req.body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'Document title is required' });
@@ -135,19 +142,29 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       return res.status(400).json({ error: 'Valid template_id is required' });
     }
 
-    let teamId: string | null = null;
+    let resolvedTeamId: string | null = null;
 
     if (project_id) {
       const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [project_id]);
       if (!projRows || projRows.length === 0) {
         return res.status(400).json({ error: 'Selected project not found' });
       }
-      teamId = projRows[0].team_id;
+      const proj = projRows[0];
+      resolvedTeamId = proj.team_id || null;
 
-      // Verify user is member of this team
-      const isMember = await isTeamMember(user.id, teamId!);
+      if (resolvedTeamId) {
+        const isMember = await isTeamMember(user.id, resolvedTeamId);
+        if (!isMember) {
+          return res.status(403).json({ error: 'You are not a member of the team for this project' });
+        }
+      } else if (proj.created_by !== user.id) {
+        return res.status(403).json({ error: 'You do not have access to this personal project' });
+      }
+    } else if (team_id) {
+      resolvedTeamId = String(team_id);
+      const isMember = await isTeamMember(user.id, resolvedTeamId);
       if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the team for this project' });
+        return res.status(403).json({ error: 'You are not a member of the selected team' });
       }
     }
 
@@ -215,7 +232,7 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         docId,
         title.trim(),
         project_id || null,
-        teamId,
+        resolvedTeamId,
         template.id,
         template.title,
         status,
