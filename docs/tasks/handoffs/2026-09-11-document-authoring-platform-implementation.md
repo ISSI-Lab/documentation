@@ -12,14 +12,14 @@
 ### A. Infrastructure & Container Orchestration
 - **Production Pipeline Topology**: Configured **Host Nginx &rarr; Container Nginx + ReactJS &rarr; NodeJS &rarr; MySQL**.
 - **Docker Compose (`docker-compose.yml`)**:
-  - `frontend`: Container Nginx serving React SPA on port 80, mapped to host `${FRONTEND_PORT:-3000}:80`.
+  - `frontend`: Container Nginx serving React SPA on port 80, mapped to host `${FRONTEND_PORT:-3939}:80`.
   - `backend`: Node 20 / Express API on internal port 5000 with healthcheck dependency on MySQL.
   - `mysql`: MySQL 8.0 on internal port 3306 with named persistent volume `mysql_data` and auto-mounted `init.sql`.
 - **Container Nginx (`src/frontend/nginx.conf`)**:
   - Handles client-side SPA routing (`try_files $uri $uri/ /index.html`).
   - Internal reverse proxy forwarding `/api/` traffic directly to `http://backend:5000/api/`.
 - **Host Nginx Configuration Guide (`docs/design/architecture/host-nginx-example.conf`)**:
-  - Production guide for forwarding public requests to the container's exposed port 3000.
+  - Production guide for forwarding public requests to the container's exposed port 3939.
 
 ### B. Database Layer (`MySQL 8.0`)
 - Schema initialization (`src/backend/db/init.sql`) with tables:
@@ -75,12 +75,12 @@
 ---
 
 ## 4. Known Blockers & Notes
-- **Direct Developer Access**: Developers do NOT need host Nginx running to develop locally; they can connect directly to `http://localhost:3000`.
-- **Production Host Nginx**: In production, ensure host Nginx includes `proxy_pass http://127.0.0.1:3000;` as documented in `docs/design/architecture/host-nginx-example.conf`.
+- **Direct Developer Access**: Developers do NOT need host Nginx running to develop locally; they can connect directly to `http://localhost:3939`.
+- **Production Host Nginx**: In production, ensure host Nginx includes `proxy_pass http://127.0.0.1:3939;` as documented in `docs/design/architecture/host-nginx-example.conf`.
 
 ---
 
 ## 5. Immediate Next Steps
 1. Run `docker compose up --build` from the root directory.
-2. Open `http://localhost:3000` to test creating templates, authoring documents, and previewing compiled markdown.
+2. Open `http://localhost:3939` to test creating templates, authoring documents, and previewing compiled markdown.
 3. If running on a production server with host Nginx, symlink `docs/design/architecture/host-nginx-example.conf` to `/etc/nginx/sites-enabled/`.

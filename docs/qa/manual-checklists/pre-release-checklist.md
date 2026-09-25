@@ -15,7 +15,7 @@ Execute this checklist before cutting a release or merging a release branch to `
 ## 2. Docker & Build Verification
 - [ ] Run `docker compose build --no-cache` to ensure clean container builds.
 - [ ] Run `docker compose up -d` and verify services respond:
-  - Frontend: `curl -I http://localhost:3000`
+  - Frontend: `curl -I http://localhost:3939`
   - Backend: `curl -I http://localhost:8000`
 - [ ] Confirm no extraneous files were copied into images:
   ```bash

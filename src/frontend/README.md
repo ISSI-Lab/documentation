@@ -11,7 +11,7 @@ From the project root:
 ```bash
 docker compose up frontend
 ```
-The frontend will be accessible at `http://localhost:3000`.
+The frontend will be accessible at `http://localhost:3939`.
 
 ## API Communication
 All requests to backend APIs must adhere to the shared contract documented in [`docs/design/api/`](../../docs/design/api/).

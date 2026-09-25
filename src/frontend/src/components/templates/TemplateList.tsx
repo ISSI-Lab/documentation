@@ -10,7 +10,6 @@ import {
   ListTree,
   FolderKanban,
   Search,
-  Tag,
   Globe,
   Lock,
   Users,
@@ -50,7 +49,6 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'public' | 'personal' | 'teams'>('all');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -62,11 +60,6 @@ export const TemplateList: React.FC<TemplateListProps> = ({
         return <FileText className="w-5 h-5 text-blue-600" />;
     }
   };
-
-  // Collect all unique tags
-  const allTags = Array.from(
-    new Set(templates.flatMap((t) => t.tags || []).filter((t) => t && t.trim()))
-  );
 
   const getTeamName = (teamId: string | null) => {
     if (!teamId) return null;
@@ -93,12 +86,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
       }
     }
 
-    // 2. Tag Filter
-    if (selectedTag) {
-      if (!tpl.tags || !tpl.tags.includes(selectedTag)) return false;
-    }
-
-    // 3. Search Filter
+    // 2. Search Filter
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       const matchTitle = tpl.title.toLowerCase().includes(q);
@@ -147,7 +135,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <ListTree className="w-7 h-7 text-indigo-600" />
-            Document Templates Catalog
+            Template
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             Browse public template blueprints, your personal templates, and team-specific schemas.
@@ -212,14 +200,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 setSelectedCategory('public');
                 setSelectedTeamId('all');
               }}
-              className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
                 selectedCategory === 'public'
                   ? 'bg-white text-blue-900 shadow-sm border border-slate-300'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Globe className="w-3.5 h-3.5 text-blue-600" />
-              Public Pool ({publicCount})
+              <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Public Pool ({publicCount})</span>
             </button>
 
             {currentUser && (
@@ -228,14 +216,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                   setSelectedCategory('personal');
                   setSelectedTeamId('all');
                 }}
-                className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
                   selectedCategory === 'personal'
                     ? 'bg-white text-emerald-900 shadow-sm border border-slate-300'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                Personal ({personalCount})
+                <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Personal ({personalCount})</span>
               </button>
             )}
 
@@ -247,14 +235,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                     setSelectedTeamId('all');
                   }
                 }}
-                className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
                   selectedCategory === 'teams'
                     ? 'bg-white text-indigo-900 shadow-sm border border-slate-300'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Users className="w-3.5 h-3.5 text-indigo-600" />
-                Team Templates ({teamCount})
+                <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Team Templates ({teamCount})</span>
               </button>
             )}
           </div>
@@ -319,38 +307,6 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           </div>
         )}
       </div>
-
-      {/* Tag pills bar */}
-      {allTags.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap mb-6 pb-2">
-          <span className="text-xs font-bold text-slate-500 flex items-center gap-1 mr-1">
-            <Tag className="w-3 h-3" /> Tags:
-          </span>
-          <button
-            onClick={() => setSelectedTag(null)}
-            className={`text-xs px-2.5 py-1 font-medium border transition-colors cursor-pointer ${
-              selectedTag === null
-                ? 'bg-slate-900 text-white border-slate-900 font-bold'
-                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-            }`}
-          >
-            All Tags
-          </button>
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-              className={`text-xs px-2.5 py-1 font-medium border transition-colors cursor-pointer ${
-                selectedTag === tag
-                  ? 'bg-indigo-600 text-white border-indigo-700 font-bold'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              #{tag}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Loading state */}
       {loading ? (

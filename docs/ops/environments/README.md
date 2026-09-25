@@ -7,7 +7,7 @@ This document details the configuration requirements and topology for each deplo
 ## 1. Local Development (`development`)
 - **Host**: Local developer workstation (macOS, Linux, Windows WSL2).
 - **Tool**: `docker-compose.yml`.
-- **Ports**: Frontend `3000`, Backend `8000`.
+- **Ports**: Frontend `3939`, Backend `8000`.
 - **Database**: Ephemeral containerized or SQLite/mock for dev speed.
 - **Reload**: Hot module replacement & code live reload enabled via volumes.
 

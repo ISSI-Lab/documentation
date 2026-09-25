@@ -10,6 +10,6 @@ This directory contains functional user stories grouped by epic.
 
 ## Epic 2: Multi-Service Docker Execution
 - **Story US-03**: As a frontend developer, I want to launch the backend API locally via Docker without manually installing Python dependencies on my host machine.
-  - *Acceptance Criteria*: Running `docker compose up` starts both frontend (`:3000`) and backend (`:8000`) services.
+  - *Acceptance Criteria*: Running `docker compose up` starts both frontend (`:3939`) and backend (`:8000`) services.
 - **Story US-04**: As a backend developer, I want changes made to `src/backend` to hot-reload inside the container immediately.
   - *Acceptance Criteria*: `docker-compose.yml` mounts `./src/backend:/app` with hot-reloading enabled.

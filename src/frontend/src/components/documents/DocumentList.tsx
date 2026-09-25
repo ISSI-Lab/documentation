@@ -49,8 +49,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onDeleteDocument,
   onExportMarkdown,
 }) => {
-  // Category Scope: 'all' | 'personal' | 'teams'
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'personal' | 'teams'>('all');
+  // Category Scope: 'recent' | 'personal' | 'teams'
+  const [selectedCategory, setSelectedCategory] = useState<'recent' | 'personal' | 'teams'>('recent');
   const [selectedTeamId, setSelectedTeamId] = useState<string>(activeTeamId || 'all');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(activeProjectId || 'all');
   const [search, setSearch] = useState('');
@@ -79,48 +79,53 @@ export const DocumentList: React.FC<DocumentListProps> = ({
       if (selectedTeamId !== 'all') return p.team_id === selectedTeamId;
       return p.team_id !== null;
     }
+    if (selectedCategory === 'recent') {
+      if (selectedTeamId !== 'all') return p.team_id === selectedTeamId;
+    }
     return true;
   });
 
   // Filter documents
-  const filtered = documents.filter((doc) => {
-    // 1. Scope category filter
-    if (selectedCategory === 'personal') {
-      if (doc.team_id !== null) return false;
-    } else if (selectedCategory === 'teams') {
-      if (!doc.team_id) return false;
-      if (selectedTeamId !== 'all' && doc.team_id !== selectedTeamId) return false;
-    } else if (selectedCategory === 'all') {
-      if (selectedTeamId !== 'all' && doc.team_id && doc.team_id !== selectedTeamId) return false;
-    }
+  const filtered = documents
+    .filter((doc) => {
+      // 1. Scope category filter
+      if (selectedCategory === 'personal') {
+        if (doc.team_id !== null) return false;
+      } else if (selectedCategory === 'teams') {
+        if (!doc.team_id) return false;
+        if (selectedTeamId !== 'all' && doc.team_id !== selectedTeamId) return false;
+      } else if (selectedCategory === 'recent') {
+        if (selectedTeamId !== 'all' && doc.team_id !== selectedTeamId) return false;
+      }
 
-    // 2. Project filter
-    if (selectedProjectId !== 'all' && doc.project_id !== selectedProjectId) {
-      return false;
-    }
+      // 2. Project filter
+      if (selectedProjectId !== 'all' && doc.project_id !== selectedProjectId) {
+        return false;
+      }
 
-    // 3. Template filter
-    if (selectedTemplateId !== 'all' && doc.template_id !== selectedTemplateId) {
-      return false;
-    }
+      // 3. Template filter
+      if (selectedTemplateId !== 'all' && doc.template_id !== selectedTemplateId) {
+        return false;
+      }
 
-    // 4. Status filter
-    if (selectedStatus !== 'all' && doc.status !== selectedStatus) {
-      return false;
-    }
+      // 4. Status filter
+      if (selectedStatus !== 'all' && doc.status !== selectedStatus) {
+        return false;
+      }
 
-    // 5. Search query
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const matchTitle = doc.title.toLowerCase().includes(q);
-      const matchAuthor = (doc.author || '').toLowerCase().includes(q);
-      const matchTpl = (doc.template_title || '').toLowerCase().includes(q);
-      const matchTag = (doc.tags || []).some((t) => t.toLowerCase().includes(q));
-      if (!matchTitle && !matchAuthor && !matchTag && !matchTpl) return false;
-    }
+      // 5. Search query
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchTitle = doc.title.toLowerCase().includes(q);
+        const matchAuthor = (doc.author || '').toLowerCase().includes(q);
+        const matchTpl = (doc.template_title || '').toLowerCase().includes(q);
+        const matchTag = (doc.tags || []).some((t) => t.toLowerCase().includes(q));
+        if (!matchTitle && !matchAuthor && !matchTag && !matchTpl) return false;
+      }
 
-    return true;
-  });
+      return true;
+    })
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   const getStatusBadge = (status: DocumentStatus) => {
     switch (status) {
@@ -136,14 +141,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
       {/* Header */}
       <div className="sm:flex sm:items-center sm:justify-between pb-6 border-b border-slate-300 mb-6">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <FileText className="w-7 h-7 text-blue-600" />
-              Documents & Specifications
+              Documents
             </h1>
           </div>
           <p className="mt-1 text-sm text-slate-600">
@@ -162,63 +167,64 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       </div>
 
-      {/* Scope Category Bar: All vs Personal vs Team */}
-      <div className="space-y-4 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Category Tabs */}
-          <div className="flex items-center border border-slate-300 bg-slate-100 p-1 w-fit flex-wrap gap-1">
+      {/* Scope Category Bar: Recent vs Personal vs Team */}
+      <div className="space-y-4 mb-6 w-full">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+          {/* Category Tabs with Equal Width */}
+          <div className="grid grid-cols-3 border border-slate-300 bg-slate-100 p-1 w-full sm:w-auto gap-1">
             <button
+              type="button"
               onClick={() => {
-                setSelectedCategory('all');
+                setSelectedCategory('recent');
                 setSelectedTeamId('all');
                 setSelectedProjectId('all');
               }}
-              className={`px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                selectedCategory === 'all'
-                  ? 'bg-white text-slate-900 shadow-sm border border-slate-300'
+              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
+                selectedCategory === 'recent'
+                  ? 'bg-white text-blue-900 shadow-sm border border-slate-300'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              All Documents ({documents.length})
+              <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Recent ({documents.length})</span>
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setSelectedCategory('personal');
                 setSelectedTeamId('all');
                 setSelectedProjectId('all');
               }}
-              className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'personal'
                   ? 'bg-white text-emerald-900 shadow-sm border border-slate-300'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Lock className="w-3.5 h-3.5 text-emerald-600" />
-              Personal Documents ({personalCount})
+              <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Personal Documents ({personalCount})</span>
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setSelectedCategory('teams');
-                if (teams.length > 0 && selectedTeamId === 'all') {
-                  setSelectedTeamId('all');
-                }
                 setSelectedProjectId('all');
               }}
-              className={`px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'teams'
                   ? 'bg-white text-indigo-900 shadow-sm border border-slate-300'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-indigo-600" />
-              Team Documents ({teamCount})
+              <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>Team Documents ({teamCount})</span>
             </button>
           </div>
 
           {/* Search */}
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1 max-w-md w-full">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -229,65 +235,39 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             />
           </div>
         </div>
-
-        {/* Sub-Tabs: Each Team Selector (When in Team category or All with multiple teams) */}
-        {(selectedCategory === 'teams' || selectedCategory === 'all') && teams.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
-              <Users className="w-3.5 h-3.5 text-indigo-600" /> Teams:
-            </span>
-            <button
-              onClick={() => {
-                setSelectedTeamId('all');
-                setSelectedProjectId('all');
-              }}
-              className={`text-xs px-3 py-1 font-medium border transition-colors cursor-pointer ${
-                selectedTeamId === 'all'
-                  ? 'bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              All My Teams
-            </button>
-            {teams.map((t) => {
-              const teamDocs = documents.filter((d) => d.team_id === t.id).length;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setSelectedCategory('teams');
-                    setSelectedTeamId(t.id);
-                    setSelectedProjectId('all');
-                  }}
-                  className={`text-xs px-3 py-1 font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    selectedTeamId === t.id
-                      ? 'bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm'
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>{t.name}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 ${
-                      selectedTeamId === t.id
-                        ? 'bg-indigo-800 text-white'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {teamDocs}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* Filter Options Bar */}
-      <div className="bg-white p-3.5 border border-slate-300 shadow-sm mb-6 flex flex-wrap items-center gap-3">
+      <div className="w-full bg-white p-3.5 border border-slate-300 shadow-sm mb-6 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mr-1">
           <Filter className="w-4 h-4 text-slate-400" />
           <span>Filters:</span>
         </div>
+
+        {/* Team Dropdown Filter (Shown in Team Documents tab) */}
+        {selectedCategory === 'teams' && teams.length > 0 && (
+          <div className="flex items-center space-x-1.5">
+            <Users className="w-3.5 h-3.5 text-indigo-600" />
+            <select
+              value={selectedTeamId}
+              onChange={(e) => {
+                setSelectedTeamId(e.target.value);
+                setSelectedProjectId('all');
+              }}
+              className="px-2.5 py-1.5 border border-slate-300 text-xs text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+            >
+              <option value="all">All My Teams ({teamCount})</option>
+              {teams.map((t) => {
+                const teamDocs = documents.filter((d) => d.team_id === t.id).length;
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({teamDocs})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
 
         {/* Project Filter */}
         {filteredProjectOptions.length > 0 && (
@@ -341,12 +321,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         </div>
 
         {/* Reset Filters */}
-        {(selectedTemplateId !== 'all' || selectedStatus !== 'all' || selectedProjectId !== 'all' || search) && (
+        {(selectedTemplateId !== 'all' ||
+          selectedStatus !== 'all' ||
+          selectedProjectId !== 'all' ||
+          (selectedCategory === 'teams' && selectedTeamId !== 'all') ||
+          search) && (
           <button
             onClick={() => {
               setSelectedTemplateId('all');
               setSelectedStatus('all');
               setSelectedProjectId('all');
+              setSelectedTeamId('all');
               setSearch('');
             }}
             className="text-xs text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer ml-auto"

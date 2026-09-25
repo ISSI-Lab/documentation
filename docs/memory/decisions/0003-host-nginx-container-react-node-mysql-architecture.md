@@ -14,7 +14,7 @@ The platform requires a modular document management tool enabling users to confi
 We needed an architecture that:
 1. Operates cleanly in enterprise production where an existing Host Nginx serves as the public ingress/SSL terminator.
 2. Eliminates CORS complexity by serving frontend static assets and routing `/api/` traffic through the same origin.
-3. Provides developers with immediate, frictionless direct access to the containerized environment on a dedicated port (`http://localhost:3000`).
+3. Provides developers with immediate, frictionless direct access to the containerized environment on a dedicated port (`http://localhost:3939`).
 4. Ensures relational consistency and schema-backed persistence across container restarts for templates and documents.
 
 ---
@@ -25,12 +25,12 @@ We have adopted a 4-tier containerized architecture orchestrated via Docker Comp
 
 1. **Host Nginx Tier (Production Ingress)**:
    - The host machine runs Nginx on ports 80/443.
-   - In production, it reverse-proxies public traffic into `http://127.0.0.1:3000`.
+   - In production, it reverse-proxies public traffic into `http://127.0.0.1:3939`.
    - Host configuration template provided in [`docs/design/architecture/host-nginx-example.conf`](../../design/architecture/host-nginx-example.conf).
 
 2. **Container Nginx + ReactJS Tier (`web_frontend`)**:
    - Multi-stage Docker build: Node 20 compiles the React 18 TypeScript application; Nginx Alpine serves the static bundle on container port 80.
-   - Port 80 is mapped to host port `3000` (`${FRONTEND_PORT:-3000}:80`), allowing developers direct access during development without requiring host Nginx configuration.
+   - Port 80 is mapped to host port `3939` (`${FRONTEND_PORT:-3939}:80`), allowing developers direct access during development without requiring host Nginx configuration.
    - Container Nginx acts as internal reverse proxy:
      ```nginx
      location /api/ {
@@ -58,7 +58,7 @@ We have adopted a 4-tier containerized architecture orchestrated via Docker Comp
 ## Consequences
 
 ### Positive
-- **Zero CORS Issues**: Browser clients communicate only with the container's Nginx on port 3000; all `/api/` calls are proxied server-side.
+- **Zero CORS Issues**: Browser clients communicate only with the container's Nginx on port 3939; all `/api/` calls are proxied server-side.
 - **Production Parity**: Dev and prod share the exact same container topology, differing only in whether host Nginx sits in front.
 - **Data Durability**: MySQL named volume preserves all created templates and documents across restarts.
 - **Extensible Schema**: Document element configuration stored as JSON attributes allows adding new field types without DDL migrations.

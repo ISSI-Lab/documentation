@@ -45,11 +45,11 @@ docker compose exec frontend sh
 
 ## 3. Troubleshooting Common Docker Issues
 
-### Port Already in Use (e.g., Port 3000 or 8000)
-If port 3000 or 8000 is occupied by another local service, override the host ports in `.env`:
+### Port Already in Use (e.g., Port 3939 or 5000)
+If port 3939 or 5000 is occupied by another local service, override the host ports in `.env`:
 ```bash
-FRONTEND_PORT=3001
-BACKEND_PORT=8001
+FRONTEND_PORT=3940
+BACKEND_PORT=5001
 ```
 Then run `docker compose up -d`.
 

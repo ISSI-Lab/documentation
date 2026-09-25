@@ -60,7 +60,7 @@ docker compose up --build -d
 docker compose logs -f
 ```
 
-- **Frontend & API (Container Nginx)**: [http://localhost:3000](http://localhost:3000) (Proxies `/api/` to backend)
+- **Frontend & API (Container Nginx)**: [http://localhost:3939](http://localhost:3939) (Proxies `/api/` to backend)
 - **Backend API (Direct Debug)**: [http://localhost:5000](http://localhost:5000)
 - **MySQL Database**: `localhost:3306` (`docforge` database)
 

@@ -29,8 +29,8 @@ docker compose logs -f
 ```
 
 ### Verification URLs
-- **Web App & Ingress (Container Nginx)**: [http://localhost:3000](http://localhost:3000)
-- **API Health via Nginx Proxy**: [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health)
+- **Web App & Ingress (Container Nginx)**: [http://localhost:3939](http://localhost:3939)
+- **API Health via Nginx Proxy**: [http://localhost:3939/api/v1/health](http://localhost:3939/api/v1/health)
 - **Backend API Direct (Debugging)**: [http://localhost:5000/api/v1/health](http://localhost:5000/api/v1/health)
 - **MySQL Database**: `localhost:3306` (User: `docuser`, Pass: `docpass`, DB: `docforge`)
 
@@ -44,18 +44,18 @@ graph TD
     
     subgraph HostMachine["Host Machine (macOS / Linux / Windows)"]
         HostNginx["Host Machine Nginx (Optional Prod Ingress :80/:443)"]
-        DevUser["Developer Direct Access<br/><b>http://localhost:3000</b>"]
+        DevUser["Developer Direct Access<br/><b>http://localhost:3939</b>"]
         
         subgraph DockerCompose["Docker Compose Virtual Network (app-net)"]
-            Frontend["Container: web_frontend<br/><b>Nginx + React 18 SPA</b> (Port 80 -> Host 3000)<br/>- Serves static bundle<br/>- Proxies /api/ to backend:5000"]
+            Frontend["Container: web_frontend<br/><b>Nginx + React 18 SPA</b> (Port 80 -> Host 3939)<br/>- Serves static bundle<br/>- Proxies /api/ to backend:5000"]
             Backend["Container: web_backend<br/><b>NodeJS 20 / Express (TypeScript)</b> (Port 5000)<br/>- REST API (/api/v1/...)<br/>- Markdown Compiler<br/>- Template & Document CRUD"]
             Database["Container: db_mysql<br/><b>MySQL 8.0</b> (Port 3306)<br/>- Persistent volume: mysql_data<br/>- Schema initialization: src/backend/db/init.sql"]
         end
     end
 
     Client -->|Prod Traffic| HostNginx
-    HostNginx -->|proxy_pass :3000| Frontend
-    DevUser -->|Direct HTTP :3000| Frontend
+    HostNginx -->|proxy_pass :3939| Frontend
+    DevUser -->|Direct HTTP :3939| Frontend
     Frontend -->|proxy_pass http://backend:5000/api/| Backend
     Backend -->|mysql2 connection pool :3306| Database
 ```

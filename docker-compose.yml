@@ -6,9 +6,9 @@ services:
     container_name: web_frontend
     restart: unless-stopped
     ports:
-      # Developer can directly access the container's Nginx on host port 3000
+      # Developer can directly access the container's Nginx on host port 3939
       # In production, Host Nginx reverse proxies to this port
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3939}:80"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
     networks:

@@ -16,5 +16,7 @@ When switching from one workstation to another (or across team handoffs):
 - [`2026-09-10-initial-setup-complete.md`](2026-09-10-initial-setup-complete.md): Initial multi-service scaffolding setup.
 - [`2026-09-11-document-authoring-platform-implementation.md`](2026-09-11-document-authoring-platform-implementation.md): Complete Document Templating, Configuration & Markdown Authoring platform implementation.
 - [`2026-09-11-cross-machine-development-guide.md`](2026-09-11-cross-machine-development-guide.md): Master setup guide and handoff for resuming development on any new machine.
+- [`2026-09-25-auth-teams-homepage-and-ui-layout-overhaul.md`](2026-09-25-auth-teams-homepage-and-ui-layout-overhaul.md): User authentication, open team creation, personal homepage, and UI layout overhaul.
+
 
 

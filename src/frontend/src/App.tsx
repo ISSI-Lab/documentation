@@ -480,7 +480,7 @@ export const App: React.FC = () => {
         onCreate={handleCreateDocument}
       />
 
-      {/* Modal: Auth (Login/Register/Demo login) */}
+      {/* Modal: Auth (Login/Register) */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
