@@ -1,32 +1,39 @@
-# Docker Development Workflows
+# Docker Development & Deployment Workflows
 
-Runbook for managing, troubleshooting, and developing with Docker Compose.
+Runbook for managing, troubleshooting, and operating the container stack across Development and Production.
 
 ---
 
-## 1. Daily Development Commands
+## 1. Unified Application Management (`scripts/start.sh` & `scripts/stop.sh`)
 
+### Development
 ```bash
-# Start all services (frontend + backend) in the foreground
-docker compose up
+# Start all services in Development mode (phpMyAdmin enabled automatically on port 28080)
+./scripts/start.sh
 
-# Start services in the background (detached mode)
-docker compose up -d
+# Rebuild containers after code or manifest changes
+./scripts/start.sh --build
+```
 
-# View live output logs of all services
-docker compose logs -f
+### Production
+```bash
+# First-time production setup (prompts for domain and generates Host Nginx SSL config)
+./scripts/start.sh --prod --init
 
-# View live logs of only the backend
-docker compose logs -f backend
+# Normal production startup (phpMyAdmin disabled by default)
+./scripts/start.sh --prod
 
-# Rebuild containers after changing package manifests (package.json or requirements.txt)
-docker compose up --build
+# Production startup with phpMyAdmin enabled
+./scripts/start.sh --prod -pma
+```
 
-# Stop all containers
-docker compose down
+### Stopping & Terminating Containers
+```bash
+# Graceful stop and container removal (preserves database volume)
+./scripts/stop.sh
 
-# Stop containers and remove volumes (clean reset)
-docker compose down -v
+# Full termination and persistent volume wipe
+./scripts/stop.sh --volumes
 ```
 
 ---
@@ -34,27 +41,30 @@ docker compose down -v
 ## 2. Interactive Shell Access
 
 ```bash
-# Open a bash shell inside the running backend container
+# Open a shell inside the running backend container
 docker compose exec backend sh
 
 # Open a shell inside the running frontend container
 docker compose exec frontend sh
+
+# Open a MySQL shell inside the database container
+docker compose exec mysql mysql -u docuser -pdocpass docforge
 ```
 
 ---
 
-## 3. Troubleshooting Common Docker Issues
+## 3. Troubleshooting & Automated Port Conflict Resolution
 
-### Port Already in Use (e.g., Port 3939 or 5000)
-If port 3939 or 5000 is occupied by another local service, override the host ports in `.env`:
+### Automatic Port Collision Handling
+When starting via `./scripts/start.sh`, the script automatically tests whether host ports (`FRONTEND_PORT: 3939`, `BACKEND_PORT: 5000`, `MYSQL_PORT: 13306`, `PMA_PORT: 28080`) are available to bind.
+- If a port is occupied by another process (such as macOS AirPlay on port `5000` or an existing MySQL instance on port `13306`), `start.sh` automatically shifts to the next free port (e.g. `13307`, `5001`), exports the resolved port, and updates `.env`.
+
+### Manual Port Overrides
+To permanently assign custom ports, edit `.env`:
 ```bash
 FRONTEND_PORT=3940
-BACKEND_PORT=5001
+BACKEND_PORT=5002
+MYSQL_PORT=13308
+PMA_PORT=28081
 ```
-Then run `docker compose up -d`.
-
-### Stale File Caching
-If your code changes are not reflecting:
-```bash
-docker compose restart
-```
+Then run `./scripts/start.sh`.

@@ -1,0 +1,79 @@
+# ==============================================================================
+# Host Nginx Production Reverse Proxy Configuration
+# Domain: ${APP_DOMAIN}
+# Forward Target: Container Frontend Nginx (127.0.0.1:${FRONTEND_PORT})
+# ==============================================================================
+
+# Ensure connection_upgrade mapping is available for WebSocket proxying
+# (If your main /etc/nginx/nginx.conf already defines this, this can be omitted)
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+# --- HTTP Server (Certbot ACME Challenge + HTTPS Redirect) ---
+server {
+  listen 80;
+  listen [::]:80;
+  server_name ${APP_DOMAIN};
+
+  client_max_body_size 20m;
+
+  # Certbot webroot for Let's Encrypt ACME challenge validation
+  location /.well-known/acme-challenge/ {
+    root ${CERTBOT_WEBROOT};
+    try_files $uri =404;
+  }
+
+  # Redirect all other HTTP traffic to HTTPS
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}
+
+# --- HTTPS Server (SSL Termination + Reverse Proxy to Container Nginx) ---
+server {
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
+  server_name ${APP_DOMAIN};
+
+  client_max_body_size 20m;
+
+  # Let's Encrypt SSL Certificates (Managed by Certbot)
+  ssl_certificate /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${APP_DOMAIN}/privkey.pem;
+  
+  # Standard SSL Security Parameters (Include if present on host)
+  include /etc/letsencrypt/options-ssl-nginx.conf;
+  ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+  # Reverse proxy to the Docker Container's Nginx port
+  location / {
+    proxy_pass http://127.0.0.1:${FRONTEND_PORT};
+    proxy_http_version 1.1;
+
+    # Pass Host and real IP headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket Upgrade Headers for Live Streams & Real-Time Communication
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 60s;
+  }
+
+  # Optional: Uncomment if phpMyAdmin should be exposed via a sub-path under this domain
+  # location /phpmyadmin/ {
+  #   proxy_pass http://127.0.0.1:${PMA_PORT}/;
+  #   proxy_http_version 1.1;
+  #   proxy_set_header Host $host;
+  #   proxy_set_header X-Real-IP $remote_addr;
+  #   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  #   proxy_set_header X-Forwarded-Proto $scheme;
+  # }
+}

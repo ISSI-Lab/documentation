@@ -49,7 +49,7 @@ services:
       - MYSQL_PASSWORD=docpass
       - MYSQL_ROOT_PASSWORD=rootpass
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_PORT:-13306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./src/backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -61,6 +61,26 @@ services:
       timeout: 5s
       retries: 10
 
+  phpmyadmin:
+    image: phpmyadmin:5.2-apache
+    container_name: db_phpmyadmin
+    restart: unless-stopped
+    profiles:
+      - pma
+      - phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 64M
+      MEMORY_LIMIT: 256M
+    ports:
+      - "${PMA_PORT:-28080}:80"
+    networks:
+      - app-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 networks:
   app-net:
     driver: bridge
@@ -68,3 +88,4 @@ networks:
 volumes:
   mysql_data:
     driver: local
+

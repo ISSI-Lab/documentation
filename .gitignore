@@ -232,10 +232,11 @@ scratch/
 .agents/local/
 .agents/*.local.*
 
-# Environment secrets and credentials (use .env.example instead)
+# Environment secrets and credentials (use .env.dev and .env.prod templates)
 .env
 .env.*
-!.env.example
+!.env.dev
+!.env.prod
 *.pem
 *.key
 
@@ -269,3 +270,8 @@ dist/
 
 # Docker local volumes & compose overrides
 docker-compose.override.yml
+
+# Generated deployment & Nginx host configs
+host-nginx.conf
+docs/ops/nginx/generated/
+

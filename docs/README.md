@@ -15,7 +15,7 @@ docs/
 ├── memory/            # 3. Institutional Knowledge, ADRs, and Shared AI Context
 ├── tasks/             # 4. Active Workstreams, Backlog, and Machine Handoffs
 ├── qa/                # 5. Test Plans, Verification Matrices, and Release Checklists
-├── ops/               # 6. Deployment Specs, Environment Blueprints (.env.example), CI/CD
+├── ops/               # 6. Deployment Specs, Environment Blueprints (.env.dev, .env.prod), CI/CD
 └── templates/         # 7. Reusable Document Templates for New Proposals and Records
 ```
 
@@ -57,7 +57,7 @@ Defines *how we verify quality*.
 ### 6. [Ops](ops/)
 Defines *how the system runs and deploys*.
 - [`environments/`](ops/environments/): Development, staging, and production environment specs.
-- [`config-templates/`](ops/config-templates/): `.env.example` blueprint and configuration schema.
+- [`config-templates/`](ops/config-templates/): `.env.dev` and `.env.prod` blueprints and configuration schemas.
 - [`ci-cd/`](ops/ci-cd/): Continuous integration and deployment runbooks.
 
 ### 7. [Templates](templates/)

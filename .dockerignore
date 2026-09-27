@@ -16,7 +16,8 @@ scripts/
 # Exclude developer-private scratchpads and environment files
 *.local.*
 .env*
-!.env.example
+!.env.dev
+!.env.prod
 scratch/
 
 # Exclude IDE and OS metadata

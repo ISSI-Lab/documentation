@@ -27,7 +27,7 @@ This project uses a **Multi-Service Docker Architecture** with clean separation 
 │   ├── memory/              # ADRs (decisions), shared context bank, glossary, runbooks
 │   ├── tasks/               # Active workstreams, backlog, and machine handoffs
 │   ├── qa/                  # Test plans, cross-platform matrices, release checklists
-│   ├── ops/                 # Environments, config templates (.env.example), CI/CD
+│   ├── ops/                 # Environments, config templates (.env.dev, .env.prod), CI/CD
 │   └── templates/           # Scaffolding templates for ADRs, RFCs, PRDs, and Handoffs
 │
 ├── tests/                   # Cross-service E2E and integration test suites
@@ -45,30 +45,24 @@ Regardless of whether you are running on macOS, Ubuntu/Debian, or Windows with W
 - [Docker Compose](https://docs.docker.com/compose/) (v2+)
 - Python 3.8+ (for helper scripts, optional)
 
-### 2. Configure Environment
-Copy the configuration template:
+### 2. Launch Services
 ```bash
-cp docs/ops/config-templates/.env.example .env
-```
+# Start in Development mode (default - phpMyAdmin enabled on port 28080)
+./scripts/start.sh
 
-### 3. Launch Services
-```bash
-# Build and start all services (MySQL, NodeJS Backend, and Nginx+React Frontend)
-docker compose up --build -d
-
-# View live streaming logs
-docker compose logs -f
+# Or start in Production mode
+./scripts/start.sh --prod
 ```
 
 - **Frontend & API (Container Nginx)**: [http://localhost:3939](http://localhost:3939) (Proxies `/api/` to backend)
 - **Backend API (Direct Debug)**: [http://localhost:5000](http://localhost:5000)
-- **MySQL Database**: `localhost:3306` (`docforge` database)
+- **MySQL Database**: `localhost:13306` (`docforge` database)
+- **phpMyAdmin**: [http://localhost:28080](http://localhost:28080) (Dev default)
 
-### 4. Stop Services
+### 3. Stop Services
 ```bash
-docker compose down
+./scripts/stop.sh
 ```
-
 
 ---
 
@@ -83,7 +77,8 @@ docker compose down
 | **AI Agent Context Bank** | [`docs/memory/context/`](docs/memory/context/) | Shared context files read by AI agents on any machine (`active-context.md`) |
 | **Machine & Shift Handoffs** | [`docs/tasks/handoffs/`](docs/tasks/handoffs/) | Shift logs (`YYYY-MM-DD-developer.md`) ensuring in-flight work is never lost |
 | **Private Scratchpads** | [`docs/memory/local/`](docs/memory/local/) | Gitignored local directory for developer-only notes and drafts |
-| **Secrets & Keys** | `.env` (from `.env.example`) | Gitignored local file; team commits sanitized blueprint in `docs/ops/` |
+| **Secrets & Keys** | `.env` (from `.env.dev` / `.env.prod`) | Gitignored local file; team commits sanitized blueprint in `docs/ops/` |
+| **Deployment Automation** | [`scripts/start.sh`](scripts/start.sh) | Automated startup & deployment script for dev and prod environments |
 
 ---
 
