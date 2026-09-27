@@ -8,7 +8,8 @@ Runbook for managing, troubleshooting, and operating the container stack across 
 
 ### Development
 ```bash
-# Start all services in Development mode (phpMyAdmin enabled automatically on port 28080)
+# Start all services in Development mode (Attached / Foreground live logs, phpMyAdmin on port 28080)
+# Press Ctrl+C to stop
 ./scripts/start.sh
 
 # Rebuild containers after code or manifest changes
@@ -17,10 +18,10 @@ Runbook for managing, troubleshooting, and operating the container stack across 
 
 ### Production
 ```bash
-# First-time production setup (prompts for domain and generates Host Nginx SSL config)
+# First-time production setup (prompts for domain, generates Host Nginx SSL config, runs in background)
 ./scripts/start.sh --prod --init
 
-# Normal production startup (phpMyAdmin disabled by default)
+# Normal production startup (detached background mode, phpMyAdmin disabled by default)
 ./scripts/start.sh --prod
 
 # Production startup with phpMyAdmin enabled

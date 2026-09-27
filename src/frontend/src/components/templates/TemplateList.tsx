@@ -116,16 +116,6 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 Explore our public pool of document templates. Inspect the section structures, field types, and markdown generators. Sign in to start authoring documents, creating your own teams, and building custom templates.
               </p>
             </div>
-            {onOpenAuthModal && (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={onOpenAuthModal}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm transition-all whitespace-nowrap cursor-pointer border border-blue-500"
-                >
-                  Sign In / Register to Start
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -163,15 +153,9 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               </button>
             </>
           ) : (
-            onOpenAuthModal && (
-              <button
-                type="button"
-                onClick={onOpenAuthModal}
-                className="inline-flex items-center px-4 py-2 border border-blue-700 text-xs font-semibold shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
-              >
-                Sign In to Create & Use Templates
-              </button>
-            )
+            <span className="inline-flex items-center text-xs text-slate-500 italic bg-slate-100 px-3 py-1.5 border border-slate-200">
+              Sign in to create & use templates
+            </span>
           )}
         </div>
       </div>

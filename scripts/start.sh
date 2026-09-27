@@ -305,17 +305,34 @@ if [[ "$FLAG_BUILD_ONLY" == true ]]; then
   echo -e "${GREEN}✓ Build completed!${NC}"
 fi
 
-echo -e "${CYAN}==> Starting container services (${CURRENT_ENV})...${NC}"
-NODE_ENV="${CURRENT_ENV}" $DOCKER_COMPOSE up -d --build
+if [[ "$CURRENT_ENV" == "production" ]]; then
+  echo -e "${CYAN}==> Starting container services in background (${CURRENT_ENV})...${NC}"
+  NODE_ENV="${CURRENT_ENV}" $DOCKER_COMPOSE up -d --build
 
-echo ""
-echo -e "${GREEN}================================================================${NC}"
-echo -e "${GREEN}✓ Application running successfully! (${CURRENT_ENV})           ${NC}"
-echo -e "${GREEN}================================================================${NC}"
-echo -e "  • Frontend Container: http://localhost:${FRONTEND_PORT}"
-echo -e "  • MySQL Database:     localhost:${MYSQL_PORT}"
-if [[ "$IS_PMA" == true ]]; then
-  echo -e "  • phpMyAdmin:         http://localhost:${PMA_PORT}"
+  echo ""
+  echo -e "${GREEN}================================================================${NC}"
+  echo -e "${GREEN}✓ Application running successfully! (${CURRENT_ENV})           ${NC}"
+  echo -e "${GREEN}================================================================${NC}"
+  echo -e "  • Frontend Container: http://localhost:${FRONTEND_PORT}"
+  echo -e "  • MySQL Database:     localhost:${MYSQL_PORT}"
+  if [[ "$IS_PMA" == true ]]; then
+    echo -e "  • phpMyAdmin:         http://localhost:${PMA_PORT}"
+  fi
+  echo ""
+  $DOCKER_COMPOSE ps
+else
+  echo ""
+  echo -e "${GREEN}================================================================${NC}"
+  echo -e "${GREEN}  Starting Development Stack (Attached / Live Logs)             ${NC}"
+  echo -e "${GREEN}================================================================${NC}"
+  echo -e "  • Frontend UI:    http://localhost:${FRONTEND_PORT}"
+  echo -e "  • Backend API:    http://localhost:${BACKEND_PORT}"
+  echo -e "  • MySQL Database: localhost:${MYSQL_PORT}"
+  if [[ "$IS_PMA" == true ]]; then
+    echo -e "  • phpMyAdmin:     http://localhost:${PMA_PORT}"
+  fi
+  echo -e "${YELLOW}  Press Ctrl+C to stop services.${NC}"
+  echo -e "${CYAN}----------------------------------------------------------------${NC}"
+  echo ""
+  NODE_ENV="${CURRENT_ENV}" $DOCKER_COMPOSE up --build
 fi
-echo ""
-$DOCKER_COMPOSE ps
