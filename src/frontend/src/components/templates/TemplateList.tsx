@@ -153,8 +153,8 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               </button>
             </>
           ) : (
-            <span className="inline-flex items-center text-xs text-slate-500 italic bg-slate-100 px-3 py-1.5 border border-slate-200">
-              Sign in to create & use templates
+            <span className="inline-flex items-center text-xs text-slate-500 italic bg-slate-100 px-3 py-1.5 border border-slate-200 rounded">
+              Sign In/Register to create & use templates
             </span>
           )}
         </div>
@@ -163,31 +163,33 @@ export const TemplateList: React.FC<TemplateListProps> = ({
       {/* Main Categories: Public vs Personal vs Each Team's Templates */}
       <div className="space-y-4 mb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Category Tabs */}
-          <div className="flex items-center border border-slate-300 bg-slate-100 p-1 w-fit flex-wrap gap-1">
+          {/* Category Tabs (Material UI ToggleButtonGroup Style) */}
+          <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap sm:flex-nowrap">
             <button
+              type="button"
               onClick={() => {
                 setSelectedCategory('all');
                 setSelectedTeamId('all');
               }}
-              className={`px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer ${
                 selectedCategory === 'all'
-                  ? 'bg-white text-slate-900 shadow-sm border border-slate-300'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-slate-100 text-slate-900 font-bold shadow-inner'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               All ({templates.length})
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setSelectedCategory('public');
                 setSelectedTeamId('all');
               }}
-              className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
+              className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'public'
-                  ? 'bg-white text-blue-900 shadow-sm border border-slate-300'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-blue-50 text-blue-900 font-bold shadow-inner'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -196,14 +198,15 @@ export const TemplateList: React.FC<TemplateListProps> = ({
 
             {currentUser && (
               <button
+                type="button"
                 onClick={() => {
                   setSelectedCategory('personal');
                   setSelectedTeamId('all');
                 }}
-                className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
+                className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                   selectedCategory === 'personal'
-                    ? 'bg-white text-emerald-900 shadow-sm border border-slate-300'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-emerald-50 text-emerald-900 font-bold shadow-inner'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -213,16 +216,17 @@ export const TemplateList: React.FC<TemplateListProps> = ({
 
             {currentUser && (
               <button
+                type="button"
                 onClick={() => {
                   setSelectedCategory('teams');
                   if (teams.length > 0 && selectedTeamId === 'all') {
                     setSelectedTeamId('all');
                   }
                 }}
-                className={`px-3.5 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[180px] ${
+                className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                   selectedCategory === 'teams'
-                    ? 'bg-white text-indigo-900 shadow-sm border border-slate-300'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -250,44 +254,48 @@ export const TemplateList: React.FC<TemplateListProps> = ({
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
               <Users className="w-3.5 h-3.5 text-indigo-600" /> Teams:
             </span>
-            <button
-              onClick={() => setSelectedTeamId('all')}
-              className={`text-xs px-3 py-1 font-medium border transition-colors cursor-pointer ${
-                selectedTeamId === 'all'
-                  ? 'bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              All My Teams
-            </button>
-            {teams.map((t) => {
-              const teamTpls = templates.filter((tpl) => tpl.team_id === t.id).length;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setSelectedCategory('teams');
-                    setSelectedTeamId(t.id);
-                  }}
-                  className={`text-xs px-3 py-1 font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    selectedTeamId === t.id
-                      ? 'bg-indigo-600 text-white border-indigo-700 font-bold shadow-sm'
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <span>{t.name}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 ${
+            <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap">
+              <button
+                type="button"
+                onClick={() => setSelectedTeamId('all')}
+                className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+                  selectedTeamId === 'all'
+                    ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                All My Teams
+              </button>
+              {teams.map((t) => {
+                const teamTpls = templates.filter((tpl) => tpl.team_id === t.id).length;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory('teams');
+                      setSelectedTeamId(t.id);
+                    }}
+                    className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
                       selectedTeamId === t.id
-                        ? 'bg-indigo-800 text-white'
-                        : 'bg-slate-100 text-slate-600'
+                        ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    {teamTpls}
-                  </span>
-                </button>
-              );
-            })}
+                    <span>{t.name}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded ${
+                        selectedTeamId === t.id
+                          ? 'bg-indigo-200 text-indigo-900 font-semibold'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {teamTpls}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -348,11 +356,11 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 rounded">
                             {template.category || 'General'}
                           </span>
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border rounded ${
                               isPublic
                                 ? 'bg-blue-50 text-blue-700 border-blue-300'
                                 : isPersonal
@@ -393,7 +401,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                       {template.tags.map((t) => (
                         <span
                           key={t}
-                          className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 border border-slate-200"
+                          className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 border border-slate-200 rounded"
                         >
                           #{t}
                         </span>
@@ -405,7 +413,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                   <div className="mt-5">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                       <span>Configured Sections</span>
-                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 font-bold text-[10px] border border-blue-200">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 font-bold text-[10px] border border-blue-200 rounded">
                         {elements.length} items
                       </span>
                     </div>
@@ -414,12 +422,12 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                       {elements.slice(0, 4).map((elem, idx) => (
                         <div
                           key={elem.id || idx}
-                          className="flex items-center justify-between text-xs bg-slate-50 px-2.5 py-1.5 border border-slate-200"
+                          className="flex items-center justify-between text-xs bg-slate-50 px-2.5 py-1.5 border border-slate-200 rounded"
                         >
                           <span className="truncate font-medium text-slate-700 max-w-[170px]">
                             {elem.label}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 font-mono">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-600 font-mono rounded">
                             {elem.field_type}
                           </span>
                         </div>
@@ -469,10 +477,10 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                         onSelectTemplateToCreate(template);
                       }
                     }}
-                    className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer border border-indigo-700"
+                    className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer border border-indigo-700 rounded"
                   >
                     <PlusCircle className="w-3.5 h-3.5 mr-1" />
-                    {currentUser ? 'Use Template' : 'Use Template (Sign In)'}
+                    {currentUser ? 'Use Template' : 'Use Template (Sign In/Register)'}
                   </button>
                 </div>
               </div>

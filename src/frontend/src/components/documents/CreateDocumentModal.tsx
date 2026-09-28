@@ -211,7 +211,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     <UserIcon className="w-3.5 h-3.5 text-emerald-600" /> Personal Document
                   </span>
                   {scope === 'personal' && (
-                    <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 font-bold">
+                    <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 font-bold rounded">
                       Selected
                     </span>
                   )}
@@ -240,7 +240,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     <Users className="w-3.5 h-3.5 text-indigo-600" /> Team Document
                   </span>
                   {scope === 'team' && (
-                    <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 font-bold">
+                    <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 font-bold rounded">
                       Selected
                     </span>
                   )}
@@ -346,7 +346,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     )}
                     {selectedTemplate.description || 'Standard document template'}
                   </span>
-                  <span className="text-blue-600 font-semibold text-[10px] bg-blue-50 px-2 py-0.5 border border-blue-200">
+                  <span className="text-blue-600 font-semibold text-[10px] bg-blue-50 px-2 py-0.5 border border-blue-200 rounded">
                     {selectedTemplate.document_elements?.length || 0} sections
                   </span>
                 </div>

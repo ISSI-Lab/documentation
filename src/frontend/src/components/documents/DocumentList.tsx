@@ -170,8 +170,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
       {/* Scope Category Bar: Recent vs Personal vs Team */}
       <div className="space-y-4 mb-6 w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
-          {/* Category Tabs with Equal Width */}
-          <div className="grid grid-cols-3 border border-slate-300 bg-slate-100 p-1 w-full sm:w-auto gap-1">
+          {/* Category Tabs (Material UI ToggleButtonGroup style) */}
+          <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden w-full sm:w-auto">
             <button
               type="button"
               onClick={() => {
@@ -179,10 +179,10 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 setSelectedTeamId('all');
                 setSelectedProjectId('all');
               }}
-              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
+              className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'recent'
-                  ? 'bg-white text-blue-900 shadow-sm border border-slate-300'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-blue-50 text-blue-900 font-bold shadow-inner'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -196,10 +196,10 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 setSelectedTeamId('all');
                 setSelectedProjectId('all');
               }}
-              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
+              className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'personal'
-                  ? 'bg-white text-emerald-900 shadow-sm border border-slate-300'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-50 text-emerald-900 font-bold shadow-inner'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -212,10 +212,10 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 setSelectedCategory('teams');
                 setSelectedProjectId('all');
               }}
-              className={`px-4 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer text-center sm:min-w-[170px] ${
+              className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'teams'
-                  ? 'bg-white text-indigo-900 shadow-sm border border-slate-300'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -393,7 +393,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Status badge */}
                     <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 border ${getStatusBadge(
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 border rounded ${getStatusBadge(
                         doc.status
                       )}`}
                     >
@@ -402,7 +402,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
                     {/* Scope badge: Personal vs Team */}
                     <span
-                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border ${
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded ${
                         isPersonal
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                           : 'bg-indigo-50 text-indigo-800 border-indigo-300'
@@ -420,14 +420,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     </span>
 
                     {/* Template title */}
-                    <span className="text-xs px-2.5 py-0.5 bg-slate-100 text-slate-700 font-medium flex items-center gap-1 border border-slate-200">
+                    <span className="text-xs px-2.5 py-0.5 bg-slate-100 text-slate-700 font-medium flex items-center gap-1 border border-slate-200 rounded">
                       <Layers className="w-3 h-3 text-slate-500" />
                       {doc.template_title || 'Document'}
                     </span>
 
                     {/* Project name if applicable */}
                     {projName && (
-                      <span className="text-xs px-2.5 py-0.5 bg-blue-50 text-blue-700 font-medium flex items-center gap-1 border border-blue-200">
+                      <span className="text-xs px-2.5 py-0.5 bg-blue-50 text-blue-700 font-medium flex items-center gap-1 border border-blue-200 rounded">
                         <FolderKanban className="w-3 h-3 text-blue-500" />
                         {projName}
                       </span>
@@ -439,7 +439,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         {doc.tags.map((tag, idx) => (
                           <span
                             key={idx}
-                            className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 font-medium border border-slate-200"
+                            className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 font-medium border border-slate-200 rounded"
                           >
                             #{tag}
                           </span>

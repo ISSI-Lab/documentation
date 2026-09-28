@@ -79,7 +79,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <div>
                 <span className="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-1.5">
                   DocForge
-                  <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-800 font-semibold uppercase tracking-wider border border-blue-200">
+                  <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-800 font-semibold uppercase tracking-wider border border-blue-200 rounded">
                     v2.0
                   </span>
                 </span>
@@ -237,11 +237,12 @@ export const Navigation: React.FC<NavigationProps> = ({
               </div>
             ) : (
               <button
+                type="button"
                 onClick={onOpenAuthModal}
-                className="flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-200 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-700 bg-white hover:bg-indigo-50/70 border border-slate-300 hover:border-indigo-300 active:bg-indigo-100 rounded-md transition-all shadow-sm cursor-pointer select-none"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <LogIn className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Sign In/Register</span>
               </button>
             )}
           </div>
