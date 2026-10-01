@@ -44,10 +44,12 @@ Environment Modes:
 
 Production & Domain Setup:
   -i, --init              First-time setup: prompts for domain (default: ${DEFAULT_DOMAIN}),
-                          and generates Host Nginx configuration for SSL/reverse-proxy.
+                          generates and installs Host Nginx conf in /etc/nginx/sites-available/,
+                          creates symlink in /etc/nginx/sites-enabled/, provisions SSL certs,
+                          and restarts host Nginx.
   -d, --domain <domain>   Specify domain directly without interactive prompt.
   -pma, --pma             Enable phpMyAdmin container on port 28080 (in production).
-  --ssl, --certbot        Run Certbot on host for SSL certificate generation.
+  --ssl, --certbot        Force Run Certbot on host for SSL certificate generation.
 
 Build & Image Options:
   -b, --build             Rebuild container images.
@@ -221,7 +223,7 @@ fi
 
 CERTBOT_WEBROOT="${CERTBOT_WEBROOT:-/var/www/certbot}"
 
-# 2. First-time Host Nginx configuration setup
+# 2. First-time Host Nginx configuration setup & SSL provisioning
 if [[ "$INIT_SETUP" == true || -n "$FLAG_DOMAIN" ]]; then
   echo -e "${CYAN}================================================================${NC}"
   echo -e "${CYAN}               Host Nginx & Domain Configuration                ${NC}"
@@ -257,24 +259,129 @@ if [[ "$INIT_SETUP" == true || -n "$FLAG_DOMAIN" ]]; then
   fi
 
   echo -e "${GREEN}✓ Host Nginx SSL config generated at:${NC} docs/ops/nginx/generated/${TARGET_DOMAIN}.conf"
-  echo ""
-  echo -e "${BLUE}To install on production host Nginx:${NC}"
-  echo "  sudo cp docs/ops/nginx/generated/${TARGET_DOMAIN}.conf /etc/nginx/sites-available/${TARGET_DOMAIN}.conf"
-  echo "  sudo ln -sf /etc/nginx/sites-available/${TARGET_DOMAIN}.conf /etc/nginx/sites-enabled/"
-  echo "  sudo nginx -t && sudo systemctl reload nginx"
-  echo ""
 
-  if [[ "$FLAG_SSL" == true ]]; then
-    echo -e "${CYAN}==> Requesting Certbot SSL certificate...${NC}"
-    if command -v certbot &> /dev/null; then
-      sudo mkdir -p "${CERTBOT_WEBROOT}"
-      sudo certbot certonly --webroot -w "${CERTBOT_WEBROOT}" -d "${TARGET_DOMAIN}"
-    else
-      echo -e "${YELLOW}Certbot not found on host. Run manually:${NC}"
-      echo "  sudo certbot certonly --webroot -w ${CERTBOT_WEBROOT} -d ${TARGET_DOMAIN}"
+  # Host Nginx paths
+  NGINX_AVAILABLE_DIR="/etc/nginx/sites-available"
+  NGINX_ENABLED_DIR="/etc/nginx/sites-enabled"
+  LETSENCRYPT_DIR="/etc/letsencrypt/live/${TARGET_DOMAIN}"
+  SSL_CERT_FILE="${LETSENCRYPT_DIR}/fullchain.pem"
+
+  # Sudo prefix helper
+  SUDO=""
+  if [[ "$EUID" -ne 0 ]]; then
+    if command -v sudo &> /dev/null; then
+      SUDO="sudo"
     fi
   fi
+
+  # Helper functions for Nginx reload and restart
+  reload_host_nginx() {
+    if $SUDO nginx -t 2>/dev/null; then
+      if command -v systemctl &> /dev/null && systemctl is-active --quiet nginx 2>/dev/null; then
+        $SUDO systemctl reload nginx
+      elif command -v service &> /dev/null; then
+        $SUDO service nginx reload
+      else
+        $SUDO nginx -s reload 2>/dev/null || true
+      fi
+      return 0
+    else
+      return 1
+    fi
+  }
+
+  restart_host_nginx() {
+    echo -e "${CYAN}==> Validating Nginx syntax and restarting Host Nginx...${NC}"
+    if $SUDO nginx -t; then
+      if command -v systemctl &> /dev/null; then
+        $SUDO systemctl restart nginx
+        echo -e "${GREEN}✓ Host Nginx successfully restarted (systemctl restart nginx).${NC}"
+      elif command -v service &> /dev/null; then
+        $SUDO service nginx restart
+        echo -e "${GREEN}✓ Host Nginx successfully restarted (service nginx restart).${NC}"
+      else
+        $SUDO nginx -s reload 2>/dev/null || true
+        echo -e "${GREEN}✓ Host Nginx successfully reloaded.${NC}"
+      fi
+      return 0
+    else
+      echo -e "${RED}⚠️  Nginx syntax test failed! Please check configuration.${NC}"
+      return 1
+    fi
+  }
+
+  echo -e "${CYAN}==> Installing Host Nginx site configuration...${NC}"
+
+  # Attempt automated copy and symlink if /etc/nginx exists or sudo is present
+  if [[ -d "/etc/nginx" ]] || [[ -n "$SUDO" ]]; then
+    $SUDO mkdir -p "$NGINX_AVAILABLE_DIR" "$NGINX_ENABLED_DIR" "${CERTBOT_WEBROOT}" 2>/dev/null || true
+
+    if [[ -d "$NGINX_AVAILABLE_DIR" && -d "$NGINX_ENABLED_DIR" ]]; then
+      # Check if SSL certificate already exists
+      if [[ -f "$SSL_CERT_FILE" && "$FLAG_SSL" != true ]]; then
+        echo -e "${GREEN}✓ Existing SSL certificate found at:${NC} ${SSL_CERT_FILE}"
+        echo -e "${CYAN}   ↳ Copying production SSL configuration to ${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf...${NC}"
+        $SUDO cp "$TARGET_CONF" "${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf"
+        $SUDO ln -sf "${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf" "${NGINX_ENABLED_DIR}/${TARGET_DOMAIN}.conf"
+        echo -e "${GREEN}✓ Symlink created: ${NGINX_ENABLED_DIR}/${TARGET_DOMAIN}.conf -> ${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf${NC}"
+        
+        # Test syntax and restart host Nginx
+        restart_host_nginx || true
+      else
+        if [[ -f "$SSL_CERT_FILE" ]]; then
+          echo -e "${GREEN}✓ Existing SSL certificate found at:${NC} ${SSL_CERT_FILE}"
+        else
+          echo -e "${YELLOW}No existing SSL certificate found at:${NC} ${SSL_CERT_FILE}"
+        fi
+
+        echo -e "${CYAN}   ↳ Step 1: Installing bootstrap HTTP configuration for ACME challenge...${NC}"
+        $SUDO cp "$BOOTSTRAP_CONF" "${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf"
+        $SUDO ln -sf "${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf" "${NGINX_ENABLED_DIR}/${TARGET_DOMAIN}.conf"
+        echo -e "${GREEN}✓ Bootstrap configuration installed and symlinked.${NC}"
+
+        # Reload Nginx to serve ACME challenge path
+        echo -e "${CYAN}   ↳ Reloading Nginx to activate ACME challenge path...${NC}"
+        reload_host_nginx || true
+
+        # Run Certbot to request SSL certificate
+        echo -e "${CYAN}   ↳ Step 2: Requesting SSL certificate from Let's Encrypt...${NC}"
+        if command -v certbot &> /dev/null; then
+          if $SUDO certbot certonly --webroot -w "${CERTBOT_WEBROOT}" -d "${TARGET_DOMAIN}"; then
+            echo -e "${GREEN}✓ SSL certificate successfully obtained!${NC}"
+            echo -e "${CYAN}   ↳ Step 3: Installing production SSL configuration...${NC}"
+            $SUDO cp "$TARGET_CONF" "${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf"
+            # Final restart of Host Nginx
+            restart_host_nginx || true
+          else
+            echo -e "${RED}⚠️  Certbot certificate acquisition failed.${NC}"
+            echo -e "${YELLOW}   Bootstrap HTTP configuration is currently active on port 80.${NC}"
+            echo -e "${BLUE}   Once DNS is resolved, run manually to complete SSL activation:${NC}"
+            echo "     sudo certbot certonly --webroot -w ${CERTBOT_WEBROOT} -d ${TARGET_DOMAIN}"
+            echo "     sudo cp ${TARGET_CONF} ${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf"
+            echo "     sudo nginx -t && sudo systemctl restart nginx"
+          fi
+        else
+          echo -e "${YELLOW}Certbot is not installed on this host.${NC}"
+          echo -e "${BLUE}To obtain certificate and activate SSL:${NC}"
+          echo "  1. sudo certbot certonly --webroot -w ${CERTBOT_WEBROOT} -d ${TARGET_DOMAIN}"
+          echo "  2. sudo cp ${TARGET_CONF} ${NGINX_AVAILABLE_DIR}/${TARGET_DOMAIN}.conf"
+          echo "  3. sudo nginx -t && sudo systemctl restart nginx"
+        fi
+      fi
+    else
+      echo -e "${YELLOW}Host Nginx directories (${NGINX_AVAILABLE_DIR}) not accessible or writable.${NC}"
+      echo -e "${BLUE}To install manually on host Nginx:${NC}"
+      echo "  sudo cp docs/ops/nginx/generated/${TARGET_DOMAIN}.conf /etc/nginx/sites-available/${TARGET_DOMAIN}.conf"
+      echo "  sudo ln -sf /etc/nginx/sites-available/${TARGET_DOMAIN}.conf /etc/nginx/sites-enabled/"
+      echo "  sudo nginx -t && sudo systemctl restart nginx"
+    fi
+  else
+    echo -e "${YELLOW}Host Nginx not detected on this machine.${NC}"
+    echo -e "${BLUE}Configuration files generated under docs/ops/nginx/generated/${NC}"
+  fi
+  echo ""
 fi
+
 
 # 3. Determine Compose Runner & Profiles
 COMPOSE_PROFILES=""

@@ -26,14 +26,14 @@ This file tracks the current sprint state, active workstreams, and recent change
 - Implemented user authentication, open team creation with Owner/Manager/Member roles, scoped asset visibility, and personal homepage dashboard ([ADR-0004](../decisions/0004-user-authentication-and-hierarchical-team-collaboration.md)).
 - Consolidated startup and deployment automation into `scripts/start.sh` (defaulting to development with phpMyAdmin on port `28080`, and `--prod` for production).
 - Implemented automatic host port collision detection and auto-reallocation in `scripts/start.sh` to prevent `port is already allocated` errors across different developer machines.
+- Automated Host Nginx site configuration (`/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`), Certbot SSL bootstrapping/issuance, and Host Nginx restarting in `scripts/start.sh --prod --init`.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---
 
 ## Cross-Machine Resume Instructions
-When switching to or resuming on another workstation / IDE (macOS, Linux, Windows/WSL2):
 1. Start the application in development mode: `./scripts/start.sh` (or for production: `./scripts/start.sh --prod`).
-2. First-time production Host Nginx SSL setup: `./scripts/start.sh --prod --init`.
+2. First-time production Host Nginx SSL setup and deployment: `./scripts/start.sh --prod --init`.
 3. Stop containers: `./scripts/stop.sh` (or `./scripts/stop.sh --volumes` for full wipe).
 4. Run doc validation: `python3 scripts/validate_docs.py`.
 

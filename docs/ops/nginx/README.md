@@ -78,8 +78,8 @@ To enable phpMyAdmin in production:
 ./scripts/start.sh --prod -pma
 ```
 
-### 4.3 First-Time Production Setup & Nginx Generation (`--prod --init`)
-Prompts for the target domain (default: `doc-forge.appunity.net`) and generates the Host Nginx SSL configuration:
+### 4.3 First-Time Production Setup & Deployment (`--prod --init`)
+Prompts for the target domain (default: `doc-forge.appunity.net`), automatically renders configuration templates, copies to `/etc/nginx/sites-available/`, links to `/etc/nginx/sites-enabled/`, issues/configures SSL certificates via Certbot, and **restarts host Nginx**:
 ```bash
 ./scripts/start.sh --prod --init
 ```
@@ -114,23 +114,19 @@ Or pass the domain directly:
 
 ---
 
-## 5. SSL / Certbot Setup for Host Nginx
+## 5. Host Nginx & SSL / Certbot Deployment Flow
 
-1. **DNS Setup**: Ensure `doc-forge.appunity.net` points to the production server IP.
-2. **Generate Host Nginx Config**:
-   ```bash
-   ./scripts/start.sh --init -d doc-forge.appunity.net
-   ```
-3. **Install Host Nginx Config**:
-   ```bash
-   sudo cp docs/ops/nginx/generated/doc-forge.appunity.net.conf /etc/nginx/sites-available/doc-forge.appunity.net.conf
-   sudo ln -sf /etc/nginx/sites-available/doc-forge.appunity.net.conf /etc/nginx/sites-enabled/
-   ```
-4. **Issue SSL Certificate**:
-   ```bash
-   sudo certbot certonly --webroot -w /var/www/certbot -d doc-forge.appunity.net
-   ```
-5. **Reload Nginx**:
-   ```bash
-   sudo nginx -t && sudo systemctl reload nginx
-   ```
+When running `./scripts/start.sh --prod --init -d <domain>`:
+
+1. **Template Rendering**: Generates `<domain>.conf` (Full SSL) and `<domain>-bootstrap.conf` (Port 80 HTTP-only) under `docs/ops/nginx/generated/`.
+2. **Directory & Certificate Check**: Checks if `/etc/letsencrypt/live/<domain>/fullchain.pem` exists.
+3. **Automated ACME Bootstrap (if no certs yet)**:
+   - Installs bootstrap HTTP configuration into `/etc/nginx/sites-available/<domain>.conf`.
+   - Creates symlink `/etc/nginx/sites-enabled/<domain>.conf -> /etc/nginx/sites-available/<domain>.conf`.
+   - Reloads host Nginx to open the `/.well-known/acme-challenge/` webroot path.
+   - Executes Certbot: `sudo certbot certonly --webroot -w /var/www/certbot -d <domain>`.
+4. **SSL Activation & Host Nginx Restart**:
+   - Copies production SSL configuration to `/etc/nginx/sites-available/<domain>.conf`.
+   - Validates configuration with `sudo nginx -t`.
+   - Restarts host Nginx (`sudo systemctl restart nginx` / `service nginx restart`).
+
