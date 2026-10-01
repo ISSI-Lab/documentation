@@ -48,7 +48,7 @@ Production & Domain Setup:
                           creates symlink in /etc/nginx/sites-enabled/, provisions SSL certs,
                           and restarts host Nginx.
   -d, --domain <domain>   Specify domain directly without interactive prompt.
-  -pma, --pma             Enable phpMyAdmin container on port 28080 (in production).
+  -pma, --pma             Enable phpMyAdmin container on port 28080 in production (via ./scripts/enable-pma.sh).
   --ssl, --certbot        Force Run Certbot on host for SSL certificate generation.
 
 Build & Image Options:
@@ -68,6 +68,10 @@ Examples:
 
   # Production Start with phpMyAdmin explicitly enabled:
   ./scripts/start.sh --prod -pma
+
+  # Enable/Disable phpMyAdmin in production on demand:
+  ./scripts/enable-pma.sh
+  ./scripts/enable-pma.sh --stop
 EOF
 }
 
@@ -149,6 +153,12 @@ if [[ "$IS_PROD" == true ]]; then
   CURRENT_ENV="production"
 else
   CURRENT_ENV="${NODE_ENV:-development}"
+fi
+
+# Ensure email configuration is encrypted
+if command -v python3 &> /dev/null && [[ -f "${PROJECT_ROOT}/scripts/manage_email_config.py" ]]; then
+  echo -e "${CYAN}==> Verifying encrypted email configuration...${NC}"
+  python3 "${PROJECT_ROOT}/scripts/manage_email_config.py" ensure-encrypted
 fi
 
 # Determine whether phpMyAdmin is enabled:
@@ -385,11 +395,13 @@ fi
 
 # 3. Determine Compose Runner & Profiles
 COMPOSE_PROFILES=""
-if [[ "$IS_PMA" == true ]]; then
-  COMPOSE_PROFILES="--profile phpmyadmin"
-  echo -e "${GREEN}[phpMyAdmin] Enabled on port ${PMA_PORT} (Env: ${CURRENT_ENV})${NC}"
-else
-  echo -e "${BLUE}[phpMyAdmin] Disabled (Env: ${CURRENT_ENV})${NC}"
+if [[ "$CURRENT_ENV" != "production" ]]; then
+  if [[ "$IS_PMA" == true ]]; then
+    COMPOSE_PROFILES="--profile phpmyadmin"
+    echo -e "${GREEN}[phpMyAdmin] Enabled on port ${PMA_PORT} (Env: ${CURRENT_ENV})${NC}"
+  else
+    echo -e "${BLUE}[phpMyAdmin] Disabled (Env: ${CURRENT_ENV})${NC}"
+  fi
 fi
 
 if docker compose version &> /dev/null; then
@@ -423,7 +435,10 @@ if [[ "$CURRENT_ENV" == "production" ]]; then
   echo -e "  • Frontend Container: http://localhost:${FRONTEND_PORT}"
   echo -e "  • MySQL Database:     localhost:${MYSQL_PORT}"
   if [[ "$IS_PMA" == true ]]; then
-    echo -e "  • phpMyAdmin:         http://localhost:${PMA_PORT}"
+    echo ""
+    "${SCRIPT_DIR}/enable-pma.sh" --start
+  else
+    echo -e "  • phpMyAdmin:         Disabled (Run ./scripts/enable-pma.sh to enable)"
   fi
   echo ""
   $DOCKER_COMPOSE ps

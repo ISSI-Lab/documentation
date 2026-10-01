@@ -54,17 +54,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let errorDetail = `HTTP ${response.status} ${response.statusText}`;
+    let errData: any = {};
     try {
-      const errJson = await response.json();
-      if (errJson.error) {
-        errorDetail = errJson.error;
-      } else if (errJson.detail) {
-        errorDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+      errData = await response.json();
+      if (errData.error) {
+        errorDetail = errData.error;
+      } else if (errData.detail) {
+        errorDetail = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
       }
     } catch {
       // ignore
     }
-    throw new Error(errorDetail);
+    const err: any = new Error(errorDetail);
+    err.status = response.status;
+    err.data = errData;
+    err.requires_verification = errData.requires_verification;
+    err.user_id = errData.user_id;
+    err.email = errData.email;
+    err.verification_token = errData.verification_token;
+    err.expires_in_seconds = errData.expires_in_seconds;
+    err.expired = errData.expired;
+    throw err;
   }
 
   if (response.status === 204) {
@@ -82,13 +92,51 @@ export const api = {
     password: string;
     name?: string;
     user_type?: UserType;
-  }): Promise<{ user: User; token: string }> {
-    const res = await request<{ user: User; token: string }>('/auth/register', {
+  }): Promise<{
+    message: string;
+    requires_verification: boolean;
+    user_id: string;
+    email: string;
+    username: string;
+    verification_token: string;
+    expires_in_seconds: number;
+    user?: User;
+  }> {
+    return request('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    setStoredToken(res.token);
+  },
+
+  async verifyAccount(payload: {
+    userId?: string;
+    usernameOrEmail?: string;
+    token: string;
+  }): Promise<{ user: User; token: string; message: string }> {
+    const res = await request<{ user: User; token: string; message: string }>('/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.token) {
+      setStoredToken(res.token);
+    }
     return res;
+  },
+
+  async resendVerification(payload: {
+    userId?: string;
+    usernameOrEmail?: string;
+  }): Promise<{
+    message: string;
+    user_id: string;
+    email: string;
+    verification_token: string;
+    expires_in_seconds: number;
+  }> {
+    return request('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   async login(payload: {

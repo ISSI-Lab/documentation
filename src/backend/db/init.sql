@@ -13,10 +13,23 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     user_type ENUM('organizer', 'regular') NOT NULL DEFAULT 'regular',
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_username (username),
     INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 1.1 Verification Tokens Table
+CREATE TABLE IF NOT EXISTS verification_tokens (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    token VARCHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at DATETIME NULL,
+    INDEX idx_user_id (user_id),
+    INDEX idx_token (token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Teams Table

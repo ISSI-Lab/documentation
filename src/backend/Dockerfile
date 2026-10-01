@@ -29,8 +29,9 @@ ENV NODE_ENV=production \
 COPY src/backend/package*.json ./
 RUN npm install --only=production
 
-# Copy compiled files and init db scripts from builder
+# Copy compiled files, config, and init db scripts from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/config ./config
 COPY --from=builder /app/db ./db
 
 EXPOSE 5000

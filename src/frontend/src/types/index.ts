@@ -6,6 +6,7 @@ export interface User {
   email: string;
   name: string;
   user_type: UserType;
+  is_verified?: boolean;
   created_at: string;
   updated_at: string;
 }

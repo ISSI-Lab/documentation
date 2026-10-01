@@ -9,8 +9,11 @@ import {
   requireAuth,
 } from '../auth';
 import { User, UserType } from '../models';
+import { sendVerificationEmail } from '../email';
 
 export const authRouter = Router();
+
+const VERIFICATION_EXPIRY_SECONDS = 30;
 
 function formatUserRow(row: any): User {
   return {
@@ -19,9 +22,27 @@ function formatUserRow(row: any): User {
     email: row.email,
     name: row.name,
     user_type: row.user_type as UserType,
+    is_verified: Boolean(row.is_verified),
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
+}
+
+async function createVerificationToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
+  // Invalidate previous unused tokens for this user
+  await pool.query('UPDATE verification_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [userId]);
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const id = `vtok-${crypto.randomBytes(4).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + VERIFICATION_EXPIRY_SECONDS * 1000);
+
+  await pool.query(
+    `INSERT INTO verification_tokens (id, user_id, token, expires_at, created_at)
+     VALUES (?, ?, ?, ?, NOW())`,
+    [id, userId, code, expiresAt]
+  );
+
+  return { token: code, expiresAt };
 }
 
 // POST /api/v1/auth/register
@@ -57,22 +78,142 @@ authRouter.post('/register', async (req: AuthenticatedRequest, res: Response) =>
     const passwordHash = await hashPassword(password);
 
     await pool.query(
-      `INSERT INTO users (id, username, email, password_hash, name, user_type, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      `INSERT INTO users (id, username, email, password_hash, name, user_type, is_verified, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, FALSE, NOW(), NOW())`,
       [id, cleanUsername, cleanEmail, passwordHash, cleanName, cleanUserType]
     );
 
     const [rows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [id]);
     const user = formatUserRow(rows[0]);
-    const token = generateToken(user);
+
+    // Generate 30-second verification token
+    const vToken = await createVerificationToken(id);
+    await sendVerificationEmail(cleanEmail, vToken.token, VERIFICATION_EXPIRY_SECONDS);
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'User registered successfully. Please verify your account using the token sent to your email.',
+      requires_verification: true,
+      user_id: id,
+      email: cleanEmail,
+      username: cleanUsername,
       user,
-      token,
+      verification_token: vToken.token,
+      expires_in_seconds: VERIFICATION_EXPIRY_SECONDS,
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to register user', detail: err.message });
+  }
+});
+
+// POST /api/v1/auth/verify
+authRouter.post('/verify', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId, usernameOrEmail, token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Verification token is required' });
+    }
+
+    const cleanToken = token.trim();
+
+    let targetUser: any = null;
+    if (userId) {
+      const [rows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [userId]);
+      if (rows && rows.length > 0) targetUser = rows[0];
+    } else if (usernameOrEmail) {
+      const queryTarget = String(usernameOrEmail).trim().toLowerCase();
+      const [rows] = await pool.query<any[]>(
+        'SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?',
+        [queryTarget, queryTarget]
+      );
+      if (rows && rows.length > 0) targetUser = rows[0];
+    }
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User account not found' });
+    }
+
+    // Find the latest active token for this user
+    const [tokenRows] = await pool.query<any[]>(
+      `SELECT * FROM verification_tokens 
+       WHERE user_id = ? AND token = ? AND used_at IS NULL 
+       ORDER BY created_at DESC LIMIT 1`,
+      [targetUser.id, cleanToken]
+    );
+
+    if (!tokenRows || tokenRows.length === 0) {
+      return res.status(400).json({ error: 'Invalid verification token. Please check the code or request a new one.' });
+    }
+
+    const tokenRecord = tokenRows[0];
+    const expiresAt = new Date(tokenRecord.expires_at).getTime();
+    const now = Date.now();
+
+    if (now > expiresAt) {
+      return res.status(400).json({
+        error: 'Verification token has expired (valid for 30s). Please click Resend Token to get a new code.',
+        expired: true,
+      });
+    }
+
+    // Mark token as used
+    await pool.query('UPDATE verification_tokens SET used_at = NOW() WHERE id = ?', [tokenRecord.id]);
+
+    // Mark user as verified
+    await pool.query('UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE id = ?', [targetUser.id]);
+
+    const [updatedRows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [targetUser.id]);
+    const verifiedUser = formatUserRow(updatedRows[0]);
+    const jwtToken = generateToken(verifiedUser);
+
+    res.json({
+      message: 'Account verified successfully!',
+      user: verifiedUser,
+      token: jwtToken,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to verify token', detail: err.message });
+  }
+});
+
+// POST /api/v1/auth/resend-verification
+authRouter.post('/resend-verification', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId, usernameOrEmail } = req.body;
+
+    let targetUser: any = null;
+    if (userId) {
+      const [rows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [userId]);
+      if (rows && rows.length > 0) targetUser = rows[0];
+    } else if (usernameOrEmail) {
+      const queryTarget = String(usernameOrEmail).trim().toLowerCase();
+      const [rows] = await pool.query<any[]>(
+        'SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?',
+        [queryTarget, queryTarget]
+      );
+      if (rows && rows.length > 0) targetUser = rows[0];
+    }
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User account not found' });
+    }
+
+    if (targetUser.is_verified) {
+      return res.status(400).json({ error: 'Account is already verified. You can log in directly.' });
+    }
+
+    const vToken = await createVerificationToken(targetUser.id);
+    await sendVerificationEmail(targetUser.email, vToken.token, VERIFICATION_EXPIRY_SECONDS);
+
+    res.json({
+      message: 'Verification token resent successfully',
+      user_id: targetUser.id,
+      email: targetUser.email,
+      verification_token: vToken.token,
+      expires_in_seconds: VERIFICATION_EXPIRY_SECONDS,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to resend verification token', detail: err.message });
   }
 });
 
@@ -99,6 +240,21 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     const passwordValid = await comparePassword(password, userRow.password_hash);
     if (!passwordValid) {
       return res.status(401).json({ error: 'Invalid username/email or password' });
+    }
+
+    if (!userRow.is_verified) {
+      const vToken = await createVerificationToken(userRow.id);
+      await sendVerificationEmail(userRow.email, vToken.token, VERIFICATION_EXPIRY_SECONDS);
+
+      return res.status(403).json({
+        error: 'Account not verified. A new verification token has been sent to your email.',
+        requires_verification: true,
+        user_id: userRow.id,
+        email: userRow.email,
+        username: userRow.username,
+        verification_token: vToken.token,
+        expires_in_seconds: VERIFICATION_EXPIRY_SECONDS,
+      });
     }
 
     const user = formatUserRow(userRow);

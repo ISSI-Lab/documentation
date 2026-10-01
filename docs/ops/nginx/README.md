@@ -76,6 +76,11 @@ In production, phpMyAdmin is **disabled by default**:
 To enable phpMyAdmin in production:
 ```bash
 ./scripts/start.sh --prod -pma
+
+# Or enable / manage standalone on demand:
+./scripts/enable-pma.sh
+./scripts/enable-pma.sh --status
+./scripts/enable-pma.sh --stop
 ```
 
 ### 4.3 First-Time Production Setup & Deployment (`--prod --init`)

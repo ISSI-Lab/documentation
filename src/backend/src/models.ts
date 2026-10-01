@@ -6,8 +6,18 @@ export interface User {
   email: string;
   name: string;
   user_type: UserType;
+  is_verified?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface VerificationToken {
+  id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+  created_at: string;
+  used_at?: string | null;
 }
 
 export interface UserWithPassword extends User {

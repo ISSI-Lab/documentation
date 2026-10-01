@@ -84,17 +84,78 @@ def test_full_system_flow():
         print(f" - {m['name']} (@{m['username']}): Role = {m['role']}")
     assert len(members) >= 2
 
-    print("\n--- 7. Test Account Page User Type Role Switching ---")
-    # Register a new regular user 'new_member'
+    print("\n--- 7. Test Account Registration, 30-Second Verification Token & Resend ---")
+    import time
+    test_uid = int(time.time())
+    test_username = f"tester_{test_uid}"
+    test_email = f"tester_{test_uid}@example.com"
+
+    # 7.1 Register a new regular user -> Receives verification token
     r = requests.post(f"{BASE_URL}/auth/register", json={
-        "username": "tester_switch",
-        "email": "tester_switch@example.com",
+        "username": test_username,
+        "email": test_email,
         "password": "Password123!",
         "name": "Role Switch Tester",
         "user_type": "regular"
     })
-    assert r.status_code == 201
-    switch_user_token = r.json()["token"]
+    assert r.status_code == 201, f"Registration failed: {r.text}"
+    reg_data = r.json()
+    assert reg_data["requires_verification"] is True
+    assert reg_data["expires_in_seconds"] == 30
+    assert "verification_token" in reg_data
+    assert "token" not in reg_data or reg_data.get("token") is None
+    verification_code = reg_data["verification_token"]
+    user_id = reg_data["user_id"]
+    print(f"User registered. Received 30s verification token: {verification_code}")
+
+    # 7.2 Unverified user attempts login -> Rejection with 403 requires_verification
+    r = requests.post(f"{BASE_URL}/auth/login", json={
+        "usernameOrEmail": test_username,
+        "password": "Password123!"
+    })
+    assert r.status_code == 403, f"Expected 403 for unverified user: {r.text}"
+    login_err = r.json()
+    assert login_err["requires_verification"] is True
+    print("Unverified user login correctly rejected with 403 and requires_verification.")
+
+    # 7.3 Try verifying with incorrect code -> Expect 400
+    r = requests.post(f"{BASE_URL}/auth/verify", json={
+        "userId": user_id,
+        "token": "000000"
+    })
+    assert r.status_code == 400, f"Expected 400 for bad code: {r.text}"
+    print("Invalid verification code correctly rejected.")
+
+    # 7.4 Test resend verification token
+    r = requests.post(f"{BASE_URL}/auth/resend-verification", json={
+        "userId": user_id
+    })
+    assert r.status_code == 200, f"Resend failed: {r.text}"
+    resend_data = r.json()
+    assert resend_data["expires_in_seconds"] == 30
+    new_verification_code = resend_data["verification_token"]
+    print(f"Resent fresh verification code: {new_verification_code}")
+
+    # 7.5 Verify account with fresh token
+    r = requests.post(f"{BASE_URL}/auth/verify", json={
+        "userId": user_id,
+        "token": new_verification_code
+    })
+    assert r.status_code == 200, f"Account verification failed: {r.text}"
+    verify_data = r.json()
+    switch_user_token = verify_data["token"]
+    assert verify_data["user"]["is_verified"] is True
+    print("Account verified successfully with token! Auth token issued.")
+
+    # 7.6 Subsequent login now succeeds
+    r = requests.post(f"{BASE_URL}/auth/login", json={
+        "usernameOrEmail": test_username,
+        "password": "Password123!"
+    })
+    assert r.status_code == 200, f"Login failed for verified user: {r.text}"
+    print("Verified user can now log in normally.")
+
+    print("\n--- 7.7 Test Account Page User Type Role Switching ---")
 
     # Verify cannot create team
     r = requests.post(f"{BASE_URL}/teams", json={"name": "Switch Team"}, headers={"Authorization": f"Bearer {switch_user_token}"})

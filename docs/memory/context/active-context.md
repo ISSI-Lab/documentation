@@ -24,6 +24,8 @@ This file tracks the current sprint state, active workstreams, and recent change
 ## Recent Significant Decisions
 - Adopted multi-tier architecture: Host Nginx -> Container Nginx + ReactJS -> NodeJS -> MySQL ([ADR-0003](../decisions/0003-host-nginx-container-react-node-mysql-architecture.md)).
 - Implemented user authentication, open team creation with Owner/Manager/Member roles, scoped asset visibility, and personal homepage dashboard ([ADR-0004](../decisions/0004-user-authentication-and-hierarchical-team-collaboration.md)).
+- Implemented user registration account verification token flow with strict 30-second token expiration and resend capabilities.
+- Added encrypted email configuration file (`src/backend/config/email_config.json`) with `smtp.appunity.net` and `service@appunity.net` defaults, managed via `scripts/manage_email_config.py` and auto-encrypted during `scripts/start.sh`.
 - Consolidated startup and deployment automation into `scripts/start.sh` (defaulting to development with phpMyAdmin on port `28080`, and `--prod` for production).
 - Implemented automatic host port collision detection and auto-reallocation in `scripts/start.sh` to prevent `port is already allocated` errors across different developer machines.
 - Automated Host Nginx site configuration (`/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`), Certbot SSL bootstrapping/issuance, and Host Nginx restarting in `scripts/start.sh --prod --init`.

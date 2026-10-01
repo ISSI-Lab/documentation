@@ -45,6 +45,12 @@ teamsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Respons
 teamsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
+    if (user.user_type !== 'organizer') {
+      return res.status(403).json({
+        error: 'Only organizer accounts can create teams. You can switch your role in Account settings.',
+      });
+    }
+
     const { name, description } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Team name is required' });

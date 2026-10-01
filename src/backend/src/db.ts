@@ -65,10 +65,25 @@ export async function initDatabase(): Promise<void> {
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255) NOT NULL,
           user_type ENUM('organizer', 'regular') NOT NULL DEFAULT 'regular',
+          is_verified BOOLEAN NOT NULL DEFAULT FALSE,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_username (username),
           INDEX idx_email (email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 1.1 Verification Tokens Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS verification_tokens (
+          id VARCHAR(64) PRIMARY KEY,
+          user_id VARCHAR(64) NOT NULL,
+          token VARCHAR(64) NOT NULL,
+          expires_at DATETIME NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          used_at DATETIME NULL,
+          INDEX idx_user_id (user_id),
+          INDEX idx_token (token)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -171,6 +186,8 @@ export async function initDatabase(): Promise<void> {
         // ignore
       }
 
+      await ensureColumnExists(conn, 'users', 'is_verified', 'BOOLEAN NOT NULL DEFAULT FALSE');
+
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
       await ensureColumnExists(conn, 'templates', 'team_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'templates', 'created_by', 'VARCHAR(64) NULL');
@@ -250,11 +267,12 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
       for (const u of config.demoUsers) {
         const passwordHash = await bcrypt.hash(u.password || 'Password123!', 10);
         await runner.query(
-          `INSERT INTO users (id, username, email, password_hash, name, user_type, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+          `INSERT INTO users (id, username, email, password_hash, name, user_type, is_verified, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, TRUE, NOW(), NOW())
            ON DUPLICATE KEY UPDATE
              name = VALUES(name),
-             user_type = VALUES(user_type)`,
+             user_type = VALUES(user_type),
+             is_verified = TRUE`,
           [u.id, u.username, u.email, passwordHash, u.name, u.user_type || 'regular']
         );
       }

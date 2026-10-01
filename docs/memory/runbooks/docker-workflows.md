@@ -24,8 +24,17 @@ Runbook for managing, troubleshooting, and operating the container stack across 
 # Normal production startup (detached background mode, phpMyAdmin disabled by default)
 ./scripts/start.sh --prod
 
-# Production startup with phpMyAdmin enabled
+# Production startup with phpMyAdmin enabled (calls enable-pma.sh)
 ./scripts/start.sh --prod -pma
+
+# Enable / Start phpMyAdmin on demand in production anytime:
+./scripts/enable-pma.sh
+
+# Check phpMyAdmin status:
+./scripts/enable-pma.sh --status
+
+# Stop / Disable phpMyAdmin on demand:
+./scripts/enable-pma.sh --stop
 ```
 
 ### Stopping & Terminating Containers
