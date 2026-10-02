@@ -14,6 +14,7 @@ import {
   Building2,
   BookmarkCheck,
   CheckCircle2,
+  User as UserIcon,
 } from 'lucide-react';
 import { Document, Organization, Project, Team, Template, User } from '../../types';
 
@@ -375,29 +376,51 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 mt-1">{project.name}</h4>
-                        {project.team_assignment_set_name && (
+                        {project.association_type === 'individual' ? (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                              <UserIcon className="w-3 h-3 text-emerald-600" />
+                              Individual Assigned
+                            </span>
+                          </div>
+                        ) : project.team_assignment_set_name ? (
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
                               <CheckCircle2 className="w-3 h-3 text-indigo-600" />
                               Set: {project.team_assignment_set_name}
                             </span>
                           </div>
-                        )}
+                        ) : null}
                         <p className="text-xs text-slate-500 line-clamp-2 mt-1">
                           {project.description || 'No description.'}
                         </p>
 
-                        {(project.assigned_teams || []).length > 0 && (
-                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
-                            {project.assigned_teams?.map((at) => (
-                              <span
-                                key={at.team_id}
-                                className="text-[10px] bg-white text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs"
-                              >
-                                {at.team_name}
-                              </span>
-                            ))}
-                          </div>
+                        {project.association_type === 'individual' ? (
+                          (project.individual_members || []).length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
+                              {project.individual_members?.map((im) => (
+                                <span
+                                  key={im.user_id}
+                                  className="text-[10px] bg-white text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs"
+                                >
+                                  {im.user_name || im.user_id} ({im.role})
+                                </span>
+                              ))}
+                            </div>
+                          )
+                        ) : (
+                          (project.assigned_teams || []).length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
+                              {project.assigned_teams?.map((at) => (
+                                <span
+                                  key={at.team_id}
+                                  className="text-[10px] bg-white text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs"
+                                >
+                                  {at.team_name}
+                                </span>
+                              ))}
+                            </div>
+                          )
                         )}
                       </div>
 

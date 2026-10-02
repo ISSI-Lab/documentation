@@ -11,6 +11,8 @@ import {
   TeamAssignmentSet,
   TeamAssignmentSetItem,
   ProjectTeamAssignment,
+  ProjectIndividualMember,
+  ProjectAssociationType,
   Template,
   TemplateCreatePayload,
   User,
@@ -329,6 +331,7 @@ export const api = {
     team_id?: string | null;
     name: string;
     description?: string;
+    association_type?: ProjectAssociationType;
   }): Promise<Project> {
     return request<Project>('/projects', {
       method: 'POST',
@@ -622,6 +625,7 @@ export const api = {
   async getProjectTeams(projectId: string): Promise<{
     project_id: string;
     organization_id: string | null;
+    association_type?: ProjectAssociationType;
     team_assignment_set_id: string | null;
     team_assignment_set_name: string | null;
     assigned_teams: ProjectTeamAssignment[];
@@ -677,4 +681,64 @@ export const api = {
       body: JSON.stringify(payload || {}),
     });
   },
+
+  // Project Association Mode & Individual Members
+  async updateProjectAssignmentMode(
+    projectId: string,
+    payload: {
+      association_type: ProjectAssociationType;
+      team_assignment_set_id?: string | null;
+      members?: Array<{ user_id: string; role?: string }>;
+    }
+  ): Promise<Project> {
+    return request<Project>(`/projects/${encodeURIComponent(projectId)}/assignment-mode`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getProjectIndividualMembers(projectId: string): Promise<{
+    project_id: string;
+    association_type: ProjectAssociationType;
+    individual_members: ProjectIndividualMember[];
+  }> {
+    return request<any>(`/projects/${encodeURIComponent(projectId)}/individual-members`);
+  },
+
+  async addProjectIndividualMember(
+    projectId: string,
+    payload: { user_id: string; role?: string }
+  ): Promise<{ message: string; individual_members: ProjectIndividualMember[] }> {
+    return request<any>(`/projects/${encodeURIComponent(projectId)}/individual-members`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateProjectIndividualMemberRole(
+    projectId: string,
+    memberUserId: string,
+    role: string
+  ): Promise<{ message: string; individual_members: ProjectIndividualMember[] }> {
+    return request<any>(
+      `/projects/${encodeURIComponent(projectId)}/individual-members/${encodeURIComponent(memberUserId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ role }),
+      }
+    );
+  },
+
+  async removeProjectIndividualMember(
+    projectId: string,
+    memberUserId: string
+  ): Promise<{ message: string; individual_members: ProjectIndividualMember[] }> {
+    return request<any>(
+      `/projects/${encodeURIComponent(projectId)}/individual-members/${encodeURIComponent(memberUserId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
 };
+

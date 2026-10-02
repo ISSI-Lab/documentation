@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users,
+  User as UserIcon,
   FolderKanban,
   KeyRound,
   Copy,
@@ -20,7 +21,15 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { Project, Organization, OrganizationMember, User, OrganizationTeam, TeamAssignmentSet } from '../../types';
+import {
+  Project,
+  Organization,
+  OrganizationMember,
+  User,
+  OrganizationTeam,
+  TeamAssignmentSet,
+  ProjectAssociationType,
+} from '../../types';
 import { ProjectTeamAssignmentModal } from '../projects/ProjectTeamAssignmentModal';
 
 interface OrganizationManagementProps {
@@ -87,6 +96,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [newProjectAssocType, setNewProjectAssocType] = useState<ProjectAssociationType>('team');
   const [creatingProject, setCreatingProject] = useState(false);
 
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -193,10 +203,12 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
         organization_id: currentOrgDetails.id,
         name: newProjectName,
         description: newProjectDesc,
+        association_type: newProjectAssocType,
       });
       showToast(`Project "${newProj.name}" created!`);
       setNewProjectName('');
       setNewProjectDesc('');
+      setNewProjectAssocType('team');
       setIsCreateProjectOpen(false);
       await loadOrgDetails(currentOrgDetails.id);
     } catch (err: any) {
@@ -555,49 +567,93 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               </span>
                             </div>
 
-                            {/* Reusable Set Badge if present */}
-                            {proj.team_assignment_set_name && (
+                            {/* Association Type / Set Badge */}
+                            {proj.association_type === 'individual' ? (
+                              <div className="mb-2">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                                  <UserIcon className="w-3 h-3 text-emerald-600" />
+                                  Individually Assigned
+                                </span>
+                              </div>
+                            ) : proj.team_assignment_set_name ? (
                               <div className="mb-2">
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
                                   <CheckCircle2 className="w-3 h-3 text-indigo-600" />
                                   Set: {proj.team_assignment_set_name}
                                 </span>
                               </div>
-                            )}
+                            ) : null}
 
                             <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                               {proj.description || 'No description provided.'}
                             </p>
 
-                            {/* Assigned Teams Badges */}
+                            {/* Assigned Staffing Badges */}
                             <div className="mt-3 pt-2 border-t border-slate-100">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                  Assigned Teams ({(proj.assigned_teams || []).length}):
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                  {proj.association_type === 'individual' ? (
+                                    <>
+                                      <UserIcon className="w-3 h-3 text-emerald-600" />
+                                      Assigned Members ({(proj.individual_members || []).length}):
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Users className="w-3 h-3 text-indigo-600" />
+                                      Assigned Teams ({(proj.assigned_teams || []).length}):
+                                    </>
+                                  )}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => setSelectedProjectForAssignment(proj)}
                                   className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5 cursor-pointer"
                                 >
-                                  <Users className="w-3 h-3" /> Manage
+                                  {proj.association_type === 'individual' ? (
+                                    <UserIcon className="w-3 h-3" />
+                                  ) : (
+                                    <Users className="w-3 h-3" />
+                                  )}
+                                  Manage Staffing
                                 </button>
                               </div>
 
-                              {(proj.assigned_teams || []).length === 0 ? (
-                                <span className="text-[11px] text-slate-400 italic">No teams assigned yet</span>
+                              {proj.association_type === 'individual' ? (
+                                (proj.individual_members || []).length === 0 ? (
+                                  <span className="text-[11px] text-slate-400 italic">No members assigned directly</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {proj.individual_members?.map((im) => (
+                                      <span
+                                        key={im.user_id}
+                                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                                          im.role === 'lead'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-200 font-semibold'
+                                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                                        }`}
+                                        title={`Role: ${im.role}`}
+                                      >
+                                        {im.user_name || im.user_id} ({im.role})
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
                               ) : (
-                                <div className="flex flex-wrap gap-1">
-                                  {proj.assigned_teams?.map((at) => (
-                                    <span
-                                      key={at.team_id}
-                                      className="text-[10px] bg-slate-100 text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200"
-                                      title={at.assigned_role ? `Role: ${at.assigned_role}` : undefined}
-                                    >
-                                      {at.team_name}
-                                    </span>
-                                  ))}
-                                </div>
+                                (proj.assigned_teams || []).length === 0 ? (
+                                  <span className="text-[11px] text-slate-400 italic">No teams assigned yet</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {proj.assigned_teams?.map((at) => (
+                                      <span
+                                        key={at.team_id}
+                                        className="text-[10px] bg-slate-100 text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200"
+                                        title={at.assigned_role ? `Role: ${at.assigned_role}` : undefined}
+                                      >
+                                        {at.team_name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
                               )}
                             </div>
                           </div>
@@ -613,9 +669,14 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               <button
                                 onClick={() => setSelectedProjectForAssignment(proj)}
                                 className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Manage project team assignments"
+                                title="Manage project staffing & association"
                               >
-                                <Users className="w-3 h-3" /> Teams
+                                {proj.association_type === 'individual' ? (
+                                  <UserIcon className="w-3 h-3" />
+                                ) : (
+                                  <Users className="w-3 h-3" />
+                                )}
+                                Staffing
                               </button>
                               <button
                                 onClick={() => onOpenNewDocModal(proj.id)}
@@ -992,6 +1053,49 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                   placeholder="Brief description of this project's scope..."
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Association Mode (Strictly Mutually Exclusive)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectAssocType('team')}
+                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      newProjectAssocType === 'team'
+                        ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950">
+                      <Users className="w-4 h-4 text-indigo-600" />
+                      Team Assigned
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">
+                      Staffed via organization squads or reusable team sets
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectAssocType('individual')}
+                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      newProjectAssocType === 'individual'
+                        ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-950">
+                      <UserIcon className="w-4 h-4 text-emerald-600" />
+                      Individual Assigned
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">
+                      Staffed directly by individual organization members
+                    </span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex justify-end space-x-2 pt-2">

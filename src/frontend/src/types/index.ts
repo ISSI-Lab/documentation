@@ -110,10 +110,23 @@ export interface ProjectTeamAssignment {
   members?: OrganizationTeamMember[];
 }
 
+export type ProjectAssociationType = 'team' | 'individual';
+
+export interface ProjectIndividualMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: string;
+  assigned_at: string;
+  user_name?: string;
+  user_email?: string;
+}
+
 export interface Project {
   id: string;
   organization_id: string | null;
   team_id?: string | null; // compatibility
+  association_type?: ProjectAssociationType;
   team_assignment_set_id?: string | null;
   team_assignment_set_name?: string | null;
   name: string;
@@ -123,6 +136,7 @@ export interface Project {
   updated_at: string;
   documents_count?: number;
   assigned_teams?: ProjectTeamAssignment[];
+  individual_members?: ProjectIndividualMember[];
 }
 
 export type DocumentElementType =

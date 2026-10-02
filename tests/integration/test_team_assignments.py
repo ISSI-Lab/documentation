@@ -11,7 +11,45 @@ Validates the exact sequence and containment hierarchy:
 
 import sys
 import uuid
-import requests
+import json
+
+try:
+    import requests
+except ImportError:
+    import urllib.request
+    import urllib.error
+
+    class _Response:
+        def __init__(self, status_code, body_bytes):
+            self.status_code = status_code
+            self.text = body_bytes.decode("utf-8") if body_bytes else ""
+        def json(self):
+            return json.loads(self.text) if self.text else {}
+
+    class _RequestsWrapper:
+        @staticmethod
+        def _req(method, url, json_data=None, headers=None, timeout=10):
+            req_headers = {"Content-Type": "application/json"}
+            if headers:
+                req_headers.update(headers)
+            data = json.dumps(json_data).encode("utf-8") if json_data is not None else None
+            req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return _Response(resp.status, resp.read())
+            except urllib.error.HTTPError as e:
+                return _Response(e.code, e.read())
+
+        def get(self, url, headers=None, timeout=10):
+            return self._req("GET", url, headers=headers, timeout=timeout)
+        def post(self, url, json=None, headers=None, timeout=10):
+            return self._req("POST", url, json_data=json, headers=headers, timeout=timeout)
+        def put(self, url, json=None, headers=None, timeout=10):
+            return self._req("PUT", url, json_data=json, headers=headers, timeout=timeout)
+        def delete(self, url, headers=None, timeout=10):
+            return self._req("DELETE", url, headers=headers, timeout=timeout)
+
+    requests = _RequestsWrapper()
 
 BASE_URL = "http://localhost:5000/api/v1"
 
@@ -224,8 +262,72 @@ def run_tests():
     assert updated_proj["team_assignment_set_name"] == f"{proj_web['name']} Dedicated Set"
     print(f"✓ Cloned dedicated set for project: '{updated_proj['team_assignment_set_name']}'")
 
-    # 9. Cleanup & Disassociate
-    print("\n--- 9. Disassociating Set and Deleting ---")
+    # 9. STEP 6: Individual Association & Strict Mutual Exclusion Tests
+    print("\n--- 9. STEP 6: Testing Individual Association & Strict Mutual Exclusion ---")
+    # 9.1 Create an individually-associated project
+    r_indiv_proj = requests.post(f"{BASE_URL}/projects", json={
+        "organization_id": org_id,
+        "name": f"Solo Initiative {uid}",
+        "description": "Project with direct individual staffing",
+        "association_type": "individual"
+    }, headers=headers_org)
+    assert r_indiv_proj.status_code == 201, f"Failed to create individual project: {r_indiv_proj.text}"
+    proj_indiv = r_indiv_proj.json()
+    assert proj_indiv["association_type"] == "individual"
+    assert proj_indiv["team_assignment_set_id"] is None
+    assert len(proj_indiv.get("assigned_teams", [])) == 0
+    print(f"✓ Created individually associated project: '{proj_indiv['name']}' (association_type: individual)")
+
+    # 9.2 Add regular user as individual member
+    r_add_mem = requests.post(f"{BASE_URL}/projects/{proj_indiv['id']}/individual-members", json={
+        "user_id": reg_user["id"],
+        "role": "member"
+    }, headers=headers_org)
+    assert r_add_mem.status_code == 201, f"Failed to add individual member: {r_add_mem.text}"
+    mem_list = r_add_mem.json().get("individual_members", [])
+    assert any(m["user_id"] == reg_user["id"] for m in mem_list)
+    print(f"✓ Added user '{reg_user['name']}' as individual project member")
+
+    # 9.3 Update member role to lead
+    r_up_role = requests.put(f"{BASE_URL}/projects/{proj_indiv['id']}/individual-members/{reg_user['id']}", json={
+        "role": "lead"
+    }, headers=headers_org)
+    assert r_up_role.status_code == 200, f"Failed to update role: {r_up_role.text}"
+    updated_mems = r_up_role.json().get("individual_members", [])
+    target_mem = next(m for m in updated_mems if m["user_id"] == reg_user["id"])
+    assert target_mem["role"] == "lead"
+    print(f"✓ Promoted individual member '{reg_user['name']}' to lead")
+
+    # 9.4 MUTUAL EXCLUSION TEST: Switch from Individual to Team mode
+    print("\n--- 10. Testing Strict Mutual Exclusion: Mode Transitions ---")
+    r_switch_team = requests.put(f"{BASE_URL}/projects/{proj_indiv['id']}/assignment-mode", json={
+        "association_type": "team",
+        "team_assignment_set_id": set_web["id"]
+    }, headers=headers_org)
+    assert r_switch_team.status_code == 200, f"Failed to switch to team mode: {r_switch_team.text}"
+    switched_team = r_switch_team.json()
+    assert switched_team["association_type"] == "team"
+    assert switched_team["team_assignment_set_id"] == set_web["id"]
+    assert len(switched_team.get("individual_members", [])) == 0, "Individual members were not cleared upon switching to team mode!"
+    assert len(switched_team.get("assigned_teams", [])) > 0, "Teams were not populated from set upon switching to team mode!"
+    print("✓ Successfully switched from Individual -> Team mode: individual members purged, teams synced")
+
+    # 9.5 MUTUAL EXCLUSION TEST: Switch from Team to Individual mode
+    r_switch_indiv = requests.put(f"{BASE_URL}/projects/{proj_indiv['id']}/assignment-mode", json={
+        "association_type": "individual",
+        "members": [{"user_id": org_user["id"], "role": "lead"}]
+    }, headers=headers_org)
+    assert r_switch_indiv.status_code == 200, f"Failed to switch to individual mode: {r_switch_indiv.text}"
+    switched_indiv = r_switch_indiv.json()
+    assert switched_indiv["association_type"] == "individual"
+    assert switched_indiv["team_assignment_set_id"] is None, "Set ID was not cleared upon switching to individual mode!"
+    assert len(switched_indiv.get("assigned_teams", [])) == 0, "Assigned teams were not cleared upon switching to individual mode!"
+    assert len(switched_indiv.get("individual_members", [])) == 1, "Individual members were not populated!"
+    print("✓ Successfully switched from Team -> Individual mode: team assignments and set purged, individual members populated")
+    print("✓ Strict Mutual Exclusion verified: No hybrid association can exist!")
+
+    # 11. Cleanup & Disassociate
+    print("\n--- 11. Disassociating Set and Deleting ---")
     r_disassoc = requests.put(f"{BASE_URL}/projects/{proj_cloud['id']}/team-assignment-set", json={
         "team_assignment_set_id": None
     }, headers=headers_org)
@@ -236,8 +338,11 @@ def run_tests():
     assert r_del_set.status_code == 204
     print("✓ Successfully deleted team assignment set with cascading deletion of teams")
 
+    # Cleanup individual project
+    requests.delete(f"{BASE_URL}/projects/{proj_indiv['id']}", headers=headers_org)
+
     print("\n==================================================================")
-    print("ALL TESTS PASSED WITH CORRECT SEQUENCE & CONTAINMENT! ✓")
+    print("ALL TESTS PASSED WITH STRICT MUTUAL EXCLUSION VERIFIED! ✓")
     print("==================================================================")
     return 0
 

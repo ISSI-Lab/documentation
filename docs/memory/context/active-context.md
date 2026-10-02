@@ -21,6 +21,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Email Service & Registration | AI Agent | Completed | AES-256-GCM `email_config.json`, default `EMAIL_CONFIG_SECRET`, CLI wizard (`scripts/setup_email.sh`), Docker integration in `scripts/start.sh`, verification email dispatch |
 | Organization Domain Refactoring | AI Agent | Completed | Elevated teams to top-level organizations across DB schemas, backend APIs, frontend UI, and tests to prepare for future nested sub-teams ([ADR-0005](../decisions/0005-refactor-team-domain-to-organization.md)) |
 | Organization Teams & Assignment Sets | AI Agent | Completed | Implemented functional sub-teams within organizations, per-project team assignments, and reusable organization-wide team assignment sets with project association and export capabilities ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
+| Strict Team vs Individual Project Association | AI Agent | Completed | Implemented strictly mutually exclusive project association (Team vs. Individual, zero hybrid), database schemas, transition safeguards, and roster management ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
 
 ---
 
@@ -29,6 +30,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 - Implemented user authentication, open team creation with Owner/Manager/Member roles, scoped asset visibility, and personal homepage dashboard ([ADR-0004](../decisions/0004-user-authentication-and-hierarchical-team-collaboration.md)).
 - Refactored top-level collaborative tenant from Team to Organization to facilitate nested sub-teams in future phases ([ADR-0005](../decisions/0005-refactor-team-domain-to-organization.md)).
 - Designed and built sub-teams in organizations, granular project team assignments, and reusable organization-wide Team Assignment Sets ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)).
+- Enforced strict mutual exclusion between Team and Individual project association (explicitly disallowing hybrid models), guaranteeing unambiguous project ownership and staffing.
 - Implemented user registration account verification token flow with strict 30-second token expiration and resend capabilities.
 - Added encrypted email configuration file (`src/backend/config/email_config.json`) with `smtp.appunity.net` defaults, managed via `scripts/setup_email.sh` / `scripts/manage_email_config.py`, auto-loaded by `scripts/start.sh`, and documented in [`docs/memory/runbooks/email-configuration-guide.md`](../runbooks/email-configuration-guide.md).
 - Consolidated startup and deployment automation into `scripts/start.sh` (defaulting to development with phpMyAdmin on port `28080`, and `--prod` for production).

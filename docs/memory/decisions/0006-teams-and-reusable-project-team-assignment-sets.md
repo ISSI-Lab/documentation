@@ -56,18 +56,37 @@ We modeled the containment structure in `src/backend/db/init.sql` and `src/backe
   - **Tab 2: Project Assignments**:
     - Matrix overview displaying all projects, their associated Team Assignment Set, and assigned teams.
     - Actions to change association or clone set for project-specific customization.
-- **Interactive Project Team Assignment Modal (`src/frontend/src/components/projects/ProjectTeamAssignmentModal.tsx`)**:
-  - Associate or change the project's Team Assignment Set.
-  - "Clone for Project" action to fork a set into a dedicated project set.
+- **Interactive Project Association & Staffing Modal (`src/frontend/src/components/projects/ProjectTeamAssignmentModal.tsx`)**:
+  - Segmented control to toggle between **Team Association (Squads / Set)** and **Individual Association (Members)**.
+  - Strict mutual exclusion: when switching modes, prompts an explicit confirmation warning before purging the opposing assignments.
+  - Team mode: manage reusable set association, clone for project, view squads, and save as reusable set.
+  - Individual mode: view assigned project members, assign organization users directly, and toggle `lead`/`member` roles.
 - **Organization Management & Homepage Integration**:
-  - Set association badges and squad tags surfaced across project cards in `OrganizationManagement.tsx` and `PersonalHomepage.tsx`.
+  - Set association and individual staffing badges surfaced across project cards in `OrganizationManagement.tsx`, `TeamManagement.tsx`, and `PersonalHomepage.tsx`.
+  - Project creation dialog allows choosing between Team Assigned and Individual Assigned upon initial creation.
+
+### 4. Strict "Team" vs. "Individual" Project Association (No Hybrid)
+Projects support two distinct, strictly mutually exclusive association models:
+1. **Team Association**: The project is associated with an organization Team Assignment Set and its constituent functional squads.
+2. **Individual Association**: The project is staffed directly by individual organization users with `lead` or `member` roles.
+
+**Strict Mutual Exclusion Contract**:
+- A project can never exist in a hybrid state.
+- `projects.association_type` (`ENUM('team', 'individual') NOT NULL DEFAULT 'team'`) dictates the active association mode.
+- Switching to `individual`: the backend transaction unlinks `team_assignment_set_id = NULL`, deletes all rows in `project_team_assignments` for the project, and manages `project_individual_members`.
+- Switching to `team`: the backend transaction deletes all rows in `project_individual_members` for the project and associates with the designated team assignment set.
+- Dedicated endpoints:
+  - `PUT /api/v1/projects/:id/assignment-mode`: switches mode and clears inactive configuration.
+  - `GET / POST / PUT / DELETE /api/v1/projects/:id/individual-members`: manages individual member roster.
 
 ## Consequences
 
 ### Positive
 - **Correct Mental Model & Workflow**: Users create the staffing set first, define functional squads inside it, add users from the organization, and associate sets with projects.
-- **High Reusability & Rapid Provisioning**: Common staffing patterns can be saved and reused across multiple projects, or cloned for custom variations.
-- **Granular Staffing**: Different projects in the same organization maintain distinct team assignments.
+- **Strict Separation of Concerns**: Strict mutual exclusion eliminates ambiguous ownership and routing bugs inherent to hybrid staffing.
+- **High Reusability & Rapid Provisioning**: Common staffing sets can be saved and reused across multiple projects, or cloned for custom variations.
+- **Granular Staffing**: Different projects in the same organization maintain distinct team assignments or direct individual rosters.
 
 ### Negative / Trade-offs
+- Switching association modes requires confirming the deletion of opposing assignments to preserve strict mutual exclusion.
 - Deleting a team assignment set cascades to the teams defined within that set, disassociating them from projects.

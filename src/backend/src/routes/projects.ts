@@ -2,26 +2,72 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, requireAuth } from '../auth';
-import { Project, ProjectTeamAssignment, OrganizationTeamMember, TeamAssignmentSet } from '../models';
+import {
+  Project,
+  ProjectTeamAssignment,
+  ProjectIndividualMember,
+  ProjectAssociationType,
+  OrganizationTeamMember,
+  TeamAssignmentSet,
+} from '../models';
 
 export const projectsRouter = Router();
 
-function formatProjectRow(row: any, assigned_teams: ProjectTeamAssignment[] = []): Project {
+function formatProjectRow(
+  row: any,
+  assigned_teams: ProjectTeamAssignment[] = [],
+  individual_members: ProjectIndividualMember[] = []
+): Project {
   const orgId = row.organization_id || row.team_id || null;
+  const assocType: ProjectAssociationType = row.association_type === 'individual' ? 'individual' : 'team';
   return {
     id: row.id,
     organization_id: orgId,
     team_id: orgId, // compatibility
-    team_assignment_set_id: row.team_assignment_set_id || null,
-    team_assignment_set_name: row.team_assignment_set_name || null,
+    association_type: assocType,
+    team_assignment_set_id: assocType === 'individual' ? null : (row.team_assignment_set_id || null),
+    team_assignment_set_name: assocType === 'individual' ? null : (row.team_assignment_set_name || null),
     name: row.name,
     description: row.description || '',
     created_by: row.created_by,
     documents_count: Number(row.documents_count || 0),
-    assigned_teams,
+    assigned_teams: assocType === 'team' ? assigned_teams : [],
+    individual_members: assocType === 'individual' ? individual_members : [],
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
+}
+
+async function fetchProjectIndividualMembers(projectIds: string[]): Promise<Record<string, ProjectIndividualMember[]>> {
+  if (projectIds.length === 0) return {};
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT pim.*, u.username, u.name as user_name, u.email as user_email
+       FROM project_individual_members pim
+       JOIN users u ON pim.user_id = u.id
+       WHERE pim.project_id IN (?)
+       ORDER BY (pim.role = 'lead') DESC, pim.assigned_at ASC`,
+      [projectIds]
+    );
+
+    const result: Record<string, ProjectIndividualMember[]> = {};
+    for (const r of rows) {
+      if (!result[r.project_id]) result[r.project_id] = [];
+      result[r.project_id].push({
+        id: r.id,
+        project_id: r.project_id,
+        user_id: r.user_id,
+        role: r.role,
+        assigned_at: new Date(r.assigned_at).toISOString(),
+        user_name: r.user_name || r.username,
+        user_email: r.user_email,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.warn('[Projects] fetchProjectIndividualMembers notice:', err);
+    return {};
+  }
 }
 
 async function fetchProjectTeamAssignments(projectIds: string[]): Promise<Record<string, ProjectTeamAssignment[]>> {
@@ -113,8 +159,9 @@ projectsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Resp
     const [rows] = await pool.query<any[]>(sql, params);
     const pIds = rows.map((r) => r.id);
     const assignmentsMap = await fetchProjectTeamAssignments(pIds);
+    const individualMap = await fetchProjectIndividualMembers(pIds);
 
-    res.json(rows.map((r) => formatProjectRow(r, assignmentsMap[r.id] || [])));
+    res.json(rows.map((r) => formatProjectRow(r, assignmentsMap[r.id] || [], individualMap[r.id] || [])));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve projects', detail: err.message });
   }
@@ -144,7 +191,8 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
     }
 
     const assignmentsMap = await fetchProjectTeamAssignments([projectId]);
-    res.json(formatProjectRow(rows[0], assignmentsMap[projectId] || []));
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json(formatProjectRow(rows[0], assignmentsMap[projectId] || [], individualMap[projectId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve project', detail: err.message });
   }
@@ -154,7 +202,7 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { organization_id, team_id, name, description } = req.body;
+    const { organization_id, team_id, name, description, association_type } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project name is required' });
@@ -171,19 +219,30 @@ projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Res
       }
     }
 
+    const assocType: ProjectAssociationType = association_type === 'individual' ? 'individual' : 'team';
     const projectId = `proj-${crypto.randomBytes(4).toString('hex')}`;
     await pool.query(
-      `INSERT INTO projects (id, organization_id, name, description, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [projectId, resolvedOrgId, name.trim(), description || '', userId]
+      `INSERT INTO projects (id, organization_id, association_type, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [projectId, resolvedOrgId, assocType, name.trim(), description || '', userId]
     );
+
+    if (assocType === 'individual') {
+      const pimId = `pim-${crypto.randomBytes(4).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO project_individual_members (id, project_id, user_id, role, assigned_at)
+         VALUES (?, ?, ?, 'lead', NOW())`,
+        [pimId, projectId, userId]
+      );
+    }
 
     const [createdRows] = await pool.query<any[]>(
       `SELECT p.*, 0 as documents_count FROM projects p WHERE p.id = ?`,
       [projectId]
     );
 
-    res.status(201).json(formatProjectRow(createdRows[0]));
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.status(201).json(formatProjectRow(createdRows[0], [], individualMap[projectId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to create project', detail: err.message });
   }
@@ -222,12 +281,17 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
+        tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
-       FROM projects p WHERE p.id = ?`,
+       FROM projects p
+       LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
+       WHERE p.id = ?`,
       [projectId]
     );
 
-    res.json(formatProjectRow(updatedRows[0]));
+    const assignmentsMap = await fetchProjectTeamAssignments([projectId]);
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || [], individualMap[projectId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update project', detail: err.message });
   }
@@ -255,8 +319,9 @@ projectsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res
       return res.status(403).json({ error: 'You do not have permission to delete this personal project' });
     }
 
-    // Unlink documents or delete
+    // Unlink documents and delete assignments
     await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+    await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
     await pool.query('DELETE FROM documents WHERE project_id = ?', [projectId]);
     await pool.query('DELETE FROM projects WHERE id = ?', [projectId]);
 
@@ -350,6 +415,13 @@ projectsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedRequest,
       return res.status(404).json({ error: 'Team not found in this organization' });
     }
 
+    // Strict mutual exclusion: enforce team association and clear individual members
+    await pool.query(
+      `UPDATE projects SET association_type = 'team', updated_at = NOW() WHERE id = ?`,
+      [projectId]
+    );
+    await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
+
     const ptaId = `pta-${projectId}-${team_id}`;
     await pool.query(
       `INSERT INTO project_team_assignments (id, project_id, team_id, assigned_role, assigned_at)
@@ -434,10 +506,12 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
         return res.status(404).json({ error: 'Team assignment set not found in this organization' });
       }
 
+      // Strict mutual exclusion: set association_type to team, set ID, and delete individual members
       await pool.query(
-        'UPDATE projects SET team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?',
+        "UPDATE projects SET association_type = 'team', team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?",
         [team_assignment_set_id, projectId]
       );
+      await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
 
       // If apply_teams is true (default true), sync teams from set into project_team_assignments
       if (apply_teams !== false) {
@@ -482,7 +556,8 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
     );
 
     const assignmentsMap = await fetchProjectTeamAssignments([projectId]);
-    res.json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || []));
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || [], individualMap[projectId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to associate team assignment set with project', detail: err.message });
   }
@@ -581,11 +656,12 @@ projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequ
       );
     }
 
-    // Update project pointer
+    // Update project pointer and enforce team association
     await pool.query(
-      'UPDATE projects SET team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?',
+      "UPDATE projects SET association_type = 'team', team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?",
       [newSetId, projectId]
     );
+    await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
@@ -661,11 +737,12 @@ projectsRouter.post('/:id/save-as-team-assignment-set', requireAuth, async (req:
       );
     }
 
-    // Associate this project with the newly saved set
+    // Associate this project with the newly saved set and enforce team association
     await pool.query(
-      'UPDATE projects SET team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?',
+      "UPDATE projects SET association_type = 'team', team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?",
       [setId, projectId]
     );
+    await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
 
     // Retrieve created set details
     const [setRows] = await pool.query<any[]>(
@@ -711,6 +788,310 @@ projectsRouter.post('/:id/save-as-team-assignment-set', requireAuth, async (req:
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to save project team assignments as reusable set', detail: err.message });
+  }
+});
+
+// ==============================================================================
+// Project Association Mode & Individual Members Endpoints
+// ==============================================================================
+
+// PUT /api/v1/projects/:id/assignment-mode - Switch between 'team' and 'individual' association
+projectsRouter.put('/:id/assignment-mode', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const { association_type, team_assignment_set_id, members } = req.body;
+
+    if (association_type !== 'team' && association_type !== 'individual') {
+      return res.status(400).json({ error: 'association_type must be either "team" or "individual"' });
+    }
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      }
+    } else if (current.created_by !== userId) {
+      return res.status(403).json({ error: 'You do not have access to this personal project' });
+    }
+
+    if (association_type === 'individual') {
+      // Strict mutual exclusion: purge team assignments and remove set pointer
+      await pool.query(
+        "UPDATE projects SET association_type = 'individual', team_assignment_set_id = NULL, updated_at = NOW() WHERE id = ?",
+        [projectId]
+      );
+      await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+
+      // If explicit members provided, replace individual members
+      if (Array.isArray(members)) {
+        await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
+        for (const m of members) {
+          if (m && m.user_id) {
+            const pimId = `pim-${crypto.randomBytes(4).toString('hex')}`;
+            await pool.query(
+              `INSERT INTO project_individual_members (id, project_id, user_id, role, assigned_at)
+               VALUES (?, ?, ?, ?, NOW())
+               ON DUPLICATE KEY UPDATE role = VALUES(role)`,
+              [pimId, projectId, m.user_id, m.role === 'lead' ? 'lead' : 'member']
+            );
+          }
+        }
+      } else {
+        // If switching to individual and no members passed and table is empty, seed user as lead
+        const [existingCount] = await pool.query<any[]>(
+          'SELECT COUNT(*) as cnt FROM project_individual_members WHERE project_id = ?',
+          [projectId]
+        );
+        if (existingCount[0]?.cnt === 0) {
+          const pimId = `pim-${crypto.randomBytes(4).toString('hex')}`;
+          await pool.query(
+            `INSERT INTO project_individual_members (id, project_id, user_id, role, assigned_at)
+             VALUES (?, ?, ?, 'lead', NOW())`,
+            [pimId, projectId, userId]
+          );
+        }
+      }
+    } else {
+      // association_type === 'team'
+      // Strict mutual exclusion: purge individual members
+      await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
+
+      if (team_assignment_set_id) {
+        if (!currentOrgId) {
+          return res.status(400).json({ error: 'Team assignment sets can only be associated with organization projects' });
+        }
+        const [setRows] = await pool.query<any[]>(
+          'SELECT * FROM team_assignment_sets WHERE id = ? AND organization_id = ?',
+          [team_assignment_set_id, currentOrgId]
+        );
+        if (!setRows || setRows.length === 0) {
+          return res.status(404).json({ error: 'Team assignment set not found in this organization' });
+        }
+
+        await pool.query(
+          "UPDATE projects SET association_type = 'team', team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?",
+          [team_assignment_set_id, projectId]
+        );
+
+        // Sync teams from set
+        const [teamsInSet] = await pool.query<any[]>(
+          `SELECT DISTINCT t.id, tasi.assigned_role
+           FROM organization_teams t
+           LEFT JOIN team_assignment_set_items tasi ON t.id = tasi.team_id AND tasi.set_id = ?
+           WHERE t.set_id = ? OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = ?)`,
+          [team_assignment_set_id, team_assignment_set_id, team_assignment_set_id]
+        );
+
+        await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+        for (const item of teamsInSet) {
+          const ptaId = `pta-${projectId}-${item.id}`;
+          await pool.query(
+            `INSERT INTO project_team_assignments (id, project_id, team_id, assigned_role, assigned_at)
+             VALUES (?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE assigned_role = VALUES(assigned_role)`,
+            [ptaId, projectId, item.id, item.assigned_role || null]
+          );
+        }
+      } else {
+        await pool.query(
+          "UPDATE projects SET association_type = 'team', team_assignment_set_id = NULL, updated_at = NOW() WHERE id = ?",
+          [projectId]
+        );
+        await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+      }
+    }
+
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT p.*,
+        tas.name as team_assignment_set_name,
+        (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
+       FROM projects p
+       LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
+       WHERE p.id = ?`,
+      [projectId]
+    );
+
+    const assignmentsMap = await fetchProjectTeamAssignments([projectId]);
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || [], individualMap[projectId] || []));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update project assignment mode', detail: err.message });
+  }
+});
+
+// GET /api/v1/projects/:id/individual-members - List individual members assigned to project
+projectsRouter.get('/:id/individual-members', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      }
+    } else if (current.created_by !== userId) {
+      return res.status(403).json({ error: 'You do not have access to this personal project' });
+    }
+
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json({
+      project_id: projectId,
+      association_type: current.association_type || 'team',
+      individual_members: individualMap[projectId] || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve project individual members', detail: err.message });
+  }
+});
+
+// POST /api/v1/projects/:id/individual-members - Add/assign an individual member to project
+projectsRouter.post('/:id/individual-members', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const { user_id: memberUserId, role } = req.body;
+
+    if (!memberUserId) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      }
+      // Check target member belongs to the organization
+      const targetIsMember = await isOrganizationMember(memberUserId, currentOrgId);
+      if (!targetIsMember) {
+        return res.status(400).json({ error: 'Target user is not a member of this organization' });
+      }
+    } else if (current.created_by !== userId) {
+      return res.status(403).json({ error: 'You do not have access to this personal project' });
+    }
+
+    // Strict mutual exclusion: ensure association_type is 'individual' and clear team assignments
+    await pool.query(
+      "UPDATE projects SET association_type = 'individual', team_assignment_set_id = NULL, updated_at = NOW() WHERE id = ?",
+      [projectId]
+    );
+    await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+
+    const pimId = `pim-${crypto.randomBytes(4).toString('hex')}`;
+    const memberRole = role === 'lead' ? 'lead' : 'member';
+
+    await pool.query(
+      `INSERT INTO project_individual_members (id, project_id, user_id, role, assigned_at)
+       VALUES (?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE role = VALUES(role)`,
+      [pimId, projectId, memberUserId, memberRole]
+    );
+
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.status(201).json({
+      message: 'Individual member assigned successfully',
+      individual_members: individualMap[projectId] || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to assign individual member', detail: err.message });
+  }
+});
+
+// PUT /api/v1/projects/:id/individual-members/:memberUserId - Update role of an individual member
+projectsRouter.put('/:id/individual-members/:memberUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id: projectId, memberUserId } = req.params;
+    const { role } = req.body;
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      }
+    } else if (current.created_by !== userId) {
+      return res.status(403).json({ error: 'You do not have access to this personal project' });
+    }
+
+    const memberRole = role === 'lead' ? 'lead' : 'member';
+    await pool.query(
+      'UPDATE project_individual_members SET role = ? WHERE project_id = ? AND user_id = ?',
+      [memberRole, projectId, memberUserId]
+    );
+
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json({
+      message: 'Individual member role updated',
+      individual_members: individualMap[projectId] || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update individual member role', detail: err.message });
+  }
+});
+
+// DELETE /api/v1/projects/:id/individual-members/:memberUserId - Remove an individual member from project
+projectsRouter.delete('/:id/individual-members/:memberUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id: projectId, memberUserId } = req.params;
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      }
+    } else if (current.created_by !== userId) {
+      return res.status(403).json({ error: 'You do not have access to this personal project' });
+    }
+
+    await pool.query(
+      'DELETE FROM project_individual_members WHERE project_id = ? AND user_id = ?',
+      [projectId, memberUserId]
+    );
+
+    const individualMap = await fetchProjectIndividualMembers([projectId]);
+    res.json({
+      message: 'Individual member removed from project',
+      individual_members: individualMap[projectId] || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to remove individual member', detail: err.message });
   }
 });
 

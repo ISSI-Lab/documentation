@@ -36,6 +36,11 @@ This document specifies reusable engineering patterns and code standards across 
   - Each squad contains users from within the organization (`organization_team_members`) with designated roles (`lead`, `member`).
   - **Projects** associate with a Team Assignment Set (`projects.team_assignment_set_id`), so different projects in the same organization can associate with different sets, reuse sets, or clone a set for dedicated project customization (`clone-set`).
   - Backward compatibility: `/api/v1/teams` legacy route alias is preserved for legacy API clients and scripts.
+- **Strict Team vs. Individual Project Association Pattern (No Hybrid)**:
+  - Projects support two strictly mutually exclusive association models: **Team Association** (via squads and reusable sets) or **Individual Association** (via direct individual organization users). Hybrid staffing is explicitly forbidden.
+  - Dictated by `projects.association_type` (`team` or `individual`).
+  - Switching modes executes atomic backend transactions that delete the inactive configuration (`team_assignment_set_id` and `project_team_assignments` purged on switch to individual; `project_individual_members` purged on switch to team).
+  - Frontend surfaces a segmented toggle in `ProjectTeamAssignmentModal` with confirmation modals before mode transitions, and dedicated individual member roster management.
 
 ---
 

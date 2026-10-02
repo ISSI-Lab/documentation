@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS team_assignment_set_items (
 CREATE TABLE IF NOT EXISTS projects (
     id VARCHAR(64) PRIMARY KEY,
     organization_id VARCHAR(64) NULL,
+    association_type ENUM('team', 'individual') NOT NULL DEFAULT 'team',
     team_assignment_set_id VARCHAR(64) NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -113,10 +114,11 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_organization_id (organization_id),
+    INDEX idx_association_type (association_type),
     INDEX idx_team_assignment_set_id (team_assignment_set_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5.1 Project Team Assignments Table
+-- 5.1 Project Team Assignments Table (Populated when association_type = 'team')
 CREATE TABLE IF NOT EXISTS project_team_assignments (
     id VARCHAR(64) PRIMARY KEY,
     project_id VARCHAR(64) NOT NULL,
@@ -126,6 +128,18 @@ CREATE TABLE IF NOT EXISTS project_team_assignments (
     UNIQUE KEY uk_proj_team (project_id, team_id),
     INDEX idx_project_id (project_id),
     INDEX idx_team_id (team_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5.2 Project Individual Members Table (Populated when association_type = 'individual')
+CREATE TABLE IF NOT EXISTS project_individual_members (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    role VARCHAR(64) NOT NULL DEFAULT 'member',
+    assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_proj_indiv_user (project_id, user_id),
+    INDEX idx_project_id (project_id),
+    INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. Templates Table

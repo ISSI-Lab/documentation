@@ -241,6 +241,7 @@ export async function initDatabase(): Promise<void> {
         CREATE TABLE IF NOT EXISTS projects (
           id VARCHAR(64) PRIMARY KEY,
           organization_id VARCHAR(64) NULL,
+          association_type ENUM('team', 'individual') NOT NULL DEFAULT 'team',
           team_assignment_set_id VARCHAR(64) NULL,
           name VARCHAR(255) NOT NULL,
           description TEXT,
@@ -248,6 +249,7 @@ export async function initDatabase(): Promise<void> {
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_organization_id (organization_id),
+          INDEX idx_association_type (association_type),
           INDEX idx_team_assignment_set_id (team_assignment_set_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
@@ -263,6 +265,20 @@ export async function initDatabase(): Promise<void> {
           UNIQUE KEY uk_proj_team (project_id, team_id),
           INDEX idx_project_id (project_id),
           INDEX idx_team_id (team_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 5.2 Project Individual Members Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS project_individual_members (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          user_id VARCHAR(64) NOT NULL,
+          role VARCHAR(64) NOT NULL DEFAULT 'member',
+          assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_proj_indiv_user (project_id, user_id),
+          INDEX idx_project_id (project_id),
+          INDEX idx_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -326,6 +342,7 @@ export async function initDatabase(): Promise<void> {
 
       await ensureColumnExists(conn, 'users', 'is_verified', 'BOOLEAN NOT NULL DEFAULT FALSE');
 
+      await ensureColumnExists(conn, 'projects', 'association_type', "ENUM('team', 'individual') NOT NULL DEFAULT 'team'");
       await ensureColumnExists(conn, 'projects', 'team_assignment_set_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'organization_teams', 'set_id', 'VARCHAR(64) NULL');
 
