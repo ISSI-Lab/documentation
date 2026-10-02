@@ -122,7 +122,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 Public Document Templates & Architectural Blueprints
               </h2>
               <p className="text-slate-300 text-sm mt-2 max-w-2xl leading-relaxed">
-                Explore our public pool of document templates. Inspect the section structures, field types, and markdown generators. Sign in to start authoring documents, creating your own teams, and building custom templates.
+                Explore our public pool of document templates. Inspect the section structures, field types, and markdown generators. Sign in to start authoring documents, creating your own organizations, and building custom templates.
               </p>
             </div>
           </div>
@@ -137,7 +137,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
             Template
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Browse public template blueprints, your personal templates, and team-specific schemas.
+            Browse public template blueprints, your personal templates, and organization-specific schemas.
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex items-center space-x-2.5">
@@ -169,7 +169,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
         </div>
       </div>
 
-      {/* Main Categories: Public vs Personal vs Each Team's Templates */}
+      {/* Main Categories: Public vs Personal vs Each Organization's Templates */}
       <div className="space-y-4 mb-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Category Tabs (Material UI ToggleButtonGroup Style) */}

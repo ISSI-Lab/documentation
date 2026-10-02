@@ -5,7 +5,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 ---
 
 ## Current Sprint Focus
-- **Goal**: Full-stack User Authentication, Democratic Team & Project Collaboration, Guest-accessible Public Template Pool, Personal Homepage Dashboard, and Scoped Document Authoring.
+- **Goal**: Full-stack User Authentication, Democratic Organization & Project Collaboration, Guest-accessible Public Template Pool, Personal Homepage Dashboard, and Scoped Document Authoring.
 - **Active Branch**: `main`
 
 ---
@@ -14,8 +14,8 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Workstream | Owner | Status | Current Focus |
 | :--- | :--- | :--- | :--- |
 | Project Scaffolding | Team | Completed | Root layout, docs hub, Docker Compose orchestration |
-| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, user auth, teams, projects, templates, and documents tables |
-| Backend Service | AI Agent | Completed | Node 20 / Express API, JWT auth, bcrypt hashing, team/project RBAC, template & document CRUD |
+| MySQL Database | AI Agent | Completed | Schema DDL (`init.sql`), persistent volume, user auth, organizations, projects, templates, and documents tables |
+| Backend Service | AI Agent | Completed | Node 20 / Express API, JWT auth, bcrypt hashing, organization/project RBAC, template & document CRUD |
 | Frontend Service | AI Agent | Completed | Personal Homepage, Public Template Pool, Document Dashboard, Auth Modal, Account Modal, Organization Management |
 | Host & Container Proxy | AI Agent | Completed | Container Nginx port `3939`, reverse proxy `/api/`, production Host Nginx guide |
 | Email Service & Registration | AI Agent | Completed | AES-256-GCM `email_config.json`, default `EMAIL_CONFIG_SECRET`, CLI wizard (`scripts/setup_email.sh`), Docker integration in `scripts/start.sh`, verification email dispatch |

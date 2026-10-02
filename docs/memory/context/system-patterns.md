@@ -26,19 +26,19 @@ This document specifies reusable engineering patterns and code standards across 
   - Stateless JWT tokens passed in `Authorization: Bearer <token>` headers.
   - Password hashing with `bcryptjs` (salt rounds = 10).
   - Express route middleware (`authenticateUser`, `optionalAuth`) inspects tokens and attaches user context.
-- **Democratic Team & Project Collaboration Pattern**:
-  - Any authenticated user can create a team and automatically assumes the `owner` role.
+- **Democratic Organization & Project Collaboration Pattern**:
+  - Any authenticated user can create an organization and automatically assumes the `owner` role.
   - Role hierarchy: `owner` (full administration, ownership transfer, deletion) &gt; `manager` (member invitations, role modifications, project creation) &gt; `member` (view projects, create/edit documents).
-  - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `team` (restricted to team roster).
+  - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `organization` (restricted to organization roster). Later on, sub-teams can be configured within organizations.
 
 ---
 
 ## 2. Frontend & UI Layout Conventions
 - **Dual-State Landing**:
   - Unauthenticated visitors land on the **Public Template Pool** to inspect and preview document blueprints.
-  - Authenticated users land on the **Personal Homepage** displaying team memberships, project links, recent documents, and quick-action shortcuts.
-- **Unified Navigation**: Top navigation bar with tab routing (`Home`, `Documents`, `Templates`, `Team Management`) and profile account menu.
-- **Scoped Filtering**: Document and Template catalogs feature tabbed category filters (`Recent` / `Public`, `Personal`, `Team Templates` / `Team Documents`) with inline team selection dropdowns and real-time search.
+  - Authenticated users land on the **Personal Homepage** displaying organization memberships, project links, recent documents, and quick-action shortcuts.
+- **Unified Navigation**: Top navigation bar with tab routing (`Home`, `Documents`, `Templates`, `Organization Management`) and profile account menu.
+- **Scoped Filtering**: Document and Template catalogs feature tabbed category filters (`Recent` / `Public`, `Personal`, `Organization Templates` / `Organization Documents`) with inline organization selection dropdowns and real-time search.
 
 ---
 

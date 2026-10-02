@@ -12,9 +12,9 @@ This project provides a multi-service web platform for structured technical docu
 ## 2. Core Capabilities
 - **Template-Driven Markdown Authoring**: Interactive element builders producing standard GitHub-Flavored Markdown.
 - **User Authentication & Profiles**: JWT-based session security, password encryption, and user settings.
-- **Democratic Team Collaboration**: Any user can create teams and manage members with hierarchical roles (`Owner`, `Manager`, `Member`).
-- **Scoped Asset Isolation**: Granular asset management supporting `Public` (guest-discoverable), `Personal` (private), and `Team` scopes.
-- **Personal Workspace Hub**: Comprehensive homepage displaying teams, projects, recent documents, and rapid shortcuts.
+- **Democratic Organization Collaboration**: Any user can create organizations and manage members with hierarchical roles (`Owner`, `Manager`, `Member`). Later on, sub-teams can be configured within each organization.
+- **Scoped Asset Isolation**: Granular asset management supporting `Public` (guest-discoverable), `Personal` (private), and `Organization` scopes.
+- **Personal Workspace Hub**: Comprehensive homepage displaying organizations, projects, recent documents, and rapid shortcuts.
 
 ---
 
