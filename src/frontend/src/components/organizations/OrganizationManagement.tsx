@@ -712,17 +712,26 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                           <p className="text-xs text-slate-500 mb-2">{st.description || 'No description'}</p>
                           <div className="pt-2 border-t border-slate-100">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                              Included Teams ({st.items?.length || 0}):
+                              Included Teams ({st.teams?.length || st.items?.length || 0}):
                             </span>
                             <div className="flex flex-wrap gap-1">
-                              {st.items?.map((it) => (
-                                <span
-                                  key={it.team_id}
-                                  className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
-                                >
-                                  {it.team_name} {it.assigned_role && `(${it.assigned_role})`}
-                                </span>
-                              ))}
+                              {st.teams && st.teams.length > 0
+                                ? st.teams.map((tm) => (
+                                    <span
+                                      key={tm.id}
+                                      className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
+                                    >
+                                      {tm.name} ({tm.members_count || tm.members?.length || 0} members)
+                                    </span>
+                                  ))
+                                : st.items?.map((it) => (
+                                    <span
+                                      key={it.team_id}
+                                      className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
+                                    >
+                                      {it.team_name} {it.assigned_role && `(${it.assigned_role})`}
+                                    </span>
+                                  ))}
                             </div>
                           </div>
                         </div>

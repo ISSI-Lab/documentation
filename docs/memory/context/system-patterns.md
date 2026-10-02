@@ -30,11 +30,11 @@ This document specifies reusable engineering patterns and code standards across 
   - Any authenticated user can create an organization and automatically assumes the `owner` role.
   - Role hierarchy: `owner` (full administration, ownership transfer, deletion) &gt; `manager` (member invitations, role modifications, project creation) &gt; `member` (view projects, create/edit documents).
   - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `organization` (restricted to organization roster).
-- **Organization Teams & Reusable Assignment Sets Pattern**:
-  - Organizations can define multiple functional squads (`organization_teams`) with assigned members and designated roles (`lead`, `member`).
-  - Projects can independently assign individual teams (`project_team_assignments`).
-  - To accelerate project staffing, organizations support reusable templates called "Team Assignment Sets" (`team_assignment_sets` and `team_assignment_set_items`).
-  - Projects can associate with an assignment set to auto-populate teams, or export their bespoke project team assignments into a new reusable organization set (`save-as-team-assignment-set`).
+- **Organization Team Assignment Sets & Team Staffing Pattern**:
+  - The sequence and containment flow begins with **Team Assignment Sets** (`team_assignment_sets`), created first within an organization.
+  - Within each Team Assignment Set, functional squads are created (`organization_teams.set_id`).
+  - Each squad contains users from within the organization (`organization_team_members`) with designated roles (`lead`, `member`).
+  - **Projects** associate with a Team Assignment Set (`projects.team_assignment_set_id`), so different projects in the same organization can associate with different sets, reuse sets, or clone a set for dedicated project customization (`clone-set`).
   - Backward compatibility: `/api/v1/teams` legacy route alias is preserved for legacy API clients and scripts.
 
 ---

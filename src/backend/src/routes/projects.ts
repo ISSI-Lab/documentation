@@ -441,18 +441,22 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
 
       // If apply_teams is true (default true), sync teams from set into project_team_assignments
       if (apply_teams !== false) {
-        const [setItems] = await pool.query<any[]>(
-          'SELECT * FROM team_assignment_set_items WHERE set_id = ?',
-          [team_assignment_set_id]
+        const [teamsInSet] = await pool.query<any[]>(
+          `SELECT DISTINCT t.id, tasi.assigned_role
+           FROM organization_teams t
+           LEFT JOIN team_assignment_set_items tasi ON t.id = tasi.team_id AND tasi.set_id = ?
+           WHERE t.set_id = ? OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = ?)`,
+          [team_assignment_set_id, team_assignment_set_id, team_assignment_set_id]
         );
 
-        for (const item of setItems) {
-          const ptaId = `pta-${projectId}-${item.team_id}`;
+        await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+        for (const item of teamsInSet) {
+          const ptaId = `pta-${projectId}-${item.id}`;
           await pool.query(
             `INSERT INTO project_team_assignments (id, project_id, team_id, assigned_role, assigned_at)
              VALUES (?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE assigned_role = VALUES(assigned_role)`,
-            [ptaId, projectId, item.team_id, item.assigned_role || null]
+            [ptaId, projectId, item.id, item.assigned_role || null]
           );
         }
       }
@@ -462,6 +466,9 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
         'UPDATE projects SET team_assignment_set_id = NULL, updated_at = NOW() WHERE id = ?',
         [projectId]
       );
+      if (req.body.clear_teams !== false) {
+        await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+      }
     }
 
     const [updatedRows] = await pool.query<any[]>(
@@ -478,6 +485,122 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
     res.json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to associate team assignment set with project', detail: err.message });
+  }
+});
+
+// POST /api/v1/projects/:id/clone-set - Clone current set or specified set specifically for this project
+projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const projectId = req.params.id;
+    const { name, description, source_set_id } = req.body;
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
+    if (!currentOrgId) {
+      return res.status(400).json({ error: 'Only organization projects can clone team assignment sets' });
+    }
+
+    const isMember = await isOrganizationMember(userId, currentOrgId);
+    if (!isMember) {
+      return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+    }
+
+    const targetSourceSetId = source_set_id || current.team_assignment_set_id;
+    if (!targetSourceSetId) {
+      return res.status(400).json({ error: 'No source team assignment set found to clone' });
+    }
+
+    const [setRows] = await pool.query<any[]>(
+      'SELECT * FROM team_assignment_sets WHERE id = ? AND organization_id = ?',
+      [targetSourceSetId, currentOrgId]
+    );
+    if (!setRows || setRows.length === 0) {
+      return res.status(404).json({ error: 'Source team assignment set not found' });
+    }
+
+    const source = setRows[0];
+    const newSetName = name?.trim() || `${current.name} Staffing Set`;
+    const newSetDesc = description !== undefined ? description : `Dedicated staffing set cloned from ${source.name} for ${current.name}`;
+    const newSetId = `set-${crypto.randomBytes(4).toString('hex')}`;
+
+    // Create cloned set
+    await pool.query(
+      `INSERT INTO team_assignment_sets (id, organization_id, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+      [newSetId, currentOrgId, newSetName, newSetDesc, userId]
+    );
+
+    // Fetch source teams
+    const [sourceTeams] = await pool.query<any[]>(
+      `SELECT t.* FROM organization_teams t
+       WHERE t.set_id = ? OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = ?)`,
+      [targetSourceSetId, targetSourceSetId]
+    );
+
+    await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
+
+    // Clone teams and members
+    for (const st of sourceTeams) {
+      const newTeamId = `team-${crypto.randomBytes(4).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO organization_teams (id, organization_id, set_id, name, description, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [newTeamId, currentOrgId, newSetId, st.name, st.description || '', userId]
+      );
+
+      await pool.query(
+        `INSERT INTO team_assignment_set_items (set_id, team_id)
+         VALUES (?, ?)`,
+        [newSetId, newTeamId]
+      );
+
+      const [members] = await pool.query<any[]>(
+        'SELECT * FROM organization_team_members WHERE team_id = ?',
+        [st.id]
+      );
+      for (const m of members) {
+        await pool.query(
+          `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+           VALUES (?, ?, ?, NOW())`,
+          [newTeamId, m.user_id, m.role]
+        );
+      }
+
+      // Assign to project
+      const ptaId = `pta-${projectId}-${newTeamId}`;
+      await pool.query(
+        `INSERT INTO project_team_assignments (id, project_id, team_id, assigned_at)
+         VALUES (?, ?, ?, NOW())`,
+        [ptaId, projectId, newTeamId]
+      );
+    }
+
+    // Update project pointer
+    await pool.query(
+      'UPDATE projects SET team_assignment_set_id = ?, updated_at = NOW() WHERE id = ?',
+      [newSetId, projectId]
+    );
+
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT p.*,
+        tas.name as team_assignment_set_name,
+        (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
+       FROM projects p
+       LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
+       WHERE p.id = ?`,
+      [projectId]
+    );
+
+    const assignmentsMap = await fetchProjectTeamAssignments([projectId]);
+    res.status(201).json(formatProjectRow(updatedRows[0], assignmentsMap[projectId] || []));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to clone set for project', detail: err.message });
   }
 });
 

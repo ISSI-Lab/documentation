@@ -24,19 +24,21 @@ import {
 } from '../../types';
 
 interface ProjectTeamAssignmentModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   project: Project | null;
-  currentUser: User | null;
+  currentUser?: User | null;
   onClose: () => void;
+  onUpdated?: () => void;
   onProjectUpdated?: (updatedProject: Project) => void;
   showToast: (msg: string, type?: 'success' | 'error') => void;
 }
 
 export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProps> = ({
-  isOpen,
+  isOpen = true,
   project,
   currentUser,
   onClose,
+  onUpdated,
   onProjectUpdated,
   showToast,
 }) => {
@@ -157,10 +159,27 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       );
       await loadData();
       if (onProjectUpdated) onProjectUpdated(updated);
+      if (onUpdated) onUpdated();
     } catch (err: any) {
       showToast(err.message || 'Failed to associate team assignment set', 'error');
     } finally {
       setAssociatingSet(false);
+    }
+  };
+
+  const handleCloneSetForProject = async () => {
+    if (!project) return;
+    try {
+      setLoading(true);
+      const updated = await api.cloneProjectTeamAssignmentSet(project.id);
+      showToast(`Cloned dedicated staffing set for "${project.name}"!`);
+      await loadData();
+      if (onProjectUpdated) onProjectUpdated(updated);
+      if (onUpdated) onUpdated();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clone set for project', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -180,6 +199,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
         const updated = await api.getProject(project.id);
         onProjectUpdated(updated);
       }
+      if (onUpdated) onUpdated();
     } catch (err: any) {
       showToast(err.message || 'Failed to save reusable set', 'error');
     } finally {
@@ -241,7 +261,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
             </div>
 
             {currentSetId ? (
-              <div className="p-3 bg-white rounded-xl border border-indigo-200 flex items-center justify-between">
+              <div className="p-3 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <span className="text-xs text-slate-500 block">Associated Assignment Set:</span>
                   <span className="text-sm font-bold text-indigo-950 flex items-center gap-1.5 mt-0.5">
@@ -249,9 +269,19 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     {currentSetName || currentSetId}
                   </span>
                 </div>
-                <span className="text-[11px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
-                  Linked Set
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCloneSetForProject}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
+                    title="Clone this set to customize teams specifically for this project"
+                  >
+                    <span>Clone for Project</span>
+                  </button>
+                  <span className="text-[11px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
+                    Linked Set
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">

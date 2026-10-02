@@ -68,6 +68,8 @@ export interface OrganizationTeamMember {
 export interface OrganizationTeam {
   id: string;
   organization_id: string;
+  set_id?: string | null;
+  set_name?: string;
   name: string;
   description: string;
   created_by: string;
@@ -95,6 +97,7 @@ export interface TeamAssignmentSet {
   created_at: string;
   updated_at: string;
   teams_count?: number;
+  teams?: OrganizationTeam[];
   items?: TeamAssignmentSetItem[];
   associated_projects_count?: number;
 }

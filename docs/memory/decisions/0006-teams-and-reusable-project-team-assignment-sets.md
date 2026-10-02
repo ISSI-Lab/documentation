@@ -1,4 +1,4 @@
-# ADR-0006: Teams and Reusable Project Team Assignment Sets
+# ADR-0006: Team Assignment Sets and Functional Squad Containment Flow
 
 - **Status**: Accepted
 - **Date**: 2026-10-02
@@ -7,76 +7,67 @@
 ---
 
 ## Context
-Following the elevation of top-level tenants to organizations ([ADR-0005](0005-refactor-team-domain-to-organization.md)), organizations need fine-grained operational division into functional and cross-functional teams (e.g., Frontend Engineering, Cloud Infrastructure, Security & Compliance).
+Following the elevation of top-level tenants to organizations ([ADR-0005](0005-refactor-team-domain-to-organization.md)), organizations need fine-grained operational division into functional squads (e.g., Frontend Engineering, Cloud Infrastructure, Security & Compliance).
 
-Furthermore, projects within an organization require flexible staffing:
-1. Different projects within the same organization must be able to assign different teams based on scope and requirements.
-2. In large organizations with repeated project archetypes (such as standard full-stack web applications, microservices, or compliance audits), manual team-by-team assignment on every project is repetitive and error-prone.
-3. Organizations need reusable "Team Assignment Sets" (templates of team assignments) that can be defined once and associated with projects, while still allowing projects to save their current custom team setup as a new reusable organization set.
+Crucially, project staffing follows a distinct containment hierarchy:
+1. **Team Assignment Sets** are top-level staffing blueprints within an organization.
+2. A **Team Assignment Set** contains multiple **Teams** (functional squads).
+3. A **Team** contains users from within the organization (assigned squad members with roles such as `lead` or `member`).
+4. **Sequence & Flow**: The Team Assignment Set is created first; within the set, functional squads are created and staffed. Projects then associate with a Team Assignment Set.
+5. **Reusability & Granularity**: Different projects within the same organization can associate with different Team Assignment Sets or reuse an existing set. Projects can also clone an existing set to customize squads without affecting other projects.
 
 ## Decision
 
-### 1. Relational Schema & Data Modeling
-We introduced five relational entities with foreign keys and cascade rules in `src/backend/db/init.sql` and dynamic self-healing migrations in `src/backend/src/db.ts`:
+### 1. Containment Hierarchy & Relational Schema
+We modeled the containment structure in `src/backend/db/init.sql` and `src/backend/src/db.ts`:
 
-- **`organization_teams`**: Represents functional squads within an organization (`id`, `organization_id`, `name`, `description`, `created_by`, `created_at`, `updated_at`).
-- **`organization_team_members`**: Maps organization users into teams with designated squad roles (`id`, `team_id`, `user_id`, `assigned_role` such as `lead` or `member`, timestamps).
-- **`team_assignment_sets`**: Reusable templates defining a collection of teams within an organization (`id`, `organization_id`, `name`, `description`, `created_by`, `created_at`, `updated_at`).
-- **`team_assignment_set_items`**: Associates teams to an assignment set with optional configuration notes (`id`, `set_id`, `team_id`, `notes`, `created_at`).
-- **`project_team_assignments`**: Realizes the assignment of a team to a specific project (`id`, `project_id`, `team_id`, `assigned_role`, `notes`, `assigned_at`).
-- **`projects.team_assignment_set_id`**: An optional reference pointing to the active `team_assignment_sets` record that was associated with or applied to the project.
+- **`team_assignment_sets`**: Primary container created first within an organization (`id`, `organization_id`, `name`, `description`, `created_by`, timestamps).
+- **`organization_teams`**: Functional squads created **within** a Team Assignment Set (`id`, `organization_id`, `set_id` foreign key pointing to `team_assignment_sets.id`, `name`, `description`, timestamps).
+- **`organization_team_members`**: Organization users assigned to a team within the set (`id`, `team_id`, `user_id`, `role` as `lead` or `member`, `joined_at`).
+- **`projects.team_assignment_set_id`**: Foreign key linking a project to its associated `team_assignment_sets` record.
+- **`project_team_assignments`**: Realized team assignments for projects, populated from the associated Team Assignment Set.
 
-### 2. Backend REST API Extensions
-- **Teams Management (`/api/v1/organizations/:id/teams`)**:
-  - `GET /api/v1/organizations/:id/teams`: Lists organization teams with member counts and populated member profiles.
-  - `POST /api/v1/organizations/:id/teams`: Creates a new team (Organization Manager or Owner only).
-  - `GET /api/v1/organizations/:id/teams/:teamId`: Retrieves team details with member listings.
-  - `PUT /api/v1/organizations/:id/teams/:teamId`: Updates team name or description.
-  - `DELETE /api/v1/organizations/:id/teams/:teamId`: Removes a team and cascades assignments.
-  - `POST /api/v1/organizations/:id/teams/:teamId/members`: Adds a member with role (`lead` or `member`).
-  - `PUT /api/v1/organizations/:id/teams/:teamId/members/:userId`: Updates member role.
-  - `DELETE /api/v1/organizations/:id/teams/:teamId/members/:userId`: Removes member from team.
+### 2. Backend REST API Flow
+- **Team Assignment Sets Endpoints (`/api/v1/organizations/:id/team-assignment-sets`)**:
+  - `GET /api/v1/organizations/:id/team-assignment-sets`: Lists sets with their nested `teams` array and each team's populated `members`.
+  - `POST /api/v1/organizations/:id/team-assignment-sets`: Creates a new set (`name`, `description`).
+  - `GET /api/v1/organizations/:id/team-assignment-sets/:setId`: Retrieves a single set with its teams and members.
+  - `PUT /api/v1/organizations/:id/team-assignment-sets/:setId`: Updates set metadata.
+  - `DELETE /api/v1/organizations/:id/team-assignment-sets/:setId`: Deletes the set and cascades deletion to teams created within it.
+  - `POST /api/v1/organizations/:id/team-assignment-sets/:setId/clone`: Duplicates an entire set, including all member teams and squad rosters.
 
-- **Reusable Team Assignment Sets (`/api/v1/organizations/:id/team-assignment-sets`)**:
-  - `GET /api/v1/organizations/:id/team-assignment-sets`: Lists reusable assignment sets with item arrays and team metadata.
-  - `POST /api/v1/organizations/:id/team-assignment-sets`: Creates a set and inserts initial member teams.
-  - `GET /api/v1/organizations/:id/team-assignment-sets/:setId`: Retrieves single set details.
-  - `PUT /api/v1/organizations/:id/team-assignment-sets/:setId`: Updates set metadata and synchronizes member teams.
-  - `DELETE /api/v1/organizations/:id/team-assignment-sets/:setId`: Deletes an assignment set (sets associated projects' `team_assignment_set_id` to `NULL`).
+- **Teams Within Sets (`/api/v1/organizations/:id/team-assignment-sets/:setId/teams`)**:
+  - `POST /api/v1/organizations/:id/team-assignment-sets/:setId/teams`: Creates a functional squad **within** the specified set.
+  - `PUT / DELETE /api/v1/organizations/:id/teams/:teamId`: Updates or removes a team.
+  - `POST / PUT / DELETE /api/v1/organizations/:id/teams/:teamId/members/:userId`: Adds organization users to a team and manages `lead`/`member` roles.
 
-- **Project Team Assignments (`/api/v1/projects/:id`)**:
-  - `GET /api/v1/projects/:id/teams`: Returns assigned teams with member count, assignment roles, and notes.
-  - `POST /api/v1/projects/:id/teams`: Assigns an individual team to the project.
-  - `DELETE /api/v1/projects/:id/teams/:teamId`: Removes a team from the project.
-  - `PUT /api/v1/projects/:id/team-assignment-set`: Associates a team assignment set with the project, with an option to instantly replace or populate the project's assigned teams with the set's teams.
-  - `POST /api/v1/projects/:id/save-as-team-assignment-set`: Exports the project's current team assignments as a new reusable organization set.
+- **Project Staffing Association (`/api/v1/projects/:id`)**:
+  - `PUT /api/v1/projects/:id/team-assignment-set`: Associates/disassociates a project with a set, synchronizing the set's teams to the project.
+  - `POST /api/v1/projects/:id/clone-set`: Clones the project's associated set into a dedicated project staffing set for immediate independent customization.
+  - `GET /api/v1/projects/:id/teams`: Returns assigned teams, roles, and squad members.
 
-### 3. Frontend Architecture & User Interface
-- **Dedicated Teams & Assignment Sets Page (`src/frontend/src/components/teams/TeamManagement.tsx`)**:
-  - Standalone top-level route accessible via the main navigation bar.
-  - Three distinct management tabs:
-    1. **Teams**: Create new teams, manage membership, assign lead/member roles, and view descriptions.
-    2. **Reusable Sets**: Create and edit reusable team assignment sets, configure included teams, and inspect usage.
-    3. **Project Assignments**: High-level matrix view displaying all projects, their associated assignment sets, and currently assigned teams.
-- **Embedded Organization Tabs (`src/frontend/src/components/organizations/OrganizationManagement.tsx`)**:
-  - Extended organization management modal/page with integrated "Teams" and "Assignment Sets" tabs.
-  - Project cards enhanced with badges displaying associated team assignment sets and assigned team tags, with a direct "Manage Teams" trigger.
+### 3. Frontend Architecture & User Experience
+- **Teams & Assignments Hub (`src/frontend/src/components/teams/TeamManagement.tsx`)**:
+  - **Tab 1: Team Assignment Sets (Default)**:
+    - Lists all sets in the organization.
+    - Button: **"+ Create Team Assignment Set"**.
+    - For each set, shows included squads, member chips, and quick actions: **"+ Add Team to Set"**, **"Clone Set"**, **"Edit"**, **"Delete"**.
+    - Inside each team: shows member avatars, `Lead` / `Member` badges, and **"+ Add Member"** action.
+  - **Tab 2: Project Assignments**:
+    - Matrix overview displaying all projects, their associated Team Assignment Set, and assigned teams.
+    - Actions to change association or clone set for project-specific customization.
 - **Interactive Project Team Assignment Modal (`src/frontend/src/components/projects/ProjectTeamAssignmentModal.tsx`)**:
-  - Allows team assignment modification directly in-context.
-  - Enables one-click application of reusable assignment sets.
-  - Enables "Save As New Assignment Set" to capture project staffing patterns into reusable organizational knowledge.
-- **Personal Homepage Visibility (`src/frontend/src/components/home/PersonalHomepage.tsx`)**:
-  - Quick action buttons to jump to "Teams & Sets".
-  - Project summary cards visibly surface assigned teams and set association badges.
+  - Associate or change the project's Team Assignment Set.
+  - "Clone for Project" action to fork a set into a dedicated project set.
+- **Organization Management & Homepage Integration**:
+  - Set association badges and squad tags surfaced across project cards in `OrganizationManagement.tsx` and `PersonalHomepage.tsx`.
 
 ## Consequences
 
 ### Positive
-- **Granular Staffing**: Projects are no longer tied to coarse whole-organization boundaries; specific squads can be assigned to specific projects.
-- **High Reusability & Rapid Provisioning**: Common project configurations can be saved as assignment sets and applied in a single click to new projects.
-- **Two-Way Flow**: Projects can adopt existing sets, or organic project team compositions can be published upward as reusable organization sets.
-- **Self-Healing & Cross-Platform**: Database migrations check column and table existence dynamically on boot, working identically on local MySQL and Docker containers.
+- **Correct Mental Model & Workflow**: Users create the staffing set first, define functional squads inside it, add users from the organization, and associate sets with projects.
+- **High Reusability & Rapid Provisioning**: Common staffing patterns can be saved and reused across multiple projects, or cloned for custom variations.
+- **Granular Staffing**: Different projects in the same organization maintain distinct team assignments.
 
 ### Negative / Trade-offs
-- Added relational complexity across 5 additional tables.
-- Disassociating a project from an assignment set leaves existing assigned teams intact unless explicitly overwritten by the user.
+- Deleting a team assignment set cascades to the teams defined within that set, disassociating them from projects.

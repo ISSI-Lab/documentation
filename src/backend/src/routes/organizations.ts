@@ -416,6 +416,8 @@ function formatTeamRow(row: any, members: OrganizationTeamMember[] = []): Organi
   return {
     id: row.id,
     organization_id: row.organization_id,
+    set_id: row.set_id || null,
+    set_name: row.set_name || undefined,
     name: row.name,
     description: row.description || '',
     created_by: row.created_by,
@@ -426,15 +428,20 @@ function formatTeamRow(row: any, members: OrganizationTeamMember[] = []): Organi
   };
 }
 
-function formatSetRow(row: any, items: TeamAssignmentSetItem[] = []): TeamAssignmentSet {
+function formatSetRow(
+  row: any,
+  items: TeamAssignmentSetItem[] = [],
+  teams: OrganizationTeam[] = []
+): TeamAssignmentSet {
   return {
     id: row.id,
     organization_id: row.organization_id,
     name: row.name,
     description: row.description || '',
     created_by: row.created_by,
-    teams_count: Number(row.teams_count !== undefined ? row.teams_count : items.length),
+    teams_count: Number(row.teams_count !== undefined ? row.teams_count : (teams.length || items.length)),
     associated_projects_count: Number(row.associated_projects_count || 0),
+    teams,
     items,
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
@@ -446,20 +453,31 @@ organizationsRouter.get('/:id/teams', requireAuth, async (req: AuthenticatedRequ
   try {
     const userId = req.user!.id;
     const orgId = req.params.id;
+    const setIdQuery = req.query.set_id as string | undefined;
 
     const isMember = await isOrganizationMember(userId, orgId);
     if (!isMember) {
       return res.status(403).json({ error: 'You are not a member of this organization' });
     }
 
-    const [teamRows] = await pool.query<any[]>(
-      `SELECT t.*,
+    let sql = `
+      SELECT t.*,
+        tas.name as set_name,
         (SELECT COUNT(*) FROM organization_team_members WHERE team_id = t.id) as members_count
-       FROM organization_teams t
-       WHERE t.organization_id = ?
-       ORDER BY t.created_at ASC`,
-      [orgId]
-    );
+      FROM organization_teams t
+      LEFT JOIN team_assignment_sets tas ON t.set_id = tas.id
+      WHERE t.organization_id = ?
+    `;
+    const params: any[] = [orgId];
+
+    if (setIdQuery) {
+      sql += ' AND (t.set_id = ? OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = ?))';
+      params.push(setIdQuery, setIdQuery);
+    }
+
+    sql += ' ORDER BY t.created_at ASC';
+
+    const [teamRows] = await pool.query<any[]>(sql, params);
 
     // Fetch members for each team
     const [allMemberRows] = await pool.query<any[]>(
@@ -496,7 +514,7 @@ organizationsRouter.get('/:id/teams', requireAuth, async (req: AuthenticatedRequ
   }
 });
 
-// POST /api/v1/organizations/:id/teams - Create a team in organization
+// POST /api/v1/organizations/:id/teams - Create a team in organization (with optional set_id)
 organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -507,6 +525,115 @@ organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedReq
       return res.status(403).json({ error: 'You are not a member of this organization' });
     }
 
+    const { name, description, set_id, initial_members } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Team name is required' });
+    }
+
+    // Validate set_id if provided
+    if (set_id) {
+      const [setCheck] = await pool.query<any[]>(
+        'SELECT id FROM team_assignment_sets WHERE id = ? AND organization_id = ?',
+        [set_id, orgId]
+      );
+      if (!setCheck || setCheck.length === 0) {
+        return res.status(404).json({ error: 'Specified team assignment set not found in this organization' });
+      }
+    }
+
+    const teamId = `team-${crypto.randomBytes(4).toString('hex')}`;
+
+    await pool.query(
+      `INSERT INTO organization_teams (id, organization_id, set_id, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [teamId, orgId, set_id || null, name.trim(), description || '', userId]
+    );
+
+    // If set_id is provided, also insert into team_assignment_set_items
+    if (set_id) {
+      await pool.query(
+        `INSERT INTO team_assignment_set_items (set_id, team_id)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE team_id = VALUES(team_id)`,
+        [set_id, teamId]
+      );
+    }
+
+    // Add creator as team lead by default
+    await pool.query(
+      `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+       VALUES (?, ?, 'lead', NOW())`,
+      [teamId, userId]
+    );
+
+    // Add any initial members requested
+    if (Array.isArray(initial_members)) {
+      for (const m of initial_members) {
+        if (m.userId && m.userId !== userId) {
+          const isTargetOrgMember = await isOrganizationMember(m.userId, orgId);
+          if (isTargetOrgMember) {
+            await pool.query(
+              `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+               VALUES (?, ?, ?, NOW())
+               ON DUPLICATE KEY UPDATE role = VALUES(role)`,
+              [teamId, m.userId, m.role === 'lead' ? 'lead' : 'member']
+            );
+          }
+        }
+      }
+    }
+
+    const [createdRows] = await pool.query<any[]>(
+      `SELECT t.*, tas.name as set_name,
+        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = t.id) as members_count
+       FROM organization_teams t
+       LEFT JOIN team_assignment_sets tas ON t.set_id = tas.id
+       WHERE t.id = ?`,
+      [teamId]
+    );
+
+    const [members] = await pool.query<any[]>(
+      `SELECT otm.team_id, otm.user_id, otm.role, otm.joined_at, u.username, u.name, u.email, u.user_type
+       FROM organization_team_members otm
+       JOIN users u ON otm.user_id = u.id
+       WHERE otm.team_id = ?`,
+      [teamId]
+    );
+
+    res.status(201).json(formatTeamRow(createdRows[0], members.map((m) => ({
+      team_id: m.team_id,
+      user_id: m.user_id,
+      role: m.role,
+      joined_at: new Date(m.joined_at).toISOString(),
+      username: m.username,
+      name: m.name,
+      email: m.email,
+      user_type: m.user_type,
+    }))));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to create team', detail: err.message });
+  }
+});
+
+// POST /api/v1/organizations/:id/team-assignment-sets/:setId/teams - Create a team WITHIN a team assignment set
+organizationsRouter.post('/:id/team-assignment-sets/:setId/teams', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id: orgId, setId } = req.params;
+
+    const isMember = await isOrganizationMember(userId, orgId);
+    if (!isMember) {
+      return res.status(403).json({ error: 'You are not a member of this organization' });
+    }
+
+    const [setCheck] = await pool.query<any[]>(
+      'SELECT * FROM team_assignment_sets WHERE id = ? AND organization_id = ?',
+      [setId, orgId]
+    );
+    if (!setCheck || setCheck.length === 0) {
+      return res.status(404).json({ error: 'Team assignment set not found in this organization' });
+    }
+
     const { name, description, initial_members } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Team name is required' });
@@ -515,9 +642,16 @@ organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedReq
     const teamId = `team-${crypto.randomBytes(4).toString('hex')}`;
 
     await pool.query(
-      `INSERT INTO organization_teams (id, organization_id, name, description, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [teamId, orgId, name.trim(), description || '', userId]
+      `INSERT INTO organization_teams (id, organization_id, set_id, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [teamId, orgId, setId, name.trim(), description || '', userId]
+    );
+
+    await pool.query(
+      `INSERT INTO team_assignment_set_items (set_id, team_id)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE team_id = VALUES(team_id)`,
+      [setId, teamId]
     );
 
     // Add creator as team lead by default
@@ -545,8 +679,11 @@ organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedReq
     }
 
     const [createdRows] = await pool.query<any[]>(
-      `SELECT t.*, (SELECT COUNT(*) FROM organization_team_members WHERE team_id = t.id) as members_count
-       FROM organization_teams t WHERE t.id = ?`,
+      `SELECT t.*, tas.name as set_name,
+        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = t.id) as members_count
+       FROM organization_teams t
+       LEFT JOIN team_assignment_sets tas ON t.set_id = tas.id
+       WHERE t.id = ?`,
       [teamId]
     );
 
@@ -569,7 +706,7 @@ organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedReq
       user_type: m.user_type,
     }))));
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to create team', detail: err.message });
+    res.status(500).json({ error: 'Failed to create team in set', detail: err.message });
   }
 });
 
@@ -776,7 +913,117 @@ organizationsRouter.delete('/:id/teams/:teamId/members/:targetUserId', requireAu
 // Team Assignment Sets Endpoints
 // ==============================================================================
 
-// GET /api/v1/organizations/:id/team-assignment-sets - List sets
+// Helper to load teams and members for a list of set IDs
+async function fetchTeamsForSets(setIds: string[], orgId: string): Promise<{
+  teamsBySet: Record<string, OrganizationTeam[]>;
+  itemsBySet: Record<string, TeamAssignmentSetItem[]>;
+}> {
+  const teamsBySet: Record<string, OrganizationTeam[]> = {};
+  const itemsBySet: Record<string, TeamAssignmentSetItem[]> = {};
+  for (const sId of setIds) {
+    teamsBySet[sId] = [];
+    itemsBySet[sId] = [];
+  }
+
+  if (setIds.length === 0) {
+    return { teamsBySet, itemsBySet };
+  }
+
+  // 1. Fetch items mapping
+  const [itemRows] = await pool.query<any[]>(
+    `SELECT tasi.*, ot.name as team_name, ot.description as team_description,
+      (SELECT COUNT(*) FROM organization_team_members WHERE team_id = ot.id) as members_count
+     FROM team_assignment_set_items tasi
+     JOIN organization_teams ot ON tasi.team_id = ot.id
+     WHERE tasi.set_id IN (?)`,
+    [setIds]
+  );
+
+  for (const item of itemRows) {
+    if (!itemsBySet[item.set_id]) itemsBySet[item.set_id] = [];
+    itemsBySet[item.set_id].push({
+      set_id: item.set_id,
+      team_id: item.team_id,
+      assigned_role: item.assigned_role,
+      team_name: item.team_name,
+      team_description: item.team_description,
+      members_count: Number(item.members_count || 0),
+    });
+  }
+
+  // 2. Fetch all teams belonging to these sets (by set_id OR item mapping)
+  const [teamRows] = await pool.query<any[]>(
+    `SELECT t.*, tas.name as set_name,
+      (SELECT COUNT(*) FROM organization_team_members WHERE team_id = t.id) as members_count
+     FROM organization_teams t
+     LEFT JOIN team_assignment_sets tas ON t.set_id = tas.id
+     WHERE t.organization_id = ?
+       AND (t.set_id IN (?) OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id IN (?)))
+     ORDER BY t.created_at ASC`,
+    [orgId, setIds, setIds]
+  );
+
+  if (teamRows.length === 0) {
+    return { teamsBySet, itemsBySet };
+  }
+
+  const teamIds = teamRows.map((t) => t.id);
+
+  // 3. Fetch all members for these teams
+  const [allMemberRows] = await pool.query<any[]>(
+    `SELECT otm.team_id, otm.user_id, otm.role, otm.joined_at, u.username, u.name, u.email, u.user_type
+     FROM organization_team_members otm
+     JOIN users u ON otm.user_id = u.id
+     WHERE otm.team_id IN (?)
+     ORDER BY (otm.role = 'lead') DESC, otm.joined_at ASC`,
+    [teamIds]
+  );
+
+  const membersByTeam: Record<string, OrganizationTeamMember[]> = {};
+  for (const m of allMemberRows) {
+    if (!membersByTeam[m.team_id]) membersByTeam[m.team_id] = [];
+    membersByTeam[m.team_id].push({
+      team_id: m.team_id,
+      user_id: m.user_id,
+      role: m.role,
+      joined_at: new Date(m.joined_at).toISOString(),
+      username: m.username,
+      name: m.name,
+      email: m.email,
+      user_type: m.user_type,
+    });
+  }
+
+  const teamById: Record<string, OrganizationTeam> = {};
+  for (const t of teamRows) {
+    teamById[t.id] = formatTeamRow(t, membersByTeam[t.id] || []);
+  }
+
+  // Group teams into sets
+  for (const t of teamRows) {
+    const formatted = teamById[t.id];
+    // If team has explicit set_id
+    if (t.set_id && teamsBySet[t.set_id]) {
+      if (!teamsBySet[t.set_id].some((x) => x.id === t.id)) {
+        teamsBySet[t.set_id].push(formatted);
+      }
+    }
+  }
+
+  // Also include teams from itemsBySet
+  for (const [sId, items] of Object.entries(itemsBySet)) {
+    if (!teamsBySet[sId]) teamsBySet[sId] = [];
+    for (const it of items) {
+      if (teamById[it.team_id] && !teamsBySet[sId].some((x) => x.id === it.team_id)) {
+        teamsBySet[sId].push(teamById[it.team_id]);
+      }
+    }
+  }
+
+  return { teamsBySet, itemsBySet };
+}
+
+// GET /api/v1/organizations/:id/team-assignment-sets - List sets with nested teams
 organizationsRouter.get('/:id/team-assignment-sets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -789,7 +1036,7 @@ organizationsRouter.get('/:id/team-assignment-sets', requireAuth, async (req: Au
 
     const [setRows] = await pool.query<any[]>(
       `SELECT s.*,
-        (SELECT COUNT(*) FROM team_assignment_set_items WHERE set_id = s.id) as teams_count,
+        (SELECT COUNT(DISTINCT t.id) FROM organization_teams t WHERE t.set_id = s.id OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = s.id)) as teams_count,
         (SELECT COUNT(*) FROM projects WHERE team_assignment_set_id = s.id) as associated_projects_count
        FROM team_assignment_sets s
        WHERE s.organization_id = ?
@@ -797,31 +1044,10 @@ organizationsRouter.get('/:id/team-assignment-sets', requireAuth, async (req: Au
       [orgId]
     );
 
-    const [itemRows] = await pool.query<any[]>(
-      `SELECT tasi.*, ot.name as team_name, ot.description as team_description,
-        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = ot.id) as members_count
-       FROM team_assignment_set_items tasi
-       JOIN organization_teams ot ON tasi.team_id = ot.id
-       WHERE ot.organization_id = ?`,
-      [orgId]
-    );
+    const setIds = setRows.map((s) => s.id);
+    const { teamsBySet, itemsBySet } = await fetchTeamsForSets(setIds, orgId);
 
-    const itemsBySet: Record<string, TeamAssignmentSetItem[]> = {};
-    for (const item of itemRows) {
-      if (!itemsBySet[item.set_id]) {
-        itemsBySet[item.set_id] = [];
-      }
-      itemsBySet[item.set_id].push({
-        set_id: item.set_id,
-        team_id: item.team_id,
-        assigned_role: item.assigned_role,
-        team_name: item.team_name,
-        team_description: item.team_description,
-        members_count: Number(item.members_count || 0),
-      });
-    }
-
-    const sets = setRows.map((s) => formatSetRow(s, itemsBySet[s.id] || []));
+    const sets = setRows.map((s) => formatSetRow(s, itemsBySet[s.id] || [], teamsBySet[s.id] || []));
     res.json(sets);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve team assignment sets', detail: err.message });
@@ -852,7 +1078,7 @@ organizationsRouter.post('/:id/team-assignment-sets', requireAuth, async (req: A
       [setId, orgId, name.trim(), description || '', userId]
     );
 
-    // Items array can be provided directly or as team_ids list
+    // Items array can optionally be provided
     const itemsToInsert: { team_id: string; assigned_role?: string | null }[] = [];
     if (Array.isArray(items)) {
       for (const it of items) {
@@ -878,30 +1104,13 @@ organizationsRouter.post('/:id/team-assignment-sets', requireAuth, async (req: A
     }
 
     const [createdRows] = await pool.query<any[]>(
-      `SELECT s.*,
-        (SELECT COUNT(*) FROM team_assignment_set_items WHERE set_id = s.id) as teams_count,
-        0 as associated_projects_count
+      `SELECT s.*, 0 as teams_count, 0 as associated_projects_count
        FROM team_assignment_sets s WHERE s.id = ?`,
       [setId]
     );
 
-    const [itemRows] = await pool.query<any[]>(
-      `SELECT tasi.*, ot.name as team_name, ot.description as team_description,
-        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = ot.id) as members_count
-       FROM team_assignment_set_items tasi
-       JOIN organization_teams ot ON tasi.team_id = ot.id
-       WHERE tasi.set_id = ?`,
-      [setId]
-    );
-
-    res.status(201).json(formatSetRow(createdRows[0], itemRows.map((it) => ({
-      set_id: it.set_id,
-      team_id: it.team_id,
-      assigned_role: it.assigned_role,
-      team_name: it.team_name,
-      team_description: it.team_description,
-      members_count: Number(it.members_count || 0),
-    }))));
+    const { teamsBySet, itemsBySet } = await fetchTeamsForSets([setId], orgId);
+    res.status(201).json(formatSetRow(createdRows[0], itemsBySet[setId] || [], teamsBySet[setId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to create team assignment set', detail: err.message });
   }
@@ -920,7 +1129,7 @@ organizationsRouter.get('/:id/team-assignment-sets/:setId', requireAuth, async (
 
     const [setRows] = await pool.query<any[]>(
       `SELECT s.*,
-        (SELECT COUNT(*) FROM team_assignment_set_items WHERE set_id = s.id) as teams_count,
+        (SELECT COUNT(DISTINCT t.id) FROM organization_teams t WHERE t.set_id = s.id OR t.id IN (SELECT team_id FROM team_assignment_set_items WHERE set_id = s.id)) as teams_count,
         (SELECT COUNT(*) FROM projects WHERE team_assignment_set_id = s.id) as associated_projects_count
        FROM team_assignment_sets s
        WHERE s.id = ? AND s.organization_id = ?`,
@@ -931,25 +1140,84 @@ organizationsRouter.get('/:id/team-assignment-sets/:setId', requireAuth, async (
       return res.status(404).json({ error: 'Team assignment set not found' });
     }
 
-    const [itemRows] = await pool.query<any[]>(
-      `SELECT tasi.*, ot.name as team_name, ot.description as team_description,
-        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = ot.id) as members_count
-       FROM team_assignment_set_items tasi
-       JOIN organization_teams ot ON tasi.team_id = ot.id
-       WHERE tasi.set_id = ?`,
-      [setId]
-    );
-
-    res.json(formatSetRow(setRows[0], itemRows.map((it) => ({
-      set_id: it.set_id,
-      team_id: it.team_id,
-      assigned_role: it.assigned_role,
-      team_name: it.team_name,
-      team_description: it.team_description,
-      members_count: Number(it.members_count || 0),
-    }))));
+    const { teamsBySet, itemsBySet } = await fetchTeamsForSets([setId], orgId);
+    res.json(formatSetRow(setRows[0], itemsBySet[setId] || [], teamsBySet[setId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve team assignment set', detail: err.message });
+  }
+});
+
+// POST /api/v1/organizations/:id/team-assignment-sets/:setId/clone - Clone a set with all its teams and members
+organizationsRouter.post('/:id/team-assignment-sets/:setId/clone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id: orgId, setId } = req.params;
+
+    const isMember = await isOrganizationMember(userId, orgId);
+    if (!isMember) {
+      return res.status(403).json({ error: 'You are not a member of this organization' });
+    }
+
+    const [existingSets] = await pool.query<any[]>(
+      'SELECT * FROM team_assignment_sets WHERE id = ? AND organization_id = ?',
+      [setId, orgId]
+    );
+    if (!existingSets || existingSets.length === 0) {
+      return res.status(404).json({ error: 'Source team assignment set not found' });
+    }
+
+    const source = existingSets[0];
+    const newName = req.body.name?.trim() || `${source.name} (Copy)`;
+    const newDesc = req.body.description !== undefined ? req.body.description : source.description;
+    const newSetId = `set-${crypto.randomBytes(4).toString('hex')}`;
+
+    // 1. Create cloned set
+    await pool.query(
+      `INSERT INTO team_assignment_sets (id, organization_id, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+      [newSetId, orgId, newName, newDesc, userId]
+    );
+
+    // 2. Fetch original teams
+    const { teamsBySet } = await fetchTeamsForSets([setId], orgId);
+    const originalTeams = teamsBySet[setId] || [];
+
+    // 3. Duplicate teams and members into the new set
+    for (const origTeam of originalTeams) {
+      const newTeamId = `team-${crypto.randomBytes(4).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO organization_teams (id, organization_id, set_id, name, description, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [newTeamId, orgId, newSetId, origTeam.name, origTeam.description || '', userId]
+      );
+
+      await pool.query(
+        `INSERT INTO team_assignment_set_items (set_id, team_id)
+         VALUES (?, ?)`,
+        [newSetId, newTeamId]
+      );
+
+      if (origTeam.members && origTeam.members.length > 0) {
+        for (const m of origTeam.members) {
+          await pool.query(
+            `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+             VALUES (?, ?, ?, NOW())`,
+            [newTeamId, m.user_id, m.role]
+          );
+        }
+      }
+    }
+
+    const [newSetRows] = await pool.query<any[]>(
+      `SELECT s.*, 0 as associated_projects_count
+       FROM team_assignment_sets s WHERE s.id = ?`,
+      [newSetId]
+    );
+
+    const { teamsBySet: newTeamsBySet, itemsBySet: newItemsBySet } = await fetchTeamsForSets([newSetId], orgId);
+    res.status(201).json(formatSetRow(newSetRows[0], newItemsBySet[newSetId] || [], newTeamsBySet[newSetId] || []));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to clone team assignment set', detail: err.message });
   }
 });
 
@@ -1007,35 +1275,19 @@ organizationsRouter.put('/:id/team-assignment-sets/:setId', requireAuth, async (
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT s.*,
-        (SELECT COUNT(*) FROM team_assignment_set_items WHERE set_id = s.id) as teams_count,
         (SELECT COUNT(*) FROM projects WHERE team_assignment_set_id = s.id) as associated_projects_count
        FROM team_assignment_sets s WHERE s.id = ?`,
       [setId]
     );
 
-    const [itemRows] = await pool.query<any[]>(
-      `SELECT tasi.*, ot.name as team_name, ot.description as team_description,
-        (SELECT COUNT(*) FROM organization_team_members WHERE team_id = ot.id) as members_count
-       FROM team_assignment_set_items tasi
-       JOIN organization_teams ot ON tasi.team_id = ot.id
-       WHERE tasi.set_id = ?`,
-      [setId]
-    );
-
-    res.json(formatSetRow(updatedRows[0], itemRows.map((it) => ({
-      set_id: it.set_id,
-      team_id: it.team_id,
-      assigned_role: it.assigned_role,
-      team_name: it.team_name,
-      team_description: it.team_description,
-      members_count: Number(it.members_count || 0),
-    }))));
+    const { teamsBySet, itemsBySet } = await fetchTeamsForSets([setId], orgId);
+    res.json(formatSetRow(updatedRows[0], itemsBySet[setId] || [], teamsBySet[setId] || []));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update team assignment set', detail: err.message });
   }
 });
 
-// DELETE /api/v1/organizations/:id/team-assignment-sets/:setId - Delete set
+// DELETE /api/v1/organizations/:id/team-assignment-sets/:setId - Delete set and cascade
 organizationsRouter.delete('/:id/team-assignment-sets/:setId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -1048,6 +1300,19 @@ organizationsRouter.delete('/:id/team-assignment-sets/:setId', requireAuth, asyn
 
     // Disassociate any projects pointing to this set
     await pool.query('UPDATE projects SET team_assignment_set_id = NULL WHERE team_assignment_set_id = ?', [setId]);
+
+    // Delete teams created directly within this set
+    const [teamsInSet] = await pool.query<any[]>(
+      'SELECT id FROM organization_teams WHERE set_id = ?',
+      [setId]
+    );
+    if (teamsInSet.length > 0) {
+      const teamIds = teamsInSet.map((t) => t.id);
+      await pool.query('DELETE FROM project_team_assignments WHERE team_id IN (?)', [teamIds]);
+      await pool.query('DELETE FROM organization_team_members WHERE team_id IN (?)', [teamIds]);
+      await pool.query('DELETE FROM organization_teams WHERE id IN (?)', [teamIds]);
+    }
+
     await pool.query('DELETE FROM team_assignment_set_items WHERE set_id = ?', [setId]);
     await pool.query('DELETE FROM team_assignment_sets WHERE id = ?', [setId]);
 

@@ -55,30 +55,7 @@ CREATE TABLE IF NOT EXISTS organization_members (
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4. Organization Teams Table
-CREATE TABLE IF NOT EXISTS organization_teams (
-    id VARCHAR(64) PRIMARY KEY,
-    organization_id VARCHAR(64) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    created_by VARCHAR(64) NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_org_id (organization_id),
-    INDEX idx_created_by (created_by)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 4.1 Organization Team Members Table
-CREATE TABLE IF NOT EXISTS organization_team_members (
-    team_id VARCHAR(64) NOT NULL,
-    user_id VARCHAR(64) NOT NULL,
-    role VARCHAR(64) NOT NULL DEFAULT 'member',
-    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (team_id, user_id),
-    INDEX idx_user_id (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 4.2 Team Assignment Sets Table
+-- 4. Team Assignment Sets Table (Created first to contain teams)
 CREATE TABLE IF NOT EXISTS team_assignment_sets (
     id VARCHAR(64) PRIMARY KEY,
     organization_id VARCHAR(64) NOT NULL,
@@ -91,7 +68,32 @@ CREATE TABLE IF NOT EXISTS team_assignment_sets (
     INDEX idx_created_by (created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4.3 Team Assignment Set Items Table
+-- 4.1 Organization Teams Table (Created within a Team Assignment Set)
+CREATE TABLE IF NOT EXISTS organization_teams (
+    id VARCHAR(64) PRIMARY KEY,
+    organization_id VARCHAR(64) NOT NULL,
+    set_id VARCHAR(64) NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_by VARCHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_org_id (organization_id),
+    INDEX idx_set_id (set_id),
+    INDEX idx_created_by (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4.2 Organization Team Members Table (Users within organization assigned to team)
+CREATE TABLE IF NOT EXISTS organization_team_members (
+    team_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    role VARCHAR(64) NOT NULL DEFAULT 'member',
+    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, user_id),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4.3 Team Assignment Set Items Table (Referential mapping between set and teams)
 CREATE TABLE IF NOT EXISTS team_assignment_set_items (
     set_id VARCHAR(64) NOT NULL,
     team_id VARCHAR(64) NOT NULL,

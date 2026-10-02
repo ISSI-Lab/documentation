@@ -469,12 +469,26 @@ export const api = {
 
   async createOrganizationTeam(
     orgId: string,
-    payload: { name: string; description?: string; initial_members?: { userId: string; role?: string }[] }
+    payload: { name: string; description?: string; set_id?: string; initial_members?: { userId: string; role?: string }[] }
   ): Promise<OrganizationTeam> {
     return request<OrganizationTeam>(`/organizations/${encodeURIComponent(orgId)}/teams`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  },
+
+  async createTeamInSet(
+    orgId: string,
+    setId: string,
+    payload: { name: string; description?: string; initial_members?: { userId: string; role?: string }[] }
+  ): Promise<OrganizationTeam> {
+    return request<OrganizationTeam>(
+      `/organizations/${encodeURIComponent(orgId)}/team-assignment-sets/${encodeURIComponent(setId)}/teams`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
   },
 
   async getOrganizationTeam(orgId: string, teamId: string): Promise<OrganizationTeam> {
@@ -590,6 +604,20 @@ export const api = {
     });
   },
 
+  async cloneTeamAssignmentSet(
+    orgId: string,
+    setId: string,
+    payload?: { name?: string; description?: string }
+  ): Promise<TeamAssignmentSet> {
+    return request<TeamAssignmentSet>(
+      `/organizations/${encodeURIComponent(orgId)}/team-assignment-sets/${encodeURIComponent(setId)}/clone`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+      }
+    );
+  },
+
   // Project Team Assignments
   async getProjectTeams(projectId: string): Promise<{
     project_id: string;
@@ -637,6 +665,16 @@ export const api = {
     return request<any>(`/projects/${encodeURIComponent(projectId)}/save-as-team-assignment-set`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+
+  async cloneProjectTeamAssignmentSet(
+    projectId: string,
+    payload?: { name?: string; description?: string; source_set_id?: string }
+  ): Promise<Project> {
+    return request<Project>(`/projects/${encodeURIComponent(projectId)}/clone-set`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     });
   },
 };
