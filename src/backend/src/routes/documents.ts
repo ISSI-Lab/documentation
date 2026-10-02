@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { pool } from '../db';
 import { compileDocumentMarkdown } from '../compiler';
 import { Document, Template } from '../models';
-import { AuthenticatedRequest, isTeamMember, optionalAuth, requireAuth } from '../auth';
+import { AuthenticatedRequest, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
 
 export const documentsRouter = Router();
 
@@ -30,11 +30,14 @@ function formatDocumentRow(row: any): Document {
     elementsData = row.elements_data;
   }
 
+  const orgId = row.organization_id || row.team_id || null;
+
   return {
     id: row.id,
     title: row.title,
     project_id: row.project_id || null,
-    team_id: row.team_id || null,
+    organization_id: orgId,
+    team_id: orgId, // compatibility
     template_id: row.template_id,
     template_title: row.template_title,
     status: row.status,
@@ -49,11 +52,12 @@ function formatDocumentRow(row: any): Document {
   };
 }
 
-// GET /api/v1/documents - List documents with team/project filtering
+// GET /api/v1/documents - List documents with organization/project filtering
 documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { team_id, project_id, template_id, search, tag, scope } = req.query;
+    const { organization_id, team_id, project_id, template_id, search, tag, scope } = req.query;
+    const targetOrgId = (organization_id || team_id) as string | undefined;
 
     let query = 'SELECT * FROM documents';
     const params: any[] = [];
@@ -62,21 +66,21 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
     // Filter by ownership/membership if user is authenticated
     if (userId) {
       conditions.push(
-        `((team_id IS NULL AND created_by = ?) OR (team_id IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)))`
+        `((organization_id IS NULL AND created_by = ?) OR (organization_id IS NOT NULL AND organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
       );
       params.push(userId, userId);
     } else {
       conditions.push('1 = 0');
     }
 
-    if (scope === 'personal' || team_id === 'personal' || team_id === 'null') {
+    if (scope === 'personal' || targetOrgId === 'personal' || targetOrgId === 'null') {
       if (userId) {
-        conditions.push('team_id IS NULL AND created_by = ?');
+        conditions.push('organization_id IS NULL AND created_by = ?');
         params.push(userId);
       }
-    } else if (team_id && typeof team_id === 'string') {
-      conditions.push('team_id = ?');
-      params.push(team_id);
+    } else if (targetOrgId && typeof targetOrgId === 'string') {
+      conditions.push('organization_id = ?');
+      params.push(targetOrgId);
     }
 
     if (project_id && typeof project_id === 'string') {
@@ -128,11 +132,11 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   }
 });
 
-// POST /api/v1/documents - Create document in project/team or personal
+// POST /api/v1/documents - Create document in project/organization or personal
 documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const { title, template_id, project_id, team_id, author, tags, elements_data } = req.body;
+    const { title, template_id, project_id, organization_id, team_id, author, tags, elements_data } = req.body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'Document title is required' });
@@ -142,7 +146,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       return res.status(400).json({ error: 'Valid template_id is required' });
     }
 
-    let resolvedTeamId: string | null = null;
+    let resolvedOrgId: string | null = null;
+    const directOrgId = organization_id || team_id;
 
     if (project_id) {
       const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [project_id]);
@@ -150,21 +155,21 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         return res.status(400).json({ error: 'Selected project not found' });
       }
       const proj = projRows[0];
-      resolvedTeamId = proj.team_id || null;
+      resolvedOrgId = proj.organization_id || proj.team_id || null;
 
-      if (resolvedTeamId) {
-        const isMember = await isTeamMember(user.id, resolvedTeamId);
+      if (resolvedOrgId) {
+        const isMember = await isOrganizationMember(user.id, resolvedOrgId);
         if (!isMember) {
-          return res.status(403).json({ error: 'You are not a member of the team for this project' });
+          return res.status(403).json({ error: 'You are not a member of the organization for this project' });
         }
       } else if (proj.created_by !== user.id) {
         return res.status(403).json({ error: 'You do not have access to this personal project' });
       }
-    } else if (team_id) {
-      resolvedTeamId = String(team_id);
-      const isMember = await isTeamMember(user.id, resolvedTeamId);
+    } else if (directOrgId) {
+      resolvedOrgId = String(directOrgId);
+      const isMember = await isOrganizationMember(user.id, resolvedOrgId);
       if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the selected team' });
+        return res.status(403).json({ error: 'You are not a member of the selected organization' });
       }
     }
 
@@ -186,6 +191,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       templateElements = tplRow.document_elements;
     }
 
+    const templateOrgId = tplRow.organization_id || tplRow.team_id || null;
+
     const template: Template = {
       id: tplRow.id,
       title: tplRow.title,
@@ -193,7 +200,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       category: tplRow.category,
       icon: tplRow.icon,
       visibility: tplRow.visibility || 'private',
-      team_id: tplRow.team_id || null,
+      organization_id: templateOrgId,
+      team_id: templateOrgId,
       created_by: tplRow.created_by || null,
       tags: [],
       document_elements: templateElements,
@@ -226,13 +234,13 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     );
 
     await pool.query(
-      `INSERT INTO documents (id, title, project_id, team_id, template_id, template_title, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, created_at, updated_at)
+      `INSERT INTO documents (id, title, project_id, organization_id, template_id, template_title, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         docId,
         title.trim(),
         project_id || null,
-        resolvedTeamId,
+        resolvedOrgId,
         template.id,
         template.title,
         status,
@@ -252,7 +260,7 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
   }
 });
 
-// PUT /api/v1/documents/:id - Update document (Co-documenting: any team member can edit)
+// PUT /api/v1/documents/:id - Update document (Co-documenting: any organization member can edit)
 documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
@@ -263,12 +271,13 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     }
 
     const currentDoc = existing[0];
+    const docOrgId = currentDoc.organization_id || currentDoc.team_id;
 
-    // Verify user is a member of the team if document belongs to a team
-    if (currentDoc.team_id) {
-      const isMember = await isTeamMember(user.id, currentDoc.team_id);
+    // Verify user is a member of the organization if document belongs to an organization
+    if (docOrgId) {
+      const isMember = await isOrganizationMember(user.id, docOrgId);
       if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the team for this document' });
+        return res.status(403).json({ error: 'You are not a member of the organization for this document' });
       }
     }
 
@@ -320,6 +329,8 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
         tElements = t.document_elements;
       }
 
+      const tOrgId = t.organization_id || t.team_id || null;
+
       template = {
         id: t.id,
         title: t.title,
@@ -327,7 +338,8 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
         category: t.category,
         icon: t.icon,
         visibility: t.visibility || 'private',
-        team_id: t.team_id || null,
+        organization_id: tOrgId,
+        team_id: tOrgId,
         created_by: t.created_by || null,
         tags: [],
         document_elements: tElements,
@@ -379,8 +391,9 @@ documentsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
     }
 
     const doc = rows[0];
-    if (doc.team_id) {
-      const isMember = await isTeamMember(user.id, doc.team_id);
+    const docOrgId = doc.organization_id || doc.team_id;
+    if (docOrgId) {
+      const isMember = await isOrganizationMember(user.id, docOrgId);
       if (!isMember) {
         return res.status(403).json({ error: 'You do not have permission to delete this document' });
       }

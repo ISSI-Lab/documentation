@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, FilePlus, Sparkles, FolderKanban, Users, User as UserIcon, Globe, Lock } from 'lucide-react';
-import { DocumentCreatePayload, Project, Team, Template, User } from '../../types';
+import { X, FilePlus, Sparkles, FolderKanban, Users, User as UserIcon, Globe, Lock, Building2 } from 'lucide-react';
+import { DocumentCreatePayload, Organization, Project, Team, Template, User } from '../../types';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
   templates: Template[];
-  teams?: Team[];
+  organizations?: Organization[];
+  teams?: Team[]; // compatibility alias
   projects: Project[];
   currentUser?: User | null;
   initialSelectedTemplateId?: string | null;
   initialSelectedProjectId?: string | null;
-  initialSelectedTeamId?: string | null;
+  initialSelectedOrganizationId?: string | null;
+  initialSelectedTeamId?: string | null; // compatibility alias
   onClose: () => void;
   onCreate: (payload: DocumentCreatePayload) => Promise<void>;
 }
@@ -18,27 +20,32 @@ interface CreateDocumentModalProps {
 export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   isOpen,
   templates,
-  teams = [],
+  organizations: propOrganizations,
+  teams: propTeams,
   projects,
   currentUser,
   initialSelectedTemplateId,
   initialSelectedProjectId,
+  initialSelectedOrganizationId,
   initialSelectedTeamId,
   onClose,
   onCreate,
 }) => {
+  const organizations = propOrganizations || propTeams || [];
+  const initialOrgId = initialSelectedOrganizationId || initialSelectedTeamId || null;
+
   // Determine initial scope
-  const getInitialScope = (): 'personal' | 'team' => {
-    if (initialSelectedTeamId) return 'team';
+  const getInitialScope = (): 'personal' | 'organization' => {
+    if (initialOrgId) return 'organization';
     if (initialSelectedProjectId) {
       const p = projects.find((proj) => proj.id === initialSelectedProjectId);
-      if (p && p.team_id) return 'team';
+      if (p && (p.organization_id || p.team_id)) return 'organization';
     }
-    return teams.length > 0 ? 'team' : 'personal';
+    return organizations.length > 0 ? 'organization' : 'personal';
   };
 
-  const [scope, setScope] = useState<'personal' | 'team'>('personal');
-  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [scope, setScope] = useState<'personal' | 'organization'>('personal');
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [templateId, setTemplateId] = useState('');
@@ -53,18 +60,18 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       const initialScopeVal = getInitialScope();
       setScope(initialScopeVal);
 
-      let targetTeamId = '';
-      if (initialSelectedTeamId) {
-        targetTeamId = initialSelectedTeamId;
+      let targetOrgId = '';
+      if (initialOrgId) {
+        targetOrgId = initialOrgId;
       } else if (initialSelectedProjectId) {
         const p = projects.find((proj) => proj.id === initialSelectedProjectId);
-        if (p?.team_id) {
-          targetTeamId = p.team_id;
+        if (p?.organization_id || p?.team_id) {
+          targetOrgId = (p.organization_id || p.team_id)!;
         }
-      } else if (teams.length > 0) {
-        targetTeamId = teams[0].id;
+      } else if (organizations.length > 0) {
+        targetOrgId = organizations[0].id;
       }
-      setSelectedTeamId(targetTeamId);
+      setSelectedOrgId(targetOrgId);
 
       setProjectId(initialSelectedProjectId || null);
       setTitle('');
@@ -78,30 +85,32 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       } else {
         const availableTpls = templates.filter((t) => {
           if (t.visibility === 'public') return true;
-          if (initialScopeVal === 'personal') return t.team_id === null;
-          return t.team_id === targetTeamId;
+          if (initialScopeVal === 'personal') return !t.organization_id && !t.team_id;
+          return t.organization_id === targetOrgId || t.team_id === targetOrgId;
         });
         setTemplateId(availableTpls.length > 0 ? availableTpls[0].id : (templates[0]?.id || ''));
       }
     }
-  }, [isOpen, initialSelectedTemplateId, initialSelectedProjectId, initialSelectedTeamId, teams, projects, currentUser]);
+  }, [isOpen, initialSelectedTemplateId, initialSelectedProjectId, initialOrgId, organizations, projects, currentUser]);
 
-  // Filter projects based on current scope & team
+  // Filter projects based on current scope & organization
   const availableProjects = projects.filter((p) => {
+    const pOrgId = p.organization_id || p.team_id;
     if (scope === 'personal') {
-      return p.team_id === null;
+      return !pOrgId;
     } else {
-      return selectedTeamId ? p.team_id === selectedTeamId : true;
+      return selectedOrgId ? pOrgId === selectedOrgId : true;
     }
   });
 
-  // Filter templates based on current scope & team
+  // Filter templates based on current scope & organization
   const availableTemplates = templates.filter((t) => {
     if (t.visibility === 'public') return true;
+    const tOrgId = t.organization_id || t.team_id;
     if (scope === 'personal') {
-      return t.team_id === null;
+      return !tOrgId;
     } else {
-      return selectedTeamId ? t.team_id === selectedTeamId : true;
+      return selectedOrgId ? tOrgId === selectedOrgId : true;
     }
   });
 
@@ -110,7 +119,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
     if (availableTemplates.length > 0 && !availableTemplates.some((t) => t.id === templateId)) {
       setTemplateId(availableTemplates[0].id);
     }
-  }, [scope, selectedTeamId, availableTemplates, templateId]);
+  }, [scope, selectedOrgId, availableTemplates, templateId]);
 
   if (!isOpen) return null;
 
@@ -133,12 +142,13 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         .map((t) => t.trim().replace(/^#/, ''))
         .filter(Boolean);
 
-      const targetTeamId = scope === 'team' ? (selectedTeamId || null) : null;
+      const targetOrgId = scope === 'organization' ? (selectedOrgId || null) : null;
 
       await onCreate({
         title: title.trim(),
         template_id: templateId,
-        team_id: targetTeamId,
+        organization_id: targetOrgId,
+        team_id: targetOrgId,
         project_id: projectId || null,
         author: author.trim() || currentUser?.name || currentUser?.username || 'Anonymous',
         tags,
@@ -188,7 +198,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Scope Selection: Personal vs Team */}
+          {/* Scope Selection: Personal vs Organization */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Document Ownership & Scope *
@@ -217,57 +227,57 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
-                  Private to your personal workspace (without a team).
+                  Private to your personal workspace (without an organization).
                 </p>
               </div>
 
-              {/* Team Option */}
+              {/* Organization Option */}
               <div
                 onClick={() => {
-                  setScope('team');
-                  if (!selectedTeamId && teams.length > 0) {
-                    setSelectedTeamId(teams[0].id);
+                  setScope('organization');
+                  if (!selectedOrgId && organizations.length > 0) {
+                    setSelectedOrgId(organizations[0].id);
                   }
                 }}
                 className={`p-3 border cursor-pointer transition-all ${
-                  scope === 'team'
+                  scope === 'organization'
                     ? 'bg-indigo-50/70 border-indigo-600 ring-1 ring-indigo-600 shadow-sm'
                     : 'bg-white border-slate-300 hover:border-slate-400'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-indigo-600" /> Team Document
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Organization Document
                   </span>
-                  {scope === 'team' && (
+                  {scope === 'organization' && (
                     <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 font-bold rounded">
                       Selected
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
-                  Collaborate and co-author with members of your team.
+                  Collaborate and co-author with members of your organization.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Team Selector when scope === 'team' */}
-          {scope === 'team' && (
+          {/* Organization Selector when scope === 'organization' */}
+          {scope === 'organization' && (
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Users className="w-3.5 h-3.5 text-indigo-600" /> Select Target Team *
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Select Target Organization *
               </label>
-              {teams.length > 0 ? (
+              {organizations.length > 0 ? (
                 <select
-                  value={selectedTeamId}
+                  value={selectedOrgId}
                   onChange={(e) => {
-                    setSelectedTeamId(e.target.value);
+                    setSelectedOrgId(e.target.value);
                     setProjectId(null);
                   }}
                   className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
                 >
-                  {teams.map((t) => (
+                  {organizations.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} {t.user_role ? `(${t.user_role})` : ''}
                     </option>
@@ -275,7 +285,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 </select>
               ) : (
                 <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                  You are not a member of any team yet. Switch to Personal Document or join/create a team first.
+                  You are not a member of any organization yet. Switch to Personal Document or join/create an organization first.
                 </div>
               )}
             </div>
@@ -327,7 +337,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             >
               {availableTemplates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
-                  {tpl.title} ({tpl.visibility === 'public' ? 'Public Pool' : tpl.team_id ? 'Team Template' : 'Personal'} - {tpl.document_elements?.length || 0} sections)
+                  {tpl.title} ({tpl.visibility === 'public' ? 'Public Pool' : (tpl.organization_id || tpl.team_id) ? 'Organization Template' : 'Personal'} - {tpl.document_elements?.length || 0} sections)
                 </option>
               ))}
             </select>
@@ -339,8 +349,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   <span className="flex items-center gap-1.5">
                     {selectedTemplate.visibility === 'public' ? (
                       <Globe className="w-3.5 h-3.5 text-blue-600" />
-                    ) : selectedTemplate.team_id ? (
-                      <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    ) : (selectedTemplate.organization_id || selectedTemplate.team_id) ? (
+                      <Building2 className="w-3.5 h-3.5 text-indigo-600" />
                     ) : (
                       <Lock className="w-3.5 h-3.5 text-emerald-600" />
                     )}

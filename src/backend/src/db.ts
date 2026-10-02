@@ -87,9 +87,76 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 2. Teams Table
+      // Migration: Rename teams -> organizations if needed
+      try {
+        const [orgTableExists] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) as cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'organizations'`,
+          [dbName]
+        );
+        const [teamTableExists] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) as cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'teams'`,
+          [dbName]
+        );
+        if (teamTableExists[0]?.cnt > 0 && orgTableExists[0]?.cnt === 0) {
+          console.log('[Database] Migrating table teams -> organizations...');
+          await conn.query('RENAME TABLE teams TO organizations');
+        }
+      } catch (err: any) {
+        console.warn('[Database] Table migration teams->organizations notice:', err.message);
+      }
+
+      // Migration: Rename team_members -> organization_members if needed
+      try {
+        const [orgMemTableExists] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) as cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'organization_members'`,
+          [dbName]
+        );
+        const [teamMemTableExists] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT COUNT(*) as cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'team_members'`,
+          [dbName]
+        );
+        if (teamMemTableExists[0]?.cnt > 0 && orgMemTableExists[0]?.cnt === 0) {
+          console.log('[Database] Migrating table team_members -> organization_members...');
+          await conn.query('RENAME TABLE team_members TO organization_members');
+        }
+      } catch (err: any) {
+        console.warn('[Database] Table migration team_members->organization_members notice:', err.message);
+      }
+
+      // Helper for migrating columns
+      async function migrateColumn(tableName: string, oldCol: string, newCol: string, def: string) {
+        try {
+          const [tableExists] = await conn.query<mysql.RowDataPacket[]>(
+            `SELECT COUNT(*) as cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+            [dbName, tableName]
+          );
+          if (!tableExists[0] || tableExists[0].cnt === 0) return;
+
+          const [hasOld] = await conn.query<mysql.RowDataPacket[]>(
+            `SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+            [dbName, tableName, oldCol]
+          );
+          const [hasNew] = await conn.query<mysql.RowDataPacket[]>(
+            `SELECT COUNT(*) as cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+            [dbName, tableName, newCol]
+          );
+          if (hasOld[0]?.cnt > 0 && hasNew[0]?.cnt === 0) {
+            console.log(`[Database] Renaming column ${tableName}.${oldCol} -> ${newCol}...`);
+            await conn.query(`ALTER TABLE \`${tableName}\` CHANGE COLUMN \`${oldCol}\` \`${newCol}\` ${def}`);
+          }
+        } catch (err: any) {
+          console.warn(`[Database] Migration notice on ${tableName}.${oldCol}->${newCol}:`, err.message);
+        }
+      }
+
+      await migrateColumn('organization_members', 'team_id', 'organization_id', 'VARCHAR(64) NOT NULL');
+      await migrateColumn('projects', 'team_id', 'organization_id', 'VARCHAR(64) NULL');
+      await migrateColumn('templates', 'team_id', 'organization_id', 'VARCHAR(64) NULL');
+      await migrateColumn('documents', 'team_id', 'organization_id', 'VARCHAR(64) NULL');
+
+      // 2. Organizations Table
       await conn.query(`
-        CREATE TABLE IF NOT EXISTS teams (
+        CREATE TABLE IF NOT EXISTS organizations (
           id VARCHAR(64) PRIMARY KEY,
           name VARCHAR(255) NOT NULL,
           description TEXT,
@@ -102,14 +169,14 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 3. Team Members Table
+      // 3. Organization Members Table
       await conn.query(`
-        CREATE TABLE IF NOT EXISTS team_members (
-          team_id VARCHAR(64) NOT NULL,
+        CREATE TABLE IF NOT EXISTS organization_members (
+          organization_id VARCHAR(64) NOT NULL,
           user_id VARCHAR(64) NOT NULL,
           role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member',
           joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (team_id, user_id),
+          PRIMARY KEY (organization_id, user_id),
           INDEX idx_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
@@ -118,13 +185,13 @@ export async function initDatabase(): Promise<void> {
       await conn.query(`
         CREATE TABLE IF NOT EXISTS projects (
           id VARCHAR(64) PRIMARY KEY,
-          team_id VARCHAR(64) NULL,
+          organization_id VARCHAR(64) NULL,
           name VARCHAR(255) NOT NULL,
           description TEXT,
           created_by VARCHAR(64) NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_team_id (team_id)
+          INDEX idx_organization_id (organization_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -137,13 +204,13 @@ export async function initDatabase(): Promise<void> {
           category VARCHAR(100) NOT NULL DEFAULT 'General',
           icon VARCHAR(50) NOT NULL DEFAULT 'file-text',
           visibility ENUM('private', 'public') NOT NULL DEFAULT 'private',
-          team_id VARCHAR(64) NULL,
+          organization_id VARCHAR(64) NULL,
           created_by VARCHAR(64) NULL,
           tags JSON NULL,
           document_elements JSON NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_team_id (team_id),
+          INDEX idx_organization_id (organization_id),
           INDEX idx_visibility (visibility)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
@@ -154,7 +221,7 @@ export async function initDatabase(): Promise<void> {
           id VARCHAR(64) PRIMARY KEY,
           title VARCHAR(255) NOT NULL,
           project_id VARCHAR(64) NULL,
-          team_id VARCHAR(64) NULL,
+          organization_id VARCHAR(64) NULL,
           template_id VARCHAR(64) NOT NULL,
           template_title VARCHAR(255) NOT NULL,
           status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
@@ -167,7 +234,7 @@ export async function initDatabase(): Promise<void> {
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_project_id (project_id),
-          INDEX idx_team_id (team_id),
+          INDEX idx_organization_id (organization_id),
           INDEX idx_template_id (template_id),
           INDEX idx_status (status),
           INDEX idx_updated_at (updated_at)
@@ -176,12 +243,12 @@ export async function initDatabase(): Promise<void> {
 
       // Column migrations for pre-existing tables if any
       try {
-        await conn.query(`ALTER TABLE \`team_members\` MODIFY COLUMN role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member'`);
+        await conn.query(`ALTER TABLE \`organization_members\` MODIFY COLUMN role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member'`);
       } catch {
         // ignore
       }
       try {
-        await conn.query(`ALTER TABLE \`projects\` MODIFY COLUMN team_id VARCHAR(64) NULL`);
+        await conn.query(`ALTER TABLE \`projects\` MODIFY COLUMN organization_id VARCHAR(64) NULL`);
       } catch {
         // ignore
       }
@@ -189,16 +256,16 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'users', 'is_verified', 'BOOLEAN NOT NULL DEFAULT FALSE');
 
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
-      await ensureColumnExists(conn, 'templates', 'team_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'templates', 'organization_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'templates', 'created_by', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'templates', 'tags', 'JSON NULL');
 
       await ensureColumnExists(conn, 'documents', 'project_id', 'VARCHAR(64) NULL');
-      await ensureColumnExists(conn, 'documents', 'team_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'organization_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'created_by', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'last_edited_by', 'VARCHAR(64) NULL');
 
-      // Seed config demo users, teams, projects, and templates
+      // Seed config demo users, organizations, projects, and templates
       await seedConfigData(conn);
       await seedDefaultTemplates(conn);
 
@@ -278,24 +345,25 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
       }
     }
 
-    // 2. Seed default demo team
-    if (config.defaultTeam) {
-      const t = config.defaultTeam;
+    // 2. Seed default demo organization
+    const orgConfig = config.defaultOrganization || config.defaultTeam;
+    if (orgConfig) {
+      const t = orgConfig;
       const creatorId = config.demoUsers?.[0]?.id || 'usr-demo-organizer';
 
       await runner.query(
-        `INSERT INTO teams (id, name, description, join_code, created_by, created_at, updated_at)
+        `INSERT INTO organizations (id, name, description, join_code, created_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, NOW(), NOW())
          ON DUPLICATE KEY UPDATE
            name = VALUES(name),
            description = VALUES(description),
            join_code = VALUES(join_code)`,
-        [t.id, t.name, t.description || '', t.join_code || 'TEAM-CORE-2026', creatorId]
+        [t.id, t.name, t.description || '', t.join_code || 'ORG-CORE-2026', creatorId]
       );
 
       // Add organizer as owner
       await runner.query(
-        `INSERT INTO team_members (team_id, user_id, role, joined_at)
+        `INSERT INTO organization_members (organization_id, user_id, role, joined_at)
          VALUES (?, ?, 'owner', NOW())
          ON DUPLICATE KEY UPDATE role = 'owner'`,
         [t.id, creatorId]
@@ -305,18 +373,18 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
       const regularId = config.demoUsers?.[1]?.id;
       if (regularId) {
         await runner.query(
-          `INSERT INTO team_members (team_id, user_id, role, joined_at)
+          `INSERT INTO organization_members (organization_id, user_id, role, joined_at)
            VALUES (?, ?, 'member', NOW())
            ON DUPLICATE KEY UPDATE role = 'member'`,
           [t.id, regularId]
         );
       }
 
-      // 3. Seed default project in team
+      // 3. Seed default project in organization
       if (config.defaultProject) {
         const p = config.defaultProject;
         await runner.query(
-          `INSERT INTO projects (id, team_id, name, description, created_by, created_at, updated_at)
+          `INSERT INTO projects (id, organization_id, name, description, created_by, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, NOW(), NOW())
            ON DUPLICATE KEY UPDATE
              name = VALUES(name),
@@ -326,7 +394,7 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
       }
     }
 
-    console.log('[Database] Demo users, default team, and default project verified and seeded.');
+    console.log('[Database] Demo users, default organization, and default project verified and seeded.');
   } finally {
     if (!conn) {
       runner.release();
@@ -606,7 +674,7 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
 
     for (const t of templatesToSeed) {
       await runner.query(
-        `INSERT INTO templates (id, title, description, category, icon, visibility, team_id, created_by, tags, document_elements, created_at, updated_at)
+        `INSERT INTO templates (id, title, description, category, icon, visibility, organization_id, created_by, tags, document_elements, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, NULL, 'usr-demo-organizer', ?, ?, NOW(), NOW())
          ON DUPLICATE KEY UPDATE 
            title = VALUES(title),

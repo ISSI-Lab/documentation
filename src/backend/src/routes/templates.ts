@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool, seedDefaultTemplates } from '../db';
 import { DocumentElementConfig, Template, TemplateVisibility } from '../models';
-import { AuthenticatedRequest, isTeamManager, optionalAuth, requireAuth } from '../auth';
+import { AuthenticatedRequest, isOrganizationManager, optionalAuth, requireAuth } from '../auth';
 
 export const templatesRouter = Router();
 
@@ -36,6 +36,8 @@ function formatTemplateRow(row: any): Template {
     tags = row.tags;
   }
 
+  const orgId = row.organization_id || row.team_id || null;
+
   return {
     id: row.id,
     title: row.title,
@@ -43,7 +45,8 @@ function formatTemplateRow(row: any): Template {
     category: row.category || 'General',
     icon: row.icon || 'file-text',
     visibility: (row.visibility as TemplateVisibility) || 'private',
-    team_id: row.team_id || null,
+    organization_id: orgId,
+    team_id: orgId, // compatibility
     created_by: row.created_by || null,
     tags,
     document_elements: elements,
@@ -56,7 +59,8 @@ function formatTemplateRow(row: any): Template {
 templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { team_id, visibility, tag, search, scope } = req.query;
+    const { organization_id, team_id, visibility, tag, search, scope } = req.query;
+    const targetOrgId = (organization_id || team_id) as string | undefined;
 
     let query = 'SELECT * FROM templates WHERE ';
     const conditions: string[] = [];
@@ -64,9 +68,9 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     // Base visibility filter:
     if (userId) {
-      // Authenticated: can see public templates OR their own personal templates OR private templates of teams they belong to
+      // Authenticated: can see public templates OR their own personal templates OR private templates of organizations they belong to
       conditions.push(
-        `(visibility = 'public' OR created_by = ? OR (team_id IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)))`
+        `(visibility = 'public' OR created_by = ? OR (organization_id IS NOT NULL AND organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
       );
       params.push(userId, userId);
     } else {
@@ -74,14 +78,14 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
       conditions.push(`visibility = 'public'`);
     }
 
-    if (scope === 'personal' || team_id === 'personal' || team_id === 'null') {
+    if (scope === 'personal' || targetOrgId === 'personal' || targetOrgId === 'null') {
       if (userId) {
-        conditions.push('created_by = ? AND team_id IS NULL');
+        conditions.push('created_by = ? AND organization_id IS NULL');
         params.push(userId);
       }
-    } else if (team_id && typeof team_id === 'string') {
-      conditions.push('team_id = ?');
-      params.push(team_id);
+    } else if (targetOrgId && typeof targetOrgId === 'string') {
+      conditions.push('organization_id = ?');
+      params.push(targetOrgId);
     }
 
     if (visibility && (visibility === 'public' || visibility === 'private')) {
@@ -126,31 +130,32 @@ templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   }
 });
 
-// POST /api/v1/templates - Create template (Personal, Team, or Public)
+// POST /api/v1/templates - Create template (Personal, Organization, or Public)
 templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const { title, description, category, icon, visibility, team_id, tags, document_elements } = req.body;
+    const { title, description, category, icon, visibility, organization_id, team_id, tags, document_elements } = req.body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'Template title is required' });
     }
 
     const finalVisibility: TemplateVisibility = visibility === 'public' ? 'public' : 'private';
-    const finalTeamId: string | null = finalVisibility === 'private' && team_id ? String(team_id) : null;
+    const rawOrgId = organization_id || team_id;
+    const finalOrgId: string | null = finalVisibility === 'private' && rawOrgId ? String(rawOrgId) : null;
 
     // Permission check:
     if (finalVisibility === 'private') {
-      if (finalTeamId) {
-        // Scoped to team: check team manager/creator
-        const isManager = await isTeamManager(user.id, finalTeamId);
+      if (finalOrgId) {
+        // Scoped to organization: check organization manager/creator
+        const isManager = await isOrganizationManager(user.id, finalOrgId);
         if (!isManager && user.user_type !== 'organizer') {
           return res.status(403).json({
-            error: 'Permission denied: Only team managers and creators can create templates for this team.',
+            error: 'Permission denied: Only organization managers and creators can create templates for this organization.',
           });
         }
       }
-      // If finalTeamId is null, it is a personal template. Any logged-in user can create personal templates!
+      // If finalOrgId is null, it is a personal template. Any logged-in user can create personal templates!
     } else {
       // Public template
       if (user.user_type !== 'organizer') {
@@ -181,7 +186,7 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       : [];
 
     await pool.query(
-      `INSERT INTO templates (id, title, description, category, icon, visibility, team_id, created_by, tags, document_elements, created_at, updated_at)
+      `INSERT INTO templates (id, title, description, category, icon, visibility, organization_id, created_by, tags, document_elements, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         id,
@@ -190,7 +195,7 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         category || 'General',
         icon || 'file-text',
         finalVisibility,
-        team_id || null,
+        finalOrgId,
         user.id,
         JSON.stringify(cleanTags),
         JSON.stringify(cleanElements),
@@ -215,12 +220,13 @@ templatesRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     }
 
     const current = existing[0];
+    const currentOrgId = current.organization_id || current.team_id;
 
     // Authorization check
-    if (current.team_id) {
-      const isManager = await isTeamManager(user.id, current.team_id);
+    if (currentOrgId) {
+      const isManager = await isOrganizationManager(user.id, currentOrgId);
       if (!isManager && current.created_by !== user.id && user.user_type !== 'organizer') {
-        return res.status(403).json({ error: 'Only team managers can edit this team template' });
+        return res.status(403).json({ error: 'Only organization managers can edit this organization template' });
       }
     } else if (current.created_by !== user.id && user.user_type !== 'organizer') {
       return res.status(403).json({ error: 'Only the creator or an organizer can edit this template' });
@@ -292,10 +298,11 @@ templatesRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
     }
 
     const current = existing[0];
-    if (current.team_id) {
-      const isManager = await isTeamManager(user.id, current.team_id);
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isManager = await isOrganizationManager(user.id, currentOrgId);
       if (!isManager && current.created_by !== user.id && user.user_type !== 'organizer') {
-        return res.status(403).json({ error: 'Only team managers can delete this template' });
+        return res.status(403).json({ error: 'Only organization managers can delete this template' });
       }
     } else if (current.created_by !== user.id && user.user_type !== 'organizer') {
       return res.status(403).json({ error: 'Only the creator or an organizer can delete this template' });

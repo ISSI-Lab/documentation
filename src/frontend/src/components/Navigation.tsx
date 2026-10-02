@@ -56,8 +56,9 @@ export const Navigation: React.FC<NavigationProps> = ({
       case 'create_template':
       case 'edit_template':
         return 'Templates';
+      case 'organizations':
       case 'teams':
-        return 'Teams & Projects';
+        return 'Organizations & Projects';
       default:
         return 'Menu';
     }
@@ -126,7 +127,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                       <Home className="w-4 h-4 text-blue-600" />
                       <div>
                         <div className="font-semibold">Personal Home</div>
-                        <div className="text-[10px] text-slate-400">Your teams, projects, and dashboard</div>
+                        <div className="text-[10px] text-slate-400">Your organizations, projects, and dashboard</div>
                       </div>
                     </button>
                   )}
@@ -148,7 +149,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                     <FileText className="w-4 h-4 text-indigo-600" />
                     <div>
                       <div className="font-semibold">Documents</div>
-                      <div className="text-[10px] text-slate-400">View and create team documentation</div>
+                      <div className="text-[10px] text-slate-400">View and create organization documentation</div>
                     </div>
                   </button>
 
@@ -170,7 +171,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                     <div>
                       <div className="font-semibold">Templates</div>
                       <div className="text-[10px] text-slate-400">
-                        {currentUser ? 'Public and team template catalog' : 'Public document template pool'}
+                        {currentUser ? 'Public and organization template catalog' : 'Public document template pool'}
                       </div>
                     </div>
                   </button>
@@ -179,18 +180,18 @@ export const Navigation: React.FC<NavigationProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        onNavigate('teams');
+                        onNavigate('organizations');
                         setIsMenuOpen(false);
                       }}
                       className={`w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-left transition-colors cursor-pointer ${
-                        currentView === 'teams'
+                        currentView === 'organizations' || currentView === 'teams'
                           ? 'bg-indigo-50 text-indigo-700 font-bold border-l-4 border-indigo-600'
                           : 'hover:bg-slate-100 text-slate-700'
                       }`}
                     >
                       <Users className="w-4 h-4 text-purple-600" />
                       <div>
-                        <div className="font-semibold">Teams & Projects</div>
+                        <div className="font-semibold">Organizations & Projects</div>
                         <div className="text-[10px] text-slate-400">Manage memberships, projects, & roles</div>
                       </div>
                     </button>

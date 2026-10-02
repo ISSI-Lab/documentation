@@ -281,19 +281,19 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     const user = formatUserRow(userRows[0]);
 
-    // Fetch user's teams
-    const [teamRows] = await pool.query<any[]>(
-      `SELECT t.*, 
-        CASE WHEN t.created_by = ? THEN 'owner' ELSE tm.role END as user_role,
-        (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) as members_count
-       FROM teams t
-       JOIN team_members tm ON t.id = tm.team_id
-       WHERE tm.user_id = ?
-       ORDER BY t.created_at ASC`,
+    // Fetch user's organizations
+    const [orgRows] = await pool.query<any[]>(
+      `SELECT o.*, 
+        CASE WHEN o.created_by = ? THEN 'owner' ELSE om.role END as user_role,
+        (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count
+       FROM organizations o
+       JOIN organization_members om ON o.id = om.organization_id
+       WHERE om.user_id = ?
+       ORDER BY o.created_at ASC`,
       [userId, userId]
     );
 
-    const teams = teamRows.map((row) => ({
+    const organizations = orgRows.map((row) => ({
       id: row.id,
       name: row.name,
       description: row.description || '',
@@ -307,7 +307,8 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     res.json({
       user,
-      teams,
+      organizations,
+      teams: organizations, // compatibility
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve profile', detail: err.message });

@@ -121,7 +121,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   )}
                 </div>
                 <p className="text-[11px] text-slate-600 leading-tight">
-                  Standard member. Cannot create teams, but can join teams via invite code, contribute to projects, and co-author docs.
+                  Standard member. Cannot create organizations, but can join organizations via invite code, contribute to projects, and co-author docs.
                 </p>
               </div>
 
@@ -146,12 +146,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   )}
                 </div>
                 <p className="text-[11px] text-slate-600 leading-tight">
-                  Team lead. Can create teams, generate join tokens, manage workspaces, and publish public templates.
+                  Organization lead. Can create organizations, generate join tokens, manage workspaces, and publish public templates.
                 </p>
               </div>
             </div>
             <p className="text-[11px] text-slate-500 mt-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              💡 <strong>Instant Role Switching:</strong> Changing your role to <em>Organizer</em> immediately unlocks the ability to create and manage teams.
+              💡 <strong>Instant Role Switching:</strong> Changing your role to <em>Organizer</em> immediately unlocks the ability to create and manage organizations.
             </p>
           </div>
 

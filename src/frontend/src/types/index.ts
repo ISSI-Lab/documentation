@@ -20,20 +20,22 @@ export interface DemoUser {
   user_type: UserType;
 }
 
-export type TeamRole = 'owner' | 'manager' | 'member';
+export type OrganizationRole = 'owner' | 'manager' | 'member';
+export type TeamRole = OrganizationRole;
 
-export interface TeamMember {
-  team_id: string;
+export interface OrganizationMember {
+  organization_id: string;
   user_id: string;
-  role: TeamRole;
+  role: OrganizationRole;
   joined_at: string;
   username?: string;
   name?: string;
   email?: string;
   user_type?: UserType;
 }
+export type TeamMember = OrganizationMember;
 
-export interface Team {
+export interface Organization {
   id: string;
   name: string;
   description: string;
@@ -41,15 +43,17 @@ export interface Team {
   created_by: string;
   created_at: string;
   updated_at: string;
-  members?: TeamMember[];
-  user_role?: TeamRole;
+  members?: OrganizationMember[];
+  user_role?: OrganizationRole;
   members_count?: number;
   projects?: Project[];
 }
+export type Team = Organization;
 
 export interface Project {
   id: string;
-  team_id: string | null;
+  organization_id: string | null;
+  team_id?: string | null; // compatibility
   name: string;
   description: string;
   created_by: string;
@@ -95,7 +99,8 @@ export interface Template {
   category: string;
   icon: string;
   visibility: TemplateVisibility;
-  team_id: string | null;
+  organization_id: string | null;
+  team_id?: string | null; // compatibility
   created_by: string | null;
   tags: string[];
   document_elements: DocumentElementConfig[];
@@ -109,7 +114,8 @@ export interface TemplateCreatePayload {
   category: string;
   icon: string;
   visibility?: TemplateVisibility;
-  team_id?: string | null;
+  organization_id?: string | null;
+  team_id?: string | null; // compatibility
   tags?: string[];
   document_elements: DocumentElementConfig[];
 }
@@ -120,7 +126,8 @@ export interface Document {
   id: string;
   title: string;
   project_id: string | null;
-  team_id: string | null;
+  organization_id: string | null;
+  team_id?: string | null; // compatibility
   template_id: string;
   template_title: string;
   status: DocumentStatus;
@@ -138,7 +145,8 @@ export interface DocumentCreatePayload {
   title: string;
   template_id: string;
   project_id?: string | null;
-  team_id?: string | null;
+  organization_id?: string | null;
+  team_id?: string | null; // compatibility
   author?: string;
   tags?: string[];
   elements_data?: Record<string, any>;
@@ -149,6 +157,8 @@ export interface DocumentUpdatePayload {
   status?: DocumentStatus;
   author?: string;
   project_id?: string | null;
+  organization_id?: string | null;
+  team_id?: string | null; // compatibility
   tags?: string[];
   elements_data?: Record<string, any>;
 }

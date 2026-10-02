@@ -15,16 +15,19 @@ import {
   Users,
   Lock,
   Globe,
+  Building2,
 } from 'lucide-react';
-import { Document, DocumentStatus, Project, Team, Template, User } from '../../types';
+import { Document, DocumentStatus, Organization, Project, Team, Template, User } from '../../types';
 
 interface DocumentListProps {
   documents: Document[];
   templates: Template[];
-  teams: Team[];
+  organizations?: Organization[];
+  teams?: Team[]; // compatibility alias
   projects: Project[];
   currentUser?: User | null;
-  activeTeamId: string | null;
+  activeOrganizationId?: string | null;
+  activeTeamId?: string | null; // compatibility alias
   activeProjectId: string | null;
   loading: boolean;
   onOpenCreateModal: () => void;
@@ -37,9 +40,11 @@ interface DocumentListProps {
 export const DocumentList: React.FC<DocumentListProps> = ({
   documents,
   templates,
-  teams,
+  organizations: propOrganizations,
+  teams: propTeams,
   projects,
   currentUser,
+  activeOrganizationId,
   activeTeamId,
   activeProjectId,
   loading,
@@ -49,21 +54,24 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onDeleteDocument,
   onExportMarkdown,
 }) => {
-  // Category Scope: 'recent' | 'personal' | 'teams'
-  const [selectedCategory, setSelectedCategory] = useState<'recent' | 'personal' | 'teams'>('recent');
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(activeTeamId || 'all');
+  const organizations = propOrganizations || propTeams || [];
+  const initialOrgId = activeOrganizationId || activeTeamId || null;
+
+  // Category Scope: 'recent' | 'personal' | 'organizations'
+  const [selectedCategory, setSelectedCategory] = useState<'recent' | 'personal' | 'organizations'>('recent');
+  const [selectedOrgId, setSelectedOrgId] = useState<string>(initialOrgId || 'all');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(activeProjectId || 'all');
   const [search, setSearch] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
 
-  const personalCount = documents.filter((d) => !d.team_id).length;
-  const teamCount = documents.filter((d) => Boolean(d.team_id)).length;
+  const personalCount = documents.filter((d) => !d.organization_id && !d.team_id).length;
+  const orgCount = documents.filter((d) => Boolean(d.organization_id || d.team_id)).length;
 
-  const getTeamName = (teamId: string | null) => {
-    if (!teamId) return null;
-    const t = teams.find((item) => item.id === teamId);
-    return t ? t.name : 'Team Document';
+  const getOrganizationName = (orgId: string | null) => {
+    if (!orgId) return null;
+    const org = organizations.find((item) => item.id === orgId);
+    return org ? org.name : 'Organization Document';
   };
 
   const getProjectName = (projId: string | null) => {
@@ -72,15 +80,16 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     return p ? p.name : null;
   };
 
-  // Projects available based on current scope & team
+  // Projects available based on current scope & organization
   const filteredProjectOptions = projects.filter((p) => {
-    if (selectedCategory === 'personal') return p.team_id === null;
-    if (selectedCategory === 'teams') {
-      if (selectedTeamId !== 'all') return p.team_id === selectedTeamId;
-      return p.team_id !== null;
+    const pOrgId = p.organization_id || p.team_id;
+    if (selectedCategory === 'personal') return !pOrgId;
+    if (selectedCategory === 'organizations') {
+      if (selectedOrgId !== 'all') return pOrgId === selectedOrgId;
+      return Boolean(pOrgId);
     }
     if (selectedCategory === 'recent') {
-      if (selectedTeamId !== 'all') return p.team_id === selectedTeamId;
+      if (selectedOrgId !== 'all') return pOrgId === selectedOrgId;
     }
     return true;
   });
@@ -88,14 +97,16 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   // Filter documents
   const filtered = documents
     .filter((doc) => {
+      const docOrgId = doc.organization_id || doc.team_id || null;
+
       // 1. Scope category filter
       if (selectedCategory === 'personal') {
-        if (doc.team_id !== null) return false;
-      } else if (selectedCategory === 'teams') {
-        if (!doc.team_id) return false;
-        if (selectedTeamId !== 'all' && doc.team_id !== selectedTeamId) return false;
+        if (docOrgId !== null) return false;
+      } else if (selectedCategory === 'organizations') {
+        if (!docOrgId) return false;
+        if (selectedOrgId !== 'all' && docOrgId !== selectedOrgId) return false;
       } else if (selectedCategory === 'recent') {
-        if (selectedTeamId !== 'all' && doc.team_id !== selectedTeamId) return false;
+        if (selectedOrgId !== 'all' && docOrgId !== selectedOrgId) return false;
       }
 
       // 2. Project filter
@@ -152,7 +163,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             </h1>
           </div>
           <p className="mt-1 text-sm text-slate-600">
-            Collaborative template-driven documentation across your personal and team workspaces.
+            Collaborative template-driven documentation across your personal and organization workspaces.
           </p>
         </div>
         <div className="mt-4 sm:mt-0">
@@ -167,7 +178,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         </div>
       </div>
 
-      {/* Scope Category Bar: Recent vs Personal vs Team */}
+      {/* Scope Category Bar: Recent vs Personal vs Organization */}
       <div className="space-y-4 mb-6 w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
           {/* Category Tabs (Material UI ToggleButtonGroup style) */}
@@ -176,7 +187,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               type="button"
               onClick={() => {
                 setSelectedCategory('recent');
-                setSelectedTeamId('all');
+                setSelectedOrgId('all');
                 setSelectedProjectId('all');
               }}
               className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
@@ -193,7 +204,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               type="button"
               onClick={() => {
                 setSelectedCategory('personal');
-                setSelectedTeamId('all');
+                setSelectedOrgId('all');
                 setSelectedProjectId('all');
               }}
               className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
@@ -209,17 +220,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             <button
               type="button"
               onClick={() => {
-                setSelectedCategory('teams');
+                setSelectedCategory('organizations');
                 setSelectedProjectId('all');
               }}
               className={`px-4 py-2 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
-                selectedCategory === 'teams'
+                selectedCategory === 'organizations'
                   ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
                   : 'bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <span>Team Documents ({teamCount})</span>
+              <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span>Organization Documents ({orgCount})</span>
             </button>
           </div>
 
@@ -244,24 +255,24 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           <span>Filters:</span>
         </div>
 
-        {/* Team Dropdown Filter (Shown in Team Documents tab) */}
-        {selectedCategory === 'teams' && teams.length > 0 && (
+        {/* Organization Dropdown Filter (Shown in Organization Documents tab) */}
+        {selectedCategory === 'organizations' && organizations.length > 0 && (
           <div className="flex items-center space-x-1.5">
-            <Users className="w-3.5 h-3.5 text-indigo-600" />
+            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
             <select
-              value={selectedTeamId}
+              value={selectedOrgId}
               onChange={(e) => {
-                setSelectedTeamId(e.target.value);
+                setSelectedOrgId(e.target.value);
                 setSelectedProjectId('all');
               }}
               className="px-2.5 py-1.5 border border-slate-300 text-xs text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
             >
-              <option value="all">All My Teams ({teamCount})</option>
-              {teams.map((t) => {
-                const teamDocs = documents.filter((d) => d.team_id === t.id).length;
+              <option value="all">All My Organizations ({orgCount})</option>
+              {organizations.map((t) => {
+                const orgDocs = documents.filter((d) => (d.organization_id || d.team_id) === t.id).length;
                 return (
                   <option key={t.id} value={t.id}>
-                    {t.name} ({teamDocs})
+                    {t.name} ({orgDocs})
                   </option>
                 );
               })}
@@ -324,14 +335,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         {(selectedTemplateId !== 'all' ||
           selectedStatus !== 'all' ||
           selectedProjectId !== 'all' ||
-          (selectedCategory === 'teams' && selectedTeamId !== 'all') ||
+          (selectedCategory === 'organizations' && selectedOrgId !== 'all') ||
           search) && (
           <button
             onClick={() => {
               setSelectedTemplateId('all');
               setSelectedStatus('all');
               setSelectedProjectId('all');
-              setSelectedTeamId('all');
+              setSelectedOrgId('all');
               setSearch('');
             }}
             className="text-xs text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer ml-auto"
@@ -357,8 +368,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               ? 'Try changing your search keywords or filter criteria.'
               : selectedCategory === 'personal'
               ? 'You have not created any personal documents yet.'
-              : selectedCategory === 'teams' && teams.length === 0
-              ? 'You are not part of any team yet. Create or join a team to collaborate.'
+              : selectedCategory === 'organizations' && organizations.length === 0
+              ? 'You are not part of any organization yet. Create or join an organization to collaborate.'
               : 'Create your first document to get started.'}
           </p>
           <div className="mt-6">
@@ -380,8 +391,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               year: 'numeric',
             });
             const projName = getProjectName(doc.project_id);
-            const teamName = getTeamName(doc.team_id);
-            const isPersonal = doc.team_id === null;
+            const docOrgId = doc.organization_id || doc.team_id || null;
+            const orgName = getOrganizationName(docOrgId);
+            const isPersonal = docOrgId === null;
 
             return (
               <div
@@ -400,7 +412,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                       {doc.status.replace('_', ' ')}
                     </span>
 
-                    {/* Scope badge: Personal vs Team */}
+                    {/* Scope badge: Personal vs Organization */}
                     <span
                       className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded ${
                         isPersonal
@@ -414,7 +426,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         </>
                       ) : (
                         <>
-                          <Users className="w-2.5 h-2.5 text-indigo-600" /> {teamName || 'Team'}
+                          <Building2 className="w-2.5 h-2.5 text-indigo-600" /> {orgName || 'Organization'}
                         </>
                       )}
                     </span>

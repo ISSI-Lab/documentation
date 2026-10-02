@@ -9,11 +9,13 @@ import { DocumentViewer } from './components/documents/DocumentViewer';
 import { CreateDocumentModal } from './components/documents/CreateDocumentModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { AccountModal } from './components/auth/AccountModal';
+import { OrganizationManagement } from './components/organizations/OrganizationManagement';
 import { TeamManagement } from './components/teams/TeamManagement';
 import { api, getStoredToken } from './api/client';
 import {
   Document,
   DocumentCreatePayload,
+  Organization,
   Project,
   Team,
   Template,
@@ -25,6 +27,7 @@ type ViewMode =
   | 'home'
   | 'documents'
   | 'templates'
+  | 'organizations'
   | 'teams'
   | 'create_template'
   | 'edit_template'
@@ -34,11 +37,15 @@ type ViewMode =
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('templates');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  // Backward-compatibility aliases
+  const teams = organizations;
+  const activeTeamId = activeOrganizationId;
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -73,9 +80,10 @@ export const App: React.FC = () => {
     try {
       const data = await api.getMe();
       setCurrentUser(data.user);
-      setTeams(data.teams || []);
-      if (data.teams && data.teams.length > 0 && !activeTeamId) {
-        setActiveTeamId(data.teams[0].id);
+      const userOrgs = data.organizations || data.teams || [];
+      setOrganizations(userOrgs);
+      if (userOrgs.length > 0 && !activeOrganizationId) {
+        setActiveOrganizationId(userOrgs[0].id);
       }
       setCurrentView('home');
       await loadAllProjects();
@@ -86,19 +94,21 @@ export const App: React.FC = () => {
     }
   };
 
-  const loadTeams = async () => {
+  const loadOrganizations = async () => {
     if (!currentUser) return;
     try {
-      const list = await api.listTeams();
-      setTeams(list);
-      if (list.length > 0 && (!activeTeamId || !list.some((t) => t.id === activeTeamId))) {
-        setActiveTeamId(list[0].id);
+      const list = await api.listOrganizations();
+      setOrganizations(list);
+      if (list.length > 0 && (!activeOrganizationId || !list.some((o) => o.id === activeOrganizationId))) {
+        setActiveOrganizationId(list[0].id);
       }
       await loadAllProjects();
     } catch (err: any) {
       // ignore
     }
   };
+
+  const loadTeams = loadOrganizations;
 
   const loadAllProjects = async () => {
     try {
@@ -109,14 +119,14 @@ export const App: React.FC = () => {
     }
   };
 
-  const loadProjects = async (teamId: string | null) => {
-    if (!teamId) {
+  const loadProjects = async (orgId: string | null) => {
+    if (!orgId) {
       setProjects([]);
       setActiveProjectId(null);
       return;
     }
     try {
-      const list = await api.listProjects(teamId);
+      const list = await api.listProjects(orgId);
       setProjects(list);
       if (activeProjectId && !list.some((p) => p.id === activeProjectId)) {
         setActiveProjectId(null);
@@ -155,8 +165,8 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTeamId) {
-      loadProjects(activeTeamId);
+    if (activeOrganizationId) {
+      loadProjects(activeOrganizationId);
     } else {
       setProjects([]);
       setActiveProjectId(null);
@@ -166,7 +176,7 @@ export const App: React.FC = () => {
     }
     loadTemplates();
     loadDocuments();
-  }, [activeTeamId, activeProjectId, currentUser]);
+  }, [activeOrganizationId, activeProjectId, currentUser]);
 
   const handleLoginSuccess = async (user: User) => {
     setCurrentUser(user);
@@ -181,8 +191,8 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     api.logout();
     setCurrentUser(null);
-    setTeams([]);
-    setActiveTeamId(null);
+    setOrganizations([]);
+    setActiveOrganizationId(null);
     setProjects([]);
     setAllProjects([]);
     setActiveProjectId(null);
@@ -266,7 +276,7 @@ export const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const activeTeam = teams.find((t) => t.id === activeTeamId) || null;
+  const activeOrganization = organizations.find((o) => o.id === activeOrganizationId) || null;
   const activeDoc = documents.find((d) => d.id === activeDocId) || null;
   const activeTemplate =
     templates.find((t) => t.id === (activeDoc?.template_id || activeTemplateId)) || null;
@@ -303,25 +313,29 @@ export const App: React.FC = () => {
         {currentView === 'home' && currentUser && (
           <PersonalHomepage
             currentUser={currentUser}
+            organizations={organizations}
             teams={teams}
             allProjects={allProjects}
             documents={documents}
             templates={templates}
-            onNavigateToTeams={() => setCurrentView('teams')}
-            onNavigateToDocuments={(tId, pId) => {
-              if (tId) setActiveTeamId(tId);
+            onNavigateToOrganizations={() => setCurrentView('organizations')}
+            onNavigateToTeams={() => setCurrentView('organizations')}
+            onNavigateToDocuments={(orgId, pId) => {
+              if (orgId) setActiveOrganizationId(orgId);
               if (pId) setActiveProjectId(pId);
               setCurrentView('documents');
             }}
             onNavigateToTemplates={() => setCurrentView('templates')}
-            onOpenCreateTeam={() => setCurrentView('teams')}
-            onOpenJoinTeam={() => setCurrentView('teams')}
-            onOpenCreateProject={(tId) => {
-              setActiveTeamId(tId);
-              setCurrentView('teams');
+            onOpenCreateOrganization={() => setCurrentView('organizations')}
+            onOpenCreateTeam={() => setCurrentView('organizations')}
+            onOpenJoinOrganization={() => setCurrentView('organizations')}
+            onOpenJoinTeam={() => setCurrentView('organizations')}
+            onOpenCreateProject={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setCurrentView('organizations');
             }}
-            onOpenNewDocModal={(tId, pId, tplId) => {
-              if (tId) setActiveTeamId(tId);
+            onOpenNewDocModal={(orgId, pId, tplId) => {
+              if (orgId) setActiveOrganizationId(orgId);
               setModalInitialProjectId(pId || activeProjectId);
               setModalInitialTemplateId(tplId || null);
               setIsCreateModalOpen(true);
@@ -334,8 +348,12 @@ export const App: React.FC = () => {
               setActiveDocId(id);
               setCurrentView('edit_document');
             }}
-            onSelectTeam={(tId) => {
-              setActiveTeamId(tId);
+            onSelectOrganization={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onSelectTeam={(orgId) => {
+              setActiveOrganizationId(orgId);
               setActiveProjectId(null);
             }}
           />
@@ -345,10 +363,12 @@ export const App: React.FC = () => {
           <DocumentList
             documents={documents}
             templates={templates}
+            organizations={organizations}
             teams={teams}
             projects={allProjects}
             currentUser={currentUser}
-            activeTeamId={activeTeamId}
+            activeOrganizationId={activeOrganizationId}
+            activeTeamId={activeOrganizationId}
             activeProjectId={activeProjectId}
             loading={loadingDocs}
             onOpenCreateModal={() => {
@@ -373,8 +393,10 @@ export const App: React.FC = () => {
           <TemplateList
             templates={templates}
             currentUser={currentUser}
+            organizations={organizations}
             teams={teams}
-            activeTeam={activeTeam}
+            activeOrganization={activeOrganization}
+            activeTeam={activeOrganization}
             loading={loadingTemplates}
             onCreateNewTemplate={() => {
               setActiveTemplateId(null);
@@ -400,24 +422,31 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentView === 'teams' && (
-          <TeamManagement
+        {(currentView === 'organizations' || currentView === 'teams') && (
+          <OrganizationManagement
             currentUser={currentUser}
+            organizations={organizations}
             teams={teams}
-            activeTeamId={activeTeamId}
-            onSelectTeam={(tId) => {
-              setActiveTeamId(tId);
+            activeOrganizationId={activeOrganizationId}
+            activeTeamId={activeOrganizationId}
+            onSelectOrganization={(orgId) => {
+              setActiveOrganizationId(orgId);
               setActiveProjectId(null);
             }}
-            onRefreshTeams={loadTeams}
+            onSelectTeam={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onRefreshOrganizations={loadOrganizations}
+            onRefreshTeams={loadOrganizations}
             onOpenAccountModal={() => setIsAccountModalOpen(true)}
             onOpenNewDocModal={(projId) => {
               setModalInitialTemplateId(null);
               setModalInitialProjectId(projId || null);
               setIsCreateModalOpen(true);
             }}
-            onViewProjectDocs={(teamId, projId) => {
-              setActiveTeamId(teamId);
+            onViewProjectDocs={(orgId, projId) => {
+              setActiveOrganizationId(orgId);
               setActiveProjectId(projId);
               setCurrentView('documents');
             }}
@@ -428,7 +457,9 @@ export const App: React.FC = () => {
         {(currentView === 'create_template' || currentView === 'edit_template') && (
           <TemplateBuilder
             initialTemplate={currentView === 'edit_template' ? activeTemplate : null}
-            activeTeamId={activeTeamId}
+            activeOrganizationId={activeOrganizationId}
+            activeTeamId={activeOrganizationId}
+            organizations={organizations}
             teams={teams}
             onSave={handleSaveTemplate}
             onCancel={() => {
@@ -470,12 +501,14 @@ export const App: React.FC = () => {
       <CreateDocumentModal
         isOpen={isCreateModalOpen}
         templates={templates}
+        organizations={organizations}
         teams={teams}
         projects={allProjects}
         currentUser={currentUser}
         initialSelectedTemplateId={modalInitialTemplateId}
         initialSelectedProjectId={modalInitialProjectId}
-        initialSelectedTeamId={activeTeamId}
+        initialSelectedOrganizationId={activeOrganizationId}
+        initialSelectedTeamId={activeOrganizationId}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateDocument}
       />

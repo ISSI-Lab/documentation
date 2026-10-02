@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS verification_tokens (
     INDEX idx_token (token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Teams Table
-CREATE TABLE IF NOT EXISTS teams (
+-- 2. Organizations Table
+CREATE TABLE IF NOT EXISTS organizations (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -45,26 +45,26 @@ CREATE TABLE IF NOT EXISTS teams (
     INDEX idx_created_by (created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Team Members Table
-CREATE TABLE IF NOT EXISTS team_members (
-    team_id VARCHAR(64) NOT NULL,
+-- 3. Organization Members Table
+CREATE TABLE IF NOT EXISTS organization_members (
+    organization_id VARCHAR(64) NOT NULL,
     user_id VARCHAR(64) NOT NULL,
     role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member',
     joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (team_id, user_id),
+    PRIMARY KEY (organization_id, user_id),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Projects Table
 CREATE TABLE IF NOT EXISTS projects (
     id VARCHAR(64) PRIMARY KEY,
-    team_id VARCHAR(64) NOT NULL,
+    organization_id VARCHAR(64) NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     created_by VARCHAR(64) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_team_id (team_id)
+    INDEX idx_organization_id (organization_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 5. Templates Table
@@ -75,13 +75,13 @@ CREATE TABLE IF NOT EXISTS templates (
     category VARCHAR(100) NOT NULL DEFAULT 'General',
     icon VARCHAR(50) NOT NULL DEFAULT 'file-text',
     visibility ENUM('private', 'public') NOT NULL DEFAULT 'private',
-    team_id VARCHAR(64) NULL,
+    organization_id VARCHAR(64) NULL,
     created_by VARCHAR(64) NULL,
     tags JSON NULL,
     document_elements JSON NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_team_id (team_id),
+    INDEX idx_organization_id (organization_id),
     INDEX idx_visibility (visibility)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS documents (
     id VARCHAR(64) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     project_id VARCHAR(64) NULL,
-    team_id VARCHAR(64) NULL,
+    organization_id VARCHAR(64) NULL,
     template_id VARCHAR(64) NOT NULL,
     template_title VARCHAR(255) NOT NULL,
     status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_project_id (project_id),
-    INDEX idx_team_id (team_id),
+    INDEX idx_organization_id (organization_id),
     INDEX idx_template_id (template_id),
     INDEX idx_status (status),
     INDEX idx_updated_at (updated_at)

@@ -11,43 +11,62 @@ import {
   ArrowRight,
   Globe,
   Layers,
+  Building2,
 } from 'lucide-react';
-import { Document, Project, Team, Template, User } from '../../types';
+import { Document, Organization, Project, Team, Template, User } from '../../types';
 
 interface PersonalHomepageProps {
   currentUser: User;
-  teams: Team[];
+  organizations?: Organization[];
+  teams?: Team[]; // compatibility alias
   allProjects: Project[];
   documents: Document[];
   templates: Template[];
-  onNavigateToTeams: () => void;
-  onNavigateToDocuments: (teamId?: string | null, projectId?: string | null) => void;
+  onNavigateToOrganizations?: () => void;
+  onNavigateToTeams?: () => void; // compatibility alias
+  onNavigateToDocuments: (organizationId?: string | null, projectId?: string | null) => void;
   onNavigateToTemplates: () => void;
-  onOpenCreateTeam: () => void;
-  onOpenJoinTeam: () => void;
-  onOpenCreateProject: (teamId: string) => void;
-  onOpenNewDocModal: (teamId?: string | null, projectId?: string | null, templateId?: string | null) => void;
+  onOpenCreateOrganization?: () => void;
+  onOpenCreateTeam?: () => void; // compatibility alias
+  onOpenJoinOrganization?: () => void;
+  onOpenJoinTeam?: () => void; // compatibility alias
+  onOpenCreateProject: (organizationId: string) => void;
+  onOpenNewDocModal: (organizationId?: string | null, projectId?: string | null, templateId?: string | null) => void;
   onViewDocument: (docId: string) => void;
-  onEditDocument: (docId: string) => void;
-  onSelectTeam: (teamId: string) => void;
+  onEditDocument?: (docId: string) => void;
+  onSelectOrganization?: (organizationId: string) => void;
+  onSelectTeam?: (teamId: string) => void; // compatibility alias
 }
 
 export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   currentUser,
-  teams,
+  organizations: propOrganizations,
+  teams: propTeams,
   allProjects,
   documents,
   templates,
+  onNavigateToOrganizations,
   onNavigateToTeams,
   onNavigateToDocuments,
   onNavigateToTemplates,
+  onOpenCreateOrganization,
   onOpenCreateTeam,
+  onOpenJoinOrganization,
   onOpenJoinTeam,
   onOpenCreateProject,
   onOpenNewDocModal,
   onViewDocument,
+  onSelectOrganization,
   onSelectTeam,
 }) => {
+  const organizations = propOrganizations || propTeams || [];
+  const handleNavOrgs = onNavigateToOrganizations || onNavigateToTeams || (() => {});
+  const handleCreateOrg = onOpenCreateOrganization || onOpenCreateTeam || (() => {});
+  const handleJoinOrg = onOpenJoinOrganization || onOpenJoinTeam || (() => {});
+  const handleSelectOrg = (id: string) => {
+    if (onSelectOrganization) onSelectOrganization(id);
+    if (onSelectTeam) onSelectTeam(id);
+  };
   const publicTemplates = templates.filter((t) => t.visibility === 'public');
   const recentDocuments = documents.slice(0, 5);
 
@@ -57,21 +76,21 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
             <Crown className="w-3 h-3 text-purple-600" />
-            Team Owner
+            Organization Owner
           </span>
         );
       case 'manager':
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
             <ShieldCheck className="w-3 h-3 text-indigo-600" />
-            Team Manager
+            Organization Manager
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
             <Users className="w-3 h-3 text-slate-500" />
-            Team Member
+            Organization Member
           </span>
         );
     }
@@ -112,24 +131,24 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
               Welcome back, {currentUser.name || currentUser.username}!
             </h1>
             <p className="text-blue-100 text-sm mt-1.5 max-w-2xl">
-              Manage your teams, view active projects, and create structured documentation using standard blueprints from the template pool.
+              Manage your organizations, view active projects, and create structured documentation using standard blueprints from the template pool.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={onOpenCreateTeam}
+              onClick={handleCreateOrg}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white text-indigo-900 hover:bg-blue-50 font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4 text-indigo-600" />
-              <span>Create Team</span>
+              <span>Create Organization</span>
             </button>
             <button
-              onClick={onOpenJoinTeam}
+              onClick={handleJoinOrg}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
             >
               <KeyRound className="w-4 h-4 text-blue-200" />
-              <span>Join Team</span>
+              <span>Join Organization</span>
             </button>
             <button
               onClick={() => onOpenNewDocModal()}
@@ -145,10 +164,10 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8 pt-6 border-t border-white/15">
           <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3.5 border border-white/10">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-blue-200 font-medium">Your Teams</span>
-              <Users className="w-4 h-4 text-blue-300" />
+              <span className="text-xs text-blue-200 font-medium">Your Organizations</span>
+              <Building2 className="w-4 h-4 text-blue-300" />
             </div>
-            <p className="text-2xl font-bold mt-1">{teams.length}</p>
+            <p className="text-2xl font-bold mt-1">{organizations.length}</p>
           </div>
 
           <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-3.5 border border-white/10">
@@ -177,34 +196,34 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
         </div>
       </div>
 
-      {/* Main Grid: Teams & Projects */}
+      {/* Main Grid: Organizations & Projects */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Section: Your Teams (8 Cols on large) */}
+        {/* Left Section: Your Organizations (8 Cols on large) */}
         <div className="lg:col-span-8 space-y-8">
-          {/* Teams Section */}
+          {/* Organizations Section */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center space-x-2">
                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <Users className="w-5 h-5" />
+                  <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Your Teams</h2>
+                  <h2 className="text-lg font-bold text-slate-900">Your Organizations</h2>
                   <p className="text-xs text-slate-500">
-                    Teams you have created or joined as an owner, manager, or member.
+                    Organizations you have created or joined as an owner, manager, or member.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={onOpenCreateTeam}
+                  onClick={handleCreateOrg}
                   className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Create Team</span>
+                  <span>Create Organization</span>
                 </button>
                 <button
-                  onClick={onNavigateToTeams}
+                  onClick={handleNavOrgs}
                   className="text-xs font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 ml-2 cursor-pointer"
                 >
                   <span>Manage All</span>
@@ -213,22 +232,22 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
               </div>
             </div>
 
-            {teams.length === 0 ? (
+            {organizations.length === 0 ? (
               <div className="text-center py-10 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <h3 className="text-sm font-bold text-slate-700">No teams yet</h3>
+                <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <h3 className="text-sm font-bold text-slate-700">No organizations yet</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Create a team to become the Team Owner and assign managers/members, or join an existing team with a join token.
+                  Create an organization to become the Organization Owner and assign managers/members, or join an existing organization with a join token.
                 </p>
                 <div className="flex items-center justify-center gap-3 mt-4">
                   <button
-                    onClick={onOpenCreateTeam}
+                    onClick={handleCreateOrg}
                     className="px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-xl hover:bg-indigo-700 shadow-xs transition-colors cursor-pointer"
                   >
-                    Create Your First Team
+                    Create Your First Organization
                   </button>
                   <button
-                    onClick={onOpenJoinTeam}
+                    onClick={handleJoinOrg}
                     className="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 font-semibold text-xs rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     Join with Token
@@ -237,33 +256,33 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {teams.map((team) => {
-                  const teamProjects = allProjects.filter((p) => p.team_id === team.id);
-                  const isOwner = team.user_role === 'owner' || team.created_by === currentUser.id;
+                {organizations.map((org) => {
+                  const orgProjects = allProjects.filter((p) => (p.organization_id || p.team_id) === org.id);
+                  const isOwner = org.user_role === 'owner' || org.created_by === currentUser.id;
 
                   return (
                     <div
-                      key={team.id}
+                      key={org.id}
                       className="bg-slate-50 hover:bg-white p-5 rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <h3 className="text-base font-bold text-slate-900 line-clamp-1">{team.name}</h3>
-                          {getRoleBadge(isOwner ? 'owner' : team.user_role)}
+                          <h3 className="text-base font-bold text-slate-900 line-clamp-1">{org.name}</h3>
+                          {getRoleBadge(isOwner ? 'owner' : org.user_role)}
                         </div>
                         <p className="text-xs text-slate-500 line-clamp-2 min-h-[32px]">
-                          {team.description || 'No team description provided.'}
+                          {org.description || 'No organization description provided.'}
                         </p>
 
                         <div className="flex items-center gap-3 mt-3 text-[11px] text-slate-500 font-medium">
                           <span className="flex items-center gap-1">
                             <Users className="w-3.5 h-3.5 text-indigo-500" />
-                            {team.members_count || 1} members
+                            {org.members_count || 1} members
                           </span>
                           <span>&bull;</span>
                           <span className="flex items-center gap-1">
                             <FolderKanban className="w-3.5 h-3.5 text-blue-500" />
-                            {teamProjects.length} projects
+                            {orgProjects.length} projects
                           </span>
                         </div>
                       </div>
@@ -271,8 +290,8 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <div className="flex items-center justify-between border-t border-slate-200/80 pt-3 mt-4">
                         <button
                           onClick={() => {
-                            onSelectTeam(team.id);
-                            onNavigateToTeams();
+                            handleSelectOrg(org.id);
+                            handleNavOrgs();
                           }}
                           className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
                         >
@@ -280,7 +299,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           <ArrowRight className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => onOpenCreateProject(team.id)}
+                          onClick={() => onOpenCreateProject(org.id)}
                           className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <Plus className="w-3 h-3 text-slate-400" />
@@ -304,7 +323,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Your Projects</h2>
                   <p className="text-xs text-slate-500">
-                    Active project workspaces across your teams for organizing documents.
+                    Active project workspaces across your organizations for organizing documents.
                   </p>
                 </div>
               </div>
@@ -322,13 +341,14 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                 <FolderKanban className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-semibold text-slate-700">No projects yet</p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Create a project inside any of your teams to begin authoring documents.
+                  Create a project inside any of your organizations to begin authoring documents.
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {allProjects.map((project) => {
-                  const parentTeam = teams.find((t) => t.id === project.team_id);
+                  const orgId = project.organization_id || project.team_id;
+                  const parentOrg = organizations.find((o) => o.id === orgId);
                   return (
                     <div
                       key={project.id}
@@ -337,7 +357,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                            {parentTeam?.name || 'Team Project'}
+                            {parentOrg?.name || 'Organization Project'}
                           </span>
                           <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                             <FileText className="w-3 h-3 text-blue-500" />
@@ -352,13 +372,13 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
 
                       <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-3">
                         <button
-                          onClick={() => onNavigateToDocuments(project.team_id, project.id)}
+                          onClick={() => onNavigateToDocuments(orgId, project.id)}
                           className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
                         >
                           View Documents &rarr;
                         </button>
                         <button
-                          onClick={() => onOpenNewDocModal(project.team_id, project.id)}
+                          onClick={() => onOpenNewDocModal(orgId, project.id)}
                           className="text-xs font-semibold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <Plus className="w-3 h-3 text-slate-500" />

@@ -45,44 +45,64 @@ def test_full_system_flow():
     print(f"Logged in as: {reg_user['name']} ({reg_user['user_type']})")
     assert reg_user["user_type"] == "regular"
 
-    print("\n--- 5. Test User Type Enforcement on Team Creation ---")
-    # Regular user tries to create a team -> Expect 403
-    r = requests.post(f"{BASE_URL}/teams", json={
-        "name": "Unauthorized Team",
+    print("\n--- 5. Test User Type Enforcement on Organization Creation ---")
+    # Regular user tries to create an organization -> Expect 403
+    r = requests.post(f"{BASE_URL}/organizations", json={
+        "name": "Unauthorized Organization",
         "description": "Should fail"
     }, headers={"Authorization": f"Bearer {reg_token}"})
-    print(f"Regular user team creation status: {r.status_code} (Expected 403)")
-    assert r.status_code == 403, f"Regular user was unexpectedly allowed to create a team: {r.text}"
+    print(f"Regular user org creation status: {r.status_code} (Expected 403)")
+    assert r.status_code == 403, f"Regular user was unexpectedly allowed to create an organization: {r.text}"
 
-    # Organizer creates a team -> Expect 201
-    r = requests.post(f"{BASE_URL}/teams", json={
-        "name": "DevOps & Cloud Team",
-        "description": "Team for cloud infrastructure and deployments"
+    # Also verify backward-compatible /teams route enforces 403 for regular user
+    r_teams_compat = requests.post(f"{BASE_URL}/teams", json={
+        "name": "Unauthorized Team Alias",
+        "description": "Should fail"
+    }, headers={"Authorization": f"Bearer {reg_token}"})
+    assert r_teams_compat.status_code == 403
+
+    # Organizer creates an organization -> Expect 201
+    r = requests.post(f"{BASE_URL}/organizations", json={
+        "name": "DevOps & Cloud Organization",
+        "description": "Organization for cloud infrastructure and deployments"
     }, headers={"Authorization": f"Bearer {org_token}"})
-    assert r.status_code == 201, f"Organizer team creation failed: {r.text}"
-    new_team = r.json()
-    team_id = new_team["id"]
-    join_code = new_team["join_code"]
-    print(f"Organizer created team: '{new_team['name']}' (ID: {team_id}, Join Code: {join_code})")
-    assert join_code.startswith("TEAM-")
+    assert r.status_code == 201, f"Organizer organization creation failed: {r.text}"
+    new_org = r.json()
+    org_id = new_org["id"]
+    join_code = new_org["join_code"]
+    print(f"Organizer created organization: '{new_org['name']}' (ID: {org_id}, Join Code: {join_code})")
+    assert join_code.startswith("ORG-")
+
+    # Organizer also creates an organization via backward-compatible /teams route -> Expect 201
+    r_team_create = requests.post(f"{BASE_URL}/teams", json={
+        "name": "Platform Infrastructure Team",
+        "description": "Testing backward compatibility /teams route"
+    }, headers={"Authorization": f"Bearer {org_token}"})
+    assert r_team_create.status_code == 201
+    print("Backward-compatible /teams endpoint successfully created an organization!")
 
     print("\n--- 6. Test Join Token / Invite Code Flow ---")
-    # Regular user joins the team using the join_code
-    r = requests.post(f"{BASE_URL}/teams/join", json={
+    # Regular user joins the organization using the join_code
+    r = requests.post(f"{BASE_URL}/organizations/join", json={
         "join_code": join_code
     }, headers={"Authorization": f"Bearer {reg_token}"})
-    assert r.status_code == 200, f"Failed to join team via join code: {r.text}"
-    print(f"Regular user successfully joined team: {r.json()['message']}")
+    assert r.status_code == 200, f"Failed to join organization via join code: {r.text}"
+    print(f"Regular user successfully joined organization: {r.json()['message']}")
 
-    # Check team members
-    r = requests.get(f"{BASE_URL}/teams/{team_id}", headers={"Authorization": f"Bearer {org_token}"})
+    # Check organization details and members
+    r = requests.get(f"{BASE_URL}/organizations/{org_id}", headers={"Authorization": f"Bearer {org_token}"})
     assert r.status_code == 200
-    team_details = r.json()["team"]
-    members = team_details["members"]
-    print(f"Team '{new_team['name']}' now has {len(members)} members:")
+    org_details = r.json()["organization"]
+    members = org_details["members"]
+    print(f"Organization '{new_org['name']}' now has {len(members)} members:")
     for m in members:
         print(f" - {m['name']} (@{m['username']}): Role = {m['role']}")
     assert len(members) >= 2
+
+    # Check backward-compatible /teams/{id} retrieval
+    r_team_get = requests.get(f"{BASE_URL}/teams/{org_id}", headers={"Authorization": f"Bearer {org_token}"})
+    assert r_team_get.status_code == 200
+    assert "organization" in r_team_get.json() or "team" in r_team_get.json()
 
     print("\n--- 7. Test Account Registration, 30-Second Verification Token & Resend ---")
     import time
@@ -157,8 +177,8 @@ def test_full_system_flow():
 
     print("\n--- 7.7 Test Account Page User Type Role Switching ---")
 
-    # Verify cannot create team
-    r = requests.post(f"{BASE_URL}/teams", json={"name": "Switch Team"}, headers={"Authorization": f"Bearer {switch_user_token}"})
+    # Verify cannot create organization
+    r = requests.post(f"{BASE_URL}/organizations", json={"name": "Switch Org"}, headers={"Authorization": f"Bearer {switch_user_token}"})
     assert r.status_code == 403
 
     # Switch user type to 'organizer' via profile update
@@ -171,30 +191,30 @@ def test_full_system_flow():
     assert r.json()["user"]["user_type"] == "organizer"
     print(f"User switched user_type to 'organizer' via Account profile update!")
 
-    # Now verify user CAN create team!
-    r = requests.post(f"{BASE_URL}/teams", json={"name": "Promoted User Team"}, headers={"Authorization": f"Bearer {switch_user_token}"})
-    assert r.status_code == 201, f"Failed to create team after promotion: {r.text}"
-    print("Promoted user successfully created a team!")
+    # Now verify user CAN create organization!
+    r = requests.post(f"{BASE_URL}/organizations", json={"name": "Promoted User Organization"}, headers={"Authorization": f"Bearer {switch_user_token}"})
+    assert r.status_code == 201, f"Failed to create organization after promotion: {r.text}"
+    print("Promoted user successfully created an organization!")
 
     print("\n--- 8. Test Template Permissions & Tag/Visibility Search ---")
-    # Regular member (role = member) tries to create private template for DevOps team -> Expect 403
+    # Regular member (role = member) tries to create private template for DevOps organization -> Expect 403
     r = requests.post(f"{BASE_URL}/templates", json={
         "title": "Unauthorized Private Template",
-        "team_id": team_id,
+        "organization_id": org_id,
         "visibility": "private",
         "document_elements": [{"id": "s1", "label": "Section 1", "field_type": "markdown"}]
     }, headers={"Authorization": f"Bearer {reg_token}"})
     print(f"Regular member template create status: {r.status_code} (Expected 403)")
     assert r.status_code == 403
 
-    # Team Manager (organizer) creates private template with tags and description -> Expect 201
+    # Organization Manager (organizer) creates private template with tags and description -> Expect 201
     r = requests.post(f"{BASE_URL}/templates", json={
         "title": "Cloud Run Deployment Architecture Blueprint",
         "description": "Standard specification for containerized microservices on Cloud Run.",
         "category": "Architecture",
         "icon": "layers",
         "visibility": "private",
-        "team_id": team_id,
+        "organization_id": org_id,
         "tags": ["cloud", "docker", "serverless", "deployment"],
         "document_elements": [
             {
@@ -215,12 +235,12 @@ def test_full_system_flow():
     private_tpl = r.json()
     print(f"Manager created private template: '{private_tpl['title']}' (Tags: {private_tpl['tags']})")
 
-    # Regular team member lists templates -> Can see the private template for their team + public templates
+    # Regular organization member lists templates -> Can see the private template for their organization + public templates
     r = requests.get(f"{BASE_URL}/templates", headers={"Authorization": f"Bearer {reg_token}"})
     assert r.status_code == 200
     all_tpls = r.json()
     found_private = any(t["id"] == private_tpl["id"] for t in all_tpls)
-    print(f"Regular team member can view team's private template: {found_private}")
+    print(f"Regular member can view organization's private template: {found_private}")
     assert found_private
 
     # Search template by tag
@@ -232,13 +252,18 @@ def test_full_system_flow():
     print(f"Template tag search for 'docker' successfully returned {len(docker_tpls)} template(s)!")
 
     print("\n--- 9. Test Projects & Co-Authoring Documents ---")
-    # Fetch team projects (default project was auto-created)
-    r = requests.get(f"{BASE_URL}/projects?team_id={team_id}", headers={"Authorization": f"Bearer {reg_token}"})
+    # Fetch organization projects (default project was auto-created)
+    r = requests.get(f"{BASE_URL}/projects?organization_id={org_id}", headers={"Authorization": f"Bearer {reg_token}"})
     assert r.status_code == 200
-    team_projects = r.json()
-    assert len(team_projects) > 0
-    project_id = team_projects[0]["id"]
-    print(f"Using Team Project: '{team_projects[0]['name']}' (ID: {project_id})")
+    org_projects = r.json()
+    assert len(org_projects) > 0
+    project_id = org_projects[0]["id"]
+    print(f"Using Organization Project: '{org_projects[0]['name']}' (ID: {project_id})")
+
+    # Also verify backward-compatible query ?team_id= works
+    r_team_proj = requests.get(f"{BASE_URL}/projects?team_id={org_id}", headers={"Authorization": f"Bearer {reg_token}"})
+    assert r_team_proj.status_code == 200
+    assert len(r_team_proj.json()) > 0
 
     # Regular user creates document in the project using private template
     r = requests.post(f"{BASE_URL}/documents", json={

@@ -1,15 +1,17 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
-import { AuthenticatedRequest, isTeamManager, isTeamMember, requireAuth } from '../auth';
+import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, requireAuth } from '../auth';
 import { Project } from '../models';
 
 export const projectsRouter = Router();
 
 function formatProjectRow(row: any): Project {
+  const orgId = row.organization_id || row.team_id || null;
   return {
     id: row.id,
-    team_id: row.team_id,
+    organization_id: orgId,
+    team_id: orgId, // compatibility
     name: row.name,
     description: row.description || '',
     created_by: row.created_by,
@@ -19,27 +21,27 @@ function formatProjectRow(row: any): Project {
   };
 }
 
-// GET /api/v1/projects - List projects (optional ?team_id=...)
+// GET /api/v1/projects - List projects (optional ?organization_id=... or ?team_id=...)
 projectsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { team_id } = req.query;
+    const orgId = (req.query.organization_id || req.query.team_id) as string | undefined;
 
     let sql = `
       SELECT p.*,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
       FROM projects p
-      WHERE (p.team_id IS NULL AND p.created_by = ?)
-         OR (p.team_id IS NOT NULL AND p.team_id IN (SELECT team_id FROM team_members WHERE user_id = ?))
+      WHERE (p.organization_id IS NULL AND p.created_by = ?)
+         OR (p.organization_id IS NOT NULL AND p.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?))
     `;
     const params: any[] = [userId, userId];
 
-    if (team_id === 'personal' || team_id === 'null') {
-      sql += ' AND p.team_id IS NULL AND p.created_by = ?';
+    if (orgId === 'personal' || orgId === 'null') {
+      sql += ' AND p.organization_id IS NULL AND p.created_by = ?';
       params.push(userId);
-    } else if (team_id && typeof team_id === 'string') {
-      sql += ' AND p.team_id = ?';
-      params.push(team_id);
+    } else if (orgId && typeof orgId === 'string') {
+      sql += ' AND p.organization_id = ?';
+      params.push(orgId);
     }
 
     sql += ' ORDER BY p.created_at ASC';
@@ -62,8 +64,8 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
        WHERE p.id = ? AND (
-         (p.team_id IS NULL AND p.created_by = ?)
-         OR (p.team_id IS NOT NULL AND p.team_id IN (SELECT team_id FROM team_members WHERE user_id = ?))
+         (p.organization_id IS NULL AND p.created_by = ?)
+         OR (p.organization_id IS NOT NULL AND p.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?))
        )`,
       [projectId, userId, userId]
     );
@@ -78,31 +80,32 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
   }
 });
 
-// POST /api/v1/projects - Create project in a team or personal
+// POST /api/v1/projects - Create project in an organization or personal
 projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { team_id, name, description } = req.body;
+    const { organization_id, team_id, name, description } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project name is required' });
     }
 
-    const resolvedTeamId = team_id && typeof team_id === 'string' && team_id.trim() ? team_id.trim() : null;
+    const rawOrgId = organization_id || team_id;
+    const resolvedOrgId = rawOrgId && typeof rawOrgId === 'string' && rawOrgId.trim() ? rawOrgId.trim() : null;
 
-    if (resolvedTeamId) {
-      // Verify user is a member of the team
-      const isMember = await isTeamMember(userId, resolvedTeamId);
+    if (resolvedOrgId) {
+      // Verify user is a member of the organization
+      const isMember = await isOrganizationMember(userId, resolvedOrgId);
       if (!isMember) {
-        return res.status(403).json({ error: 'You must be a member of the team to create a team project' });
+        return res.status(403).json({ error: 'You must be a member of the organization to create an organization project' });
       }
     }
 
     const projectId = `proj-${crypto.randomBytes(4).toString('hex')}`;
     await pool.query(
-      `INSERT INTO projects (id, team_id, name, description, created_by, created_at, updated_at)
+      `INSERT INTO projects (id, organization_id, name, description, created_by, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [projectId, resolvedTeamId, name.trim(), description || '', userId]
+      [projectId, resolvedOrgId, name.trim(), description || '', userId]
     );
 
     const [createdRows] = await pool.query<any[]>(
@@ -129,10 +132,11 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
     }
 
     const current = existing[0];
-    if (current.team_id) {
-      const isMember = await isTeamMember(userId, current.team_id);
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isMember = await isOrganizationMember(userId, currentOrgId);
       if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the team for this project' });
+        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to update this personal project' });
@@ -171,10 +175,11 @@ projectsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res
     }
 
     const current = existing[0];
-    if (current.team_id) {
-      const isManager = await isTeamManager(userId, current.team_id);
+    const currentOrgId = current.organization_id || current.team_id;
+    if (currentOrgId) {
+      const isManager = await isOrganizationManager(userId, currentOrgId);
       if (!isManager && current.created_by !== userId) {
-        return res.status(403).json({ error: 'Only team managers or the project creator can delete projects' });
+        return res.status(403).json({ error: 'Only organization managers or the project creator can delete projects' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to delete this personal project' });

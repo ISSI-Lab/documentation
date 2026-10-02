@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { pool } from './db';
-import { User, UserType, TeamRole } from './models';
+import { User, UserType, OrganizationRole, TeamRole } from './models';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'docforge-jwt-secret-key-2026-prod';
 
@@ -73,21 +73,21 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   next();
 }
 
-export async function getTeamRole(userId: string, teamId: string): Promise<TeamRole | null> {
+export async function getOrganizationRole(userId: string, organizationId: string): Promise<OrganizationRole | null> {
   try {
     const [rows] = await pool.query<any[]>(
-      'SELECT tm.role, t.created_by FROM team_members tm JOIN teams t ON tm.team_id = t.id WHERE tm.team_id = ? AND tm.user_id = ?',
-      [teamId, userId]
+      'SELECT om.role, o.created_by FROM organization_members om JOIN organizations o ON om.organization_id = o.id WHERE om.organization_id = ? AND om.user_id = ?',
+      [organizationId, userId]
     );
     if (rows && rows.length > 0) {
       if (rows[0].created_by === userId) {
         return 'owner';
       }
-      return rows[0].role as TeamRole;
+      return rows[0].role as OrganizationRole;
     }
-    // Check if user is the team creator even if member row was missing
-    const [teamRows] = await pool.query<any[]>('SELECT created_by FROM teams WHERE id = ?', [teamId]);
-    if (teamRows && teamRows.length > 0 && teamRows[0].created_by === userId) {
+    // Check if user is the organization creator even if member row was missing
+    const [orgRows] = await pool.query<any[]>('SELECT created_by FROM organizations WHERE id = ?', [organizationId]);
+    if (orgRows && orgRows.length > 0 && orgRows[0].created_by === userId) {
       return 'owner';
     }
     return null;
@@ -96,17 +96,23 @@ export async function getTeamRole(userId: string, teamId: string): Promise<TeamR
   }
 }
 
-export async function isTeamOwner(userId: string, teamId: string): Promise<boolean> {
-  const role = await getTeamRole(userId, teamId);
+export async function isOrganizationOwner(userId: string, organizationId: string): Promise<boolean> {
+  const role = await getOrganizationRole(userId, organizationId);
   return role === 'owner';
 }
 
-export async function isTeamManager(userId: string, teamId: string): Promise<boolean> {
-  const role = await getTeamRole(userId, teamId);
+export async function isOrganizationManager(userId: string, organizationId: string): Promise<boolean> {
+  const role = await getOrganizationRole(userId, organizationId);
   return role === 'owner' || role === 'manager';
 }
 
-export async function isTeamMember(userId: string, teamId: string): Promise<boolean> {
-  const role = await getTeamRole(userId, teamId);
+export async function isOrganizationMember(userId: string, organizationId: string): Promise<boolean> {
+  const role = await getOrganizationRole(userId, organizationId);
   return role !== null;
 }
+
+// Aliases for backwards compatibility
+export const getTeamRole = getOrganizationRole;
+export const isTeamOwner = isOrganizationOwner;
+export const isTeamManager = isOrganizationManager;
+export const isTeamMember = isOrganizationMember;

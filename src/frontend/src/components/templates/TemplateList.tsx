@@ -13,14 +13,17 @@ import {
   Globe,
   Lock,
   Users,
+  Building2,
 } from 'lucide-react';
-import { Team, Template, User } from '../../types';
+import { Organization, Team, Template, User } from '../../types';
 
 interface TemplateListProps {
   templates: Template[];
   currentUser: User | null;
-  teams?: Team[];
-  activeTeam?: Team | null;
+  organizations?: Organization[];
+  teams?: Team[]; // compatibility alias
+  activeOrganization?: Organization | null;
+  activeTeam?: Team | null; // compatibility alias
   loading: boolean;
   onSelectTemplateToCreate: (template: Template) => void;
   onEditTemplate: (templateId: string) => void;
@@ -34,7 +37,9 @@ interface TemplateListProps {
 export const TemplateList: React.FC<TemplateListProps> = ({
   templates,
   currentUser,
-  teams = [],
+  organizations: propOrganizations,
+  teams: propTeams,
+  activeOrganization,
   activeTeam,
   loading,
   onSelectTemplateToCreate,
@@ -45,9 +50,11 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   onOpenAccountModal,
   onOpenAuthModal,
 }) => {
-  // Categories: 'all' | 'public' | 'personal' | 'teams'
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'public' | 'personal' | 'teams'>('all');
-  const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
+  const organizations = propOrganizations || propTeams || [];
+
+  // Categories: 'all' | 'public' | 'personal' | 'organizations'
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'public' | 'personal' | 'organizations'>('all');
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const getIcon = (iconName: string) => {
@@ -61,27 +68,29 @@ export const TemplateList: React.FC<TemplateListProps> = ({
     }
   };
 
-  const getTeamName = (teamId: string | null) => {
-    if (!teamId) return null;
-    const team = teams.find((t) => t.id === teamId);
-    return team ? team.name : 'Team Template';
+  const getOrganizationName = (orgId: string | null) => {
+    if (!orgId) return null;
+    const org = organizations.find((t) => t.id === orgId);
+    return org ? org.name : 'Organization Template';
   };
 
   const publicCount = templates.filter((t) => t.visibility === 'public').length;
-  const personalCount = templates.filter((t) => t.visibility === 'private' && !t.team_id).length;
-  const teamCount = templates.filter((t) => t.visibility === 'private' && Boolean(t.team_id)).length;
+  const personalCount = templates.filter((t) => t.visibility === 'private' && !t.organization_id && !t.team_id).length;
+  const orgCount = templates.filter((t) => t.visibility === 'private' && Boolean(t.organization_id || t.team_id)).length;
 
   // Filter templates
   const filteredTemplates = templates.filter((tpl) => {
-    // 1. Category Filter: Public vs Personal vs Team's
+    const tplOrgId = tpl.organization_id || tpl.team_id || null;
+
+    // 1. Category Filter: Public vs Personal vs Organization
     if (selectedCategory === 'public' && tpl.visibility !== 'public') return false;
-    if (selectedCategory === 'personal' && (tpl.visibility !== 'private' || tpl.team_id !== null)) return false;
-    if (selectedCategory === 'teams') {
-      if (tpl.visibility !== 'private' || !tpl.team_id) return false;
-      if (selectedTeamId !== 'all' && tpl.team_id !== selectedTeamId) return false;
+    if (selectedCategory === 'personal' && (tpl.visibility !== 'private' || tplOrgId !== null)) return false;
+    if (selectedCategory === 'organizations') {
+      if (tpl.visibility !== 'private' || !tplOrgId) return false;
+      if (selectedOrgId !== 'all' && tplOrgId !== selectedOrgId) return false;
     }
     if (selectedCategory === 'all') {
-      if (selectedTeamId !== 'all' && tpl.team_id !== selectedTeamId && tpl.visibility === 'private' && tpl.team_id !== null) {
+      if (selectedOrgId !== 'all' && tplOrgId !== selectedOrgId && tpl.visibility === 'private' && tplOrgId !== null) {
         return false;
       }
     }
@@ -169,7 +178,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               type="button"
               onClick={() => {
                 setSelectedCategory('all');
-                setSelectedTeamId('all');
+                setSelectedOrgId('all');
               }}
               className={`px-3.5 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer ${
                 selectedCategory === 'all'
@@ -184,7 +193,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               type="button"
               onClick={() => {
                 setSelectedCategory('public');
-                setSelectedTeamId('all');
+                setSelectedOrgId('all');
               }}
               className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                 selectedCategory === 'public'
@@ -201,7 +210,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 type="button"
                 onClick={() => {
                   setSelectedCategory('personal');
-                  setSelectedTeamId('all');
+                  setSelectedOrgId('all');
                 }}
                 className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
                   selectedCategory === 'personal'
@@ -218,19 +227,19 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedCategory('teams');
-                  if (teams.length > 0 && selectedTeamId === 'all') {
-                    setSelectedTeamId('all');
+                  setSelectedCategory('organizations');
+                  if (organizations.length > 0 && selectedOrgId === 'all') {
+                    setSelectedOrgId('all');
                   }
                 }}
                 className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
-                  selectedCategory === 'teams'
+                  selectedCategory === 'organizations'
                     ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>Team Templates ({teamCount})</span>
+                <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Organization Templates ({orgCount})</span>
               </button>
             )}
           </div>
@@ -248,36 +257,36 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           </div>
         </div>
 
-        {/* Sub-Tabs: Each Team Selector (When in Team category or All with multiple teams) */}
-        {currentUser && (selectedCategory === 'teams' || selectedCategory === 'all') && teams.length > 0 && (
+        {/* Sub-Tabs: Each Organization Selector (When in Organization category or All with multiple organizations) */}
+        {currentUser && (selectedCategory === 'organizations' || selectedCategory === 'all') && organizations.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
-              <Users className="w-3.5 h-3.5 text-indigo-600" /> Teams:
+              <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Organizations:
             </span>
             <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap">
               <button
                 type="button"
-                onClick={() => setSelectedTeamId('all')}
+                onClick={() => setSelectedOrgId('all')}
                 className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer ${
-                  selectedTeamId === 'all'
+                  selectedOrgId === 'all'
                     ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
                     : 'bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                All My Teams
+                All My Organizations
               </button>
-              {teams.map((t) => {
-                const teamTpls = templates.filter((tpl) => tpl.team_id === t.id).length;
+              {organizations.map((t) => {
+                const orgTpls = templates.filter((tpl) => (tpl.organization_id || tpl.team_id) === t.id).length;
                 return (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => {
-                      setSelectedCategory('teams');
-                      setSelectedTeamId(t.id);
+                      setSelectedCategory('organizations');
+                      setSelectedOrgId(t.id);
                     }}
                     className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
-                      selectedTeamId === t.id
+                      selectedOrgId === t.id
                         ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
                         : 'bg-white text-slate-700 hover:bg-slate-50'
                     }`}
@@ -285,12 +294,12 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                     <span>{t.name}</span>
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded ${
-                        selectedTeamId === t.id
+                        selectedOrgId === t.id
                           ? 'bg-indigo-200 text-indigo-900 font-semibold'
                           : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      {teamTpls}
+                      {orgTpls}
                     </span>
                   </button>
                 );
@@ -317,8 +326,8 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           <FolderKanban className="mx-auto h-12 w-12 text-slate-400" />
           <h3 className="mt-3 text-lg font-bold text-slate-900">No matching templates found</h3>
           <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
-            {selectedCategory === 'teams' && teams.length === 0
-              ? 'You are not yet a member of any team. Join or create a team to access and create team templates.'
+            {selectedCategory === 'organizations' && organizations.length === 0
+              ? 'You are not yet a member of any organization. Join or create an organization to access and create organization templates.'
               : 'Try adjusting your search query or category tabs.'}
           </p>
           {currentUser && (
@@ -339,8 +348,9 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           {filteredTemplates.map((template) => {
             const elements = template.document_elements || [];
             const isPublic = template.visibility === 'public';
-            const isPersonal = template.visibility === 'private' && !template.team_id;
-            const teamName = !isPublic && !isPersonal ? getTeamName(template.team_id) : null;
+            const tplOrgId = template.organization_id || template.team_id || null;
+            const isPersonal = template.visibility === 'private' && !tplOrgId;
+            const orgName = !isPublic && !isPersonal ? getOrganizationName(tplOrgId) : null;
 
             return (
               <div
@@ -378,7 +388,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                               </>
                             ) : (
                               <>
-                                <Users className="w-2.5 h-2.5" /> {teamName || 'Team'}
+                                <Building2 className="w-2.5 h-2.5" /> {orgName || 'Organization'}
                               </>
                             )}
                           </span>

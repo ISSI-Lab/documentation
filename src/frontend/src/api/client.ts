@@ -4,6 +4,7 @@ import {
   DocumentCreatePayload,
   DocumentUpdatePayload,
   Project,
+  Organization,
   Team,
   Template,
   TemplateCreatePayload,
@@ -151,8 +152,14 @@ export const api = {
     return res;
   },
 
-  async getMe(): Promise<{ user: User; teams: Team[] }> {
-    return request<{ user: User; teams: Team[] }>('/auth/me');
+  async getMe(): Promise<{ user: User; organizations: Organization[]; teams: Organization[] }> {
+    const res = await request<any>('/auth/me');
+    const orgs = res.organizations || res.teams || [];
+    return {
+      user: res.user,
+      organizations: orgs,
+      teams: orgs,
+    };
   },
 
   async updateProfile(payload: {
@@ -182,65 +189,129 @@ export const api = {
     setStoredToken(null);
   },
 
-  // Teams
-  async listTeams(): Promise<Team[]> {
-    return request<Team[]>('/teams');
+  // Organizations
+  async listOrganizations(): Promise<Organization[]> {
+    return request<Organization[]>('/organizations');
   },
 
-  async createTeam(payload: { name: string; description?: string }): Promise<Team> {
-    return request<Team>('/teams', {
+  async createOrganization(payload: { name: string; description?: string }): Promise<Organization> {
+    return request<Organization>('/organizations', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
-  async joinTeam(payload: { join_code: string }): Promise<{ message: string; team: Team }> {
-    return request<{ message: string; team: Team }>('/teams/join', {
+  async joinOrganization(payload: { join_code: string }): Promise<{ message: string; organization: Organization; team: Organization }> {
+    const res = await request<any>('/organizations/join', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    const org = res.organization || res.team;
+    return {
+      message: res.message,
+      organization: org,
+      team: org,
+    };
   },
 
-  async getTeam(id: string): Promise<{ team: Team }> {
-    return request<{ team: Team }>(`/teams/${encodeURIComponent(id)}`);
+  async getOrganization(id: string): Promise<{ organization: Organization; team: Organization }> {
+    const res = await request<any>(`/organizations/${encodeURIComponent(id)}`);
+    const org = res.organization || res.team;
+    return {
+      organization: org,
+      team: org,
+    };
   },
 
-  async updateTeam(id: string, payload: { name?: string; description?: string }): Promise<Team> {
-    return request<Team>(`/teams/${encodeURIComponent(id)}`, {
+  async updateOrganization(id: string, payload: { name?: string; description?: string }): Promise<Organization> {
+    return request<Organization>(`/organizations/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
   },
 
-  async regenerateTeamJoinToken(id: string): Promise<{ join_code: string }> {
-    return request<{ join_code: string }>(`/teams/${encodeURIComponent(id)}/regenerate-token`, {
+  async regenerateOrganizationJoinToken(id: string): Promise<{ join_code: string }> {
+    return request<{ join_code: string }>(`/organizations/${encodeURIComponent(id)}/regenerate-token`, {
       method: 'POST',
     });
   },
 
-  async addTeamMember(teamId: string, payload: { userId?: string; usernameOrEmail?: string; role?: 'manager' | 'member' }): Promise<{ message: string }> {
-    return request<{ message: string }>(`/teams/${encodeURIComponent(teamId)}/members`, {
+  async addOrganizationMember(
+    orgId: string,
+    payload: { userId?: string; usernameOrEmail?: string; role?: 'manager' | 'member' }
+  ): Promise<{ message: string }> {
+    return request<{ message: string }>(`/organizations/${encodeURIComponent(orgId)}/members`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
-  async updateMemberRole(teamId: string, targetUserId: string, role: 'manager' | 'member'): Promise<{ message: string }> {
-    return request<{ message: string }>(`/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(targetUserId)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ role }),
-    });
+  async updateOrganizationMemberRole(
+    orgId: string,
+    targetUserId: string,
+    role: 'manager' | 'member'
+  ): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(targetUserId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ role }),
+      }
+    );
   },
 
-  async removeTeamMember(teamId: string, targetUserId: string): Promise<{ message: string }> {
-    return request<{ message: string }>(`/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(targetUserId)}`, {
-      method: 'DELETE',
-    });
+  async removeOrganizationMember(orgId: string, targetUserId: string): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(targetUserId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
+
+  // Backwards compatibility aliases for Team
+  listTeams(): Promise<Team[]> {
+    return this.listOrganizations();
+  },
+
+  createTeam(payload: { name: string; description?: string }): Promise<Team> {
+    return this.createOrganization(payload);
+  },
+
+  joinTeam(payload: { join_code: string }): Promise<{ message: string; team: Team }> {
+    return this.joinOrganization(payload);
+  },
+
+  getTeam(id: string): Promise<{ team: Team }> {
+    return this.getOrganization(id);
+  },
+
+  updateTeam(id: string, payload: { name?: string; description?: string }): Promise<Team> {
+    return this.updateOrganization(id, payload);
+  },
+
+  regenerateTeamJoinToken(id: string): Promise<{ join_code: string }> {
+    return this.regenerateOrganizationJoinToken(id);
+  },
+
+  addTeamMember(
+    teamId: string,
+    payload: { userId?: string; usernameOrEmail?: string; role?: 'manager' | 'member' }
+  ): Promise<{ message: string }> {
+    return this.addOrganizationMember(teamId, payload);
+  },
+
+  updateMemberRole(teamId: string, targetUserId: string, role: 'manager' | 'member'): Promise<{ message: string }> {
+    return this.updateOrganizationMemberRole(teamId, targetUserId, role);
+  },
+
+  removeTeamMember(teamId: string, targetUserId: string): Promise<{ message: string }> {
+    return this.removeOrganizationMember(teamId, targetUserId);
   },
 
   // Projects
-  async listProjects(teamId?: string): Promise<Project[]> {
-    const query = teamId ? `?team_id=${encodeURIComponent(teamId)}` : '';
+  async listProjects(orgOrTeamId?: string): Promise<Project[]> {
+    const query = orgOrTeamId ? `?organization_id=${encodeURIComponent(orgOrTeamId)}` : '';
     return request<Project[]>(`/projects${query}`);
   },
 
@@ -248,10 +319,18 @@ export const api = {
     return request<Project>(`/projects/${encodeURIComponent(id)}`);
   },
 
-  async createProject(payload: { team_id?: string | null; name: string; description?: string }): Promise<Project> {
+  async createProject(payload: {
+    organization_id?: string | null;
+    team_id?: string | null;
+    name: string;
+    description?: string;
+  }): Promise<Project> {
     return request<Project>('/projects', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        organization_id: payload.organization_id || payload.team_id || null,
+      }),
     });
   },
 
@@ -270,13 +349,15 @@ export const api = {
 
   // Templates
   async listTemplates(params?: {
+    organization_id?: string;
     team_id?: string;
     visibility?: 'public' | 'private';
     tag?: string;
     search?: string;
   }): Promise<Template[]> {
     const sp = new URLSearchParams();
-    if (params?.team_id) sp.append('team_id', params.team_id);
+    const orgId = params?.organization_id || params?.team_id;
+    if (orgId) sp.append('organization_id', orgId);
     if (params?.visibility) sp.append('visibility', params.visibility);
     if (params?.tag) sp.append('tag', params.tag);
     if (params?.search) sp.append('search', params.search);
@@ -291,14 +372,20 @@ export const api = {
   async createTemplate(payload: TemplateCreatePayload): Promise<Template> {
     return request<Template>('/templates', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        organization_id: payload.organization_id || payload.team_id || null,
+      }),
     });
   },
 
   async updateTemplate(id: string, payload: Partial<TemplateCreatePayload>): Promise<Template> {
     return request<Template>(`/templates/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        organization_id: payload.organization_id !== undefined ? payload.organization_id : payload.team_id,
+      }),
     });
   },
 
@@ -316,6 +403,7 @@ export const api = {
 
   // Documents
   async listDocuments(params?: {
+    organization_id?: string;
     team_id?: string;
     project_id?: string;
     template_id?: string;
@@ -324,7 +412,8 @@ export const api = {
     scope?: string;
   }): Promise<Document[]> {
     const sp = new URLSearchParams();
-    if (params?.team_id) sp.append('team_id', params.team_id);
+    const orgId = params?.organization_id || params?.team_id;
+    if (orgId) sp.append('organization_id', orgId);
     if (params?.project_id) sp.append('project_id', params.project_id);
     if (params?.template_id) sp.append('template_id', params.template_id);
     if (params?.search) sp.append('search', params.search);
@@ -341,14 +430,20 @@ export const api = {
   async createDocument(payload: DocumentCreatePayload): Promise<Document> {
     return request<Document>('/documents', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        organization_id: payload.organization_id || payload.team_id || null,
+      }),
     });
   },
 
   async updateDocument(id: string, payload: DocumentUpdatePayload): Promise<Document> {
     return request<Document>(`/documents/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        organization_id: payload.organization_id !== undefined ? payload.organization_id : payload.team_id,
+      }),
     });
   },
 

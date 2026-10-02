@@ -23,6 +23,7 @@ import {
 import {
   DocumentElementConfig,
   DocumentElementType,
+  Organization,
   Team,
   Template,
   TemplateCreatePayload,
@@ -31,37 +32,47 @@ import {
 
 interface TemplateBuilderProps {
   initialTemplate?: Template | null;
-  activeTeamId?: string | null;
-  teams?: Team[];
+  activeOrganizationId?: string | null;
+  activeTeamId?: string | null; // compatibility alias
+  organizations?: Organization[];
+  teams?: Team[]; // compatibility alias
   onSave: (payload: TemplateCreatePayload) => Promise<void>;
   onCancel: () => void;
 }
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   initialTemplate,
+  activeOrganizationId,
   activeTeamId,
-  teams = [],
+  organizations: propOrganizations,
+  teams: propTeams,
   onSave,
   onCancel,
 }) => {
+  const organizations = propOrganizations || propTeams || [];
+  const initialActiveOrgId = activeOrganizationId || activeTeamId || null;
+
   const [title, setTitle] = useState(initialTemplate?.title || '');
   const [description, setDescription] = useState(initialTemplate?.description || '');
   const [category, setCategory] = useState(initialTemplate?.category || 'Engineering');
   const [icon, setIcon] = useState(initialTemplate?.icon || 'file-text');
 
-  const initialScope: 'personal' | 'team' | 'public' = initialTemplate
+  const initialScope: 'personal' | 'organization' | 'public' = initialTemplate
     ? initialTemplate.visibility === 'public'
       ? 'public'
-      : initialTemplate.team_id
-      ? 'team'
+      : (initialTemplate.organization_id || initialTemplate.team_id)
+      ? 'organization'
       : 'personal'
-    : teams.length > 0 && activeTeamId
-    ? 'team'
+    : organizations.length > 0 && initialActiveOrgId
+    ? 'organization'
     : 'personal';
 
-  const [scope, setScope] = useState<'personal' | 'team' | 'public'>(initialScope);
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(
-    initialTemplate?.team_id || activeTeamId || (teams.length > 0 ? teams[0].id : '')
+  const [scope, setScope] = useState<'personal' | 'organization' | 'public'>(initialScope);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>(
+    initialTemplate?.organization_id ||
+      initialTemplate?.team_id ||
+      initialActiveOrgId ||
+      (organizations.length > 0 ? organizations[0].id : '')
   );
   const [tagsInput, setTagsInput] = useState(
     initialTemplate?.tags && Array.isArray(initialTemplate.tags)
@@ -221,7 +232,10 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
         .filter(Boolean);
 
       const finalVisibility: TemplateVisibility = scope === 'public' ? 'public' : 'private';
-      const finalTeamId: string | null = scope === 'team' ? (selectedTeamId || teams[0]?.id || null) : null;
+      const finalOrgId: string | null =
+        scope === 'organization' || (scope as any) === 'team'
+          ? selectedOrgId || organizations[0]?.id || null
+          : null;
 
       await onSave({
         title: title.trim(),
@@ -229,7 +243,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
         category: category.trim() || 'General',
         icon,
         visibility: finalVisibility,
-        team_id: finalTeamId,
+        organization_id: finalOrgId,
+        team_id: finalOrgId,
         tags: cleanTags,
         document_elements: elements.map((elem, idx) => ({
           ...elem,
@@ -390,7 +405,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 />
               </div>
 
-              {/* Scope Selection: Personal vs Team vs Public */}
+              {/* Scope Selection: Personal vs Organization vs Public */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                   Template Ownership & Scope
@@ -414,29 +429,29 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 leading-tight">
-                      Private to your personal account (without a team).
+                      Private to your personal account (without an organization).
                     </p>
                   </div>
 
-                  {/* Team */}
+                  {/* Organization */}
                   <div
-                    onClick={() => setScope('team')}
+                    onClick={() => setScope('organization')}
                     className={`cursor-pointer p-3 border transition-all ${
-                      scope === 'team'
+                      scope === 'organization'
                         ? 'border-purple-600 bg-purple-50/70 ring-1 ring-purple-600 shadow-sm'
                         : 'border-slate-300 hover:border-slate-400 bg-white'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-900">👥 Team Template</span>
-                      {scope === 'team' && (
+                      <span className="text-xs font-bold text-slate-900">🏢 Organization Template</span>
+                      {scope === 'organization' && (
                         <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.2 font-bold">
                           Selected
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 leading-tight">
-                      Shared and used exclusively by members of a specific team.
+                      Shared and used exclusively by members of a specific organization.
                     </p>
                   </div>
 
@@ -464,19 +479,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 </div>
               </div>
 
-              {/* Team Selector when scope === 'team' */}
-              {scope === 'team' && (
+              {/* Organization Selector when scope === 'organization' */}
+              {scope === 'organization' && (
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Select Owning Team *
+                    Select Owning Organization *
                   </label>
-                  {teams.length > 0 ? (
+                  {organizations.length > 0 ? (
                     <select
-                      value={selectedTeamId}
-                      onChange={(e) => setSelectedTeamId(e.target.value)}
+                      value={selectedOrgId}
+                      onChange={(e) => setSelectedOrgId(e.target.value)}
                       className="w-full px-3.5 py-2 border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
                     >
-                      {teams.map((t) => (
+                      {organizations.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} {t.user_role ? `(${t.user_role})` : ''}
                         </option>
@@ -484,11 +499,11 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                     </select>
                   ) : (
                     <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                      You are not currently in any team. Create a team first to publish team templates, or select Personal Template.
+                      You are not currently in any organization. Create an organization first to publish organization templates, or select Personal Template.
                     </div>
                   )}
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Members of this team will be able to create documents from this template.
+                    Members of this organization will be able to create documents from this template.
                   </p>
                 </div>
               )}
