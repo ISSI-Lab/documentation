@@ -11,8 +11,7 @@ This document specifies reusable engineering patterns and code standards across 
   - Host Nginx handles SSL termination (`/etc/letsencrypt/`) and Let's Encrypt webroot verification (`/var/www/certbot`), proxying to container frontend port `127.0.0.1:3939`.
   - Container Nginx serves React SPA static assets and proxies `/api/` traffic internally to `http://backend:5000/api/`, eliminating cross-origin (CORS) friction.
 - **Dynamic Port Collision Auto-Resolution Pattern**:
-  - `scripts/start.sh` executes a pre-flight probe binding to configured host ports (`FRONTEND_PORT`, `BACKEND_PORT`, `MYSQL_PORT`, `PMA_PORT`).
-  - If a port is occupied by host services (e.g. macOS AirPlay on `5000` or local MySQL on `13306`), it automatically allocates the next available port, updates `.env`, and exports the variable for Docker Compose.
+  - In development, if a port is occupied by host services (e.g. macOS AirPlay on `5000` or local MySQL on `53306`), it automatically allocates the next available port and updates `.env`. In production (`--prod`), ports are locked to prevent breaking reverse proxy routing. Project containers are recognized to prevent false self-collisions.
 - **Environment Blueprint Separation Pattern**:
   - Development defaults are maintained in `docs/ops/config-templates/.env.dev` (`NODE_ENV=development`, phpMyAdmin enabled by default).
   - Production defaults are maintained in `docs/ops/config-templates/.env.prod` (`NODE_ENV=production`, phpMyAdmin disabled by default, Certbot webroot defined).

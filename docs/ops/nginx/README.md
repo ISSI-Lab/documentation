@@ -27,7 +27,7 @@ flowchart TD
         
         ContainerNginx -- "Static Files" --> SPA["React SPA (/usr/share/nginx/html)"]
         ContainerNginx -- "Reverse Proxy /api/" --> NodeBackend["Express Backend (:5000)\n(web_backend)"]
-        NodeBackend -- "MySQL Protocol (:3306)" --> MySQL["MySQL Database (:3306)\n(db_mysql, exposed as :13306)"]
+        NodeBackend -- "MySQL Protocol (:3306)" --> MySQL["MySQL Database (:3306)\n(db_mysql, exposed as :53306)"]
         PMAContainer -- "MySQL Protocol (:3306)" --> MySQL
     end
 
@@ -43,7 +43,7 @@ flowchart TD
 | **Edge / Ingress** | **Host Nginx** | Host OS (`/etc/nginx/`) | • Binds public ports `80` and `443`.<br>• Serves Certbot ACME webroot (`/.well-known/acme-challenge/`).<br>• Redirects HTTP to HTTPS.<br>• Terminates SSL / TLS via Let's Encrypt certificates.<br>• Reverse proxies decrypted traffic to local Docker port (`127.0.0.1:3939`).<br>• Handles WebSocket upgrades for real-time traffic. |
 | **Presentation** | **Container Nginx** | Docker Container (`web_frontend`) | • Serves compiled React SPA static assets (`dist/`).<br>• Implements Gzip compression and client asset caching.<br>• Resolves client SPA routing fallbacks (`try_files $uri /index.html`).<br>• Proxies `/api/` traffic internally to `http://backend:5000/api/` (no CORS friction). |
 | **Application** | **Node.js Backend** | Docker Container (`web_backend`) | • Executes business logic, REST APIs, and database migrations. |
-| **Database** | **MySQL 8.0** | Docker Container (`db_mysql`) | • Persistent relational store in Docker volume `mysql_data` (mapped to host `:13306`). |
+| **Database** | **MySQL 8.0** | Docker Container (`db_mysql`) | • Persistent relational store in Docker volume `mysql_data` (mapped to host `:53306`). |
 | **DB Admin (Optional)**| **phpMyAdmin** | Docker Container (`db_phpmyadmin`) | • Web UI for MySQL database administration on host port `28080` (managed via `--profile phpmyadmin`). |
 
 ---
@@ -65,7 +65,7 @@ Running `./scripts/start.sh` without flags starts the stack in **Development mod
 ```
 - Frontend: `http://localhost:3939`
 - Backend API: `http://localhost:5000`
-- MySQL: `localhost:13306`
+- MySQL: `localhost:53306`
 - phpMyAdmin: `http://localhost:28080`
 
 ### 4.2 Production Start (`--prod`)

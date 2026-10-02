@@ -52,7 +52,7 @@ services:
       - MYSQL_PASSWORD=docpass
       - MYSQL_ROOT_PASSWORD=rootpass
     ports:
-      - "${MYSQL_PORT:-13306}:3306"
+      - "${MYSQL_PORT:-53306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./src/backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

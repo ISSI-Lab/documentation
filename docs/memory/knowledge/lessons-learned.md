@@ -6,6 +6,11 @@ This document logs key organizational insights, incident post-mortems, and techn
 
 ## Retrospective Log
 
+### 2026-10-02: MySQL Port Conflict (53306) & Production Proxy Port Drift
+- **Observation**: Production deployment encountered `Bind for 0.0.0.0:13306 failed: port is already allocated` causing MySQL and dependent containers to fail startup. Furthermore, dynamic port auto-reallocation in `scripts/start.sh` treated existing project containers as conflicts, incrementing `FRONTEND_PORT` to 3940 and causing a `502 Bad Gateway` on Host Nginx (which stayed mapped to 3939).
+- **Action Taken**: Shifted default MySQL host port to `53306` across configuration templates, Compose files, and scripts. Upgraded `scripts/start.sh` to check `docker ps` for project container ownership before probing ports, and locked ports against auto-incrementing in production mode (`--prod`).
+- **Outcome**: Completely eliminated the 13306 host collision and prevented 502 Bad Gateway outages caused by reverse proxy port drift.
+
 ### 2026-09-27: Host Port Collisions & Dynamic Pre-Flight Resolution
 - **Observation**: Running Docker Compose failed with `Bind for 0.0.0.0:13306 failed: port is already allocated` and `5000` (macOS AirPlay / local MySQL services occupying default host ports).
 - **Action Taken**: Added an automated pre-flight socket binding verification function to [`scripts/start.sh`](../../../scripts/start.sh). Before launching Docker Compose, the script tests port bindability and dynamically shifts to the next available free port (e.g. `13306` $\rightarrow$ `13307`, `5000` $\rightarrow$ `5001`), exporting the resolved environment variable and updating `.env`.

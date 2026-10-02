@@ -56,7 +56,7 @@ Regardless of whether you are running on macOS, Ubuntu/Debian, or Windows with W
 
 - **Frontend & API (Container Nginx)**: [http://localhost:3939](http://localhost:3939) (Proxies `/api/` to backend)
 - **Backend API (Direct Debug)**: [http://localhost:5000](http://localhost:5000)
-- **MySQL Database**: `localhost:13306` (`docforge` database)
+- **MySQL Database**: `localhost:53306` (`docforge` database)
 - **phpMyAdmin**: [http://localhost:28080](http://localhost:28080) (Dev default)
 
 ### 3. Stop Services

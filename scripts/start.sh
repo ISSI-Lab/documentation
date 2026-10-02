@@ -271,7 +271,7 @@ check_and_resolve_port() {
 echo -e "${CYAN}==> Validating host port availability...${NC}"
 check_and_resolve_port "FRONTEND_PORT" "${FRONTEND_PORT:-3939}" "Frontend UI (Nginx)" "web_frontend"
 check_and_resolve_port "BACKEND_PORT" "${BACKEND_PORT:-5000}" "Backend Debug Port" "web_backend"
-check_and_resolve_port "MYSQL_PORT" "${MYSQL_PORT:-13306}" "MySQL Service" "db_mysql"
+check_and_resolve_port "MYSQL_PORT" "${MYSQL_PORT:-53306}" "MySQL Service" "db_mysql"
 if [[ "$IS_PMA" == true ]]; then
   check_and_resolve_port "PMA_PORT" "${PMA_PORT:-28080}" "phpMyAdmin" "db_phpmyadmin"
 fi

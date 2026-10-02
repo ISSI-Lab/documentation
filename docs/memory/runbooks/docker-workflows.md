@@ -66,8 +66,8 @@ docker compose exec mysql mysql -u docuser -pdocpass docforge
 ## 3. Troubleshooting & Automated Port Conflict Resolution
 
 ### Automatic Port Collision Handling
-When starting via `./scripts/start.sh`, the script automatically tests whether host ports (`FRONTEND_PORT: 3939`, `BACKEND_PORT: 5000`, `MYSQL_PORT: 13306`, `PMA_PORT: 28080`) are available to bind.
-- If a port is occupied by another process (such as macOS AirPlay on port `5000` or an existing MySQL instance on port `13306`), `start.sh` automatically shifts to the next free port (e.g. `13307`, `5001`), exports the resolved port, and updates `.env`.
+When starting via `./scripts/start.sh`, the script automatically tests whether host ports (`FRONTEND_PORT: 3939`, `BACKEND_PORT: 5000`, `MYSQL_PORT: 53306`, `PMA_PORT: 28080`) are available to bind.
+- If a port is occupied by another external process, `start.sh` in development automatically shifts to the next free port, exports the resolved port, and updates `.env`. In production (`--prod`), ports are locked to prevent breaking reverse proxy routing.
 
 ### Manual Port Overrides
 To permanently assign custom ports, edit `.env`:
