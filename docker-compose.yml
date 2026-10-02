@@ -33,6 +33,9 @@ services:
       - DB_USER=docuser
       - DB_PASSWORD=docpass
       - DB_NAME=docforge
+      - EMAIL_CONFIG_SECRET=${EMAIL_CONFIG_SECRET:-docforge-email-secret-key-2026}
+    volumes:
+      - ./src/backend/config:/app/config:ro
     networks:
       - app-net
     depends_on:

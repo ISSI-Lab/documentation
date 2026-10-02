@@ -33,6 +33,7 @@ FLAG_PMA=""
 FLAG_BUILD_ONLY=false
 FLAG_NO_CACHE=false
 FLAG_SSL=false
+FLAG_SETUP_EMAIL=false
 
 usage() {
   cat << EOF
@@ -41,6 +42,10 @@ Usage: ./scripts/start.sh [OPTIONS]
 Environment Modes:
   Default                 Runs in DEVELOPMENT mode (phpMyAdmin enabled on port 28080).
   --prod, -prod           Runs in PRODUCTION mode (phpMyAdmin disabled by default).
+
+Email & SMTP Setup:
+  -e, --email             Launch interactive wizard to update email server account
+                          and credentials (stored encrypted in email_config.json).
 
 Production & Domain Setup:
   -i, --init              First-time setup: prompts for domain (default: ${DEFAULT_DOMAIN}),
@@ -106,6 +111,10 @@ while [[ $# -gt 0 ]]; do
       FLAG_BUILD_ONLY=true
       shift
       ;;
+    -e|--email|--setup-email)
+      FLAG_SETUP_EMAIL=true
+      shift
+      ;;
     --no-cache)
       FLAG_NO_CACHE=true
       FLAG_BUILD_ONLY=true
@@ -148,6 +157,13 @@ set -a
 source "$ENV_FILE"
 set +a
 
+# Launch email configuration setup if requested
+if [[ "$FLAG_SETUP_EMAIL" == true ]]; then
+  if command -v python3 &> /dev/null && [[ -f "${PROJECT_ROOT}/scripts/manage_email_config.py" ]]; then
+    python3 "${PROJECT_ROOT}/scripts/manage_email_config.py" setup
+  fi
+fi
+
 # Determine active environment
 if [[ "$IS_PROD" == true ]]; then
   CURRENT_ENV="production"
@@ -155,11 +171,14 @@ else
   CURRENT_ENV="${NODE_ENV:-development}"
 fi
 
-# Ensure email configuration is encrypted
+# Ensure email configuration is encrypted and report status
 if command -v python3 &> /dev/null && [[ -f "${PROJECT_ROOT}/scripts/manage_email_config.py" ]]; then
   echo -e "${CYAN}==> Verifying encrypted email configuration...${NC}"
   python3 "${PROJECT_ROOT}/scripts/manage_email_config.py" ensure-encrypted
+  python3 "${PROJECT_ROOT}/scripts/manage_email_config.py" status
 fi
+
+export EMAIL_CONFIG_SECRET="${EMAIL_CONFIG_SECRET:-docforge-email-secret-key-2026}"
 
 # Determine whether phpMyAdmin is enabled:
 # Development (default): ENABLED
