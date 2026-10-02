@@ -78,3 +78,17 @@ MYSQL_PORT=13308
 PMA_PORT=28081
 ```
 Then run `./scripts/start.sh`.
+
+---
+
+## 4. Email & SMTP Service Management (`email_config.json`)
+
+DocForge stores email credentials in `src/backend/config/email_config.json` encrypted with AES-256-GCM.
+- In `docker-compose.yml`, `./src/backend/config` is mounted read-only to `/app/config:ro` in the backend container.
+- The encryption key is injected via `EMAIL_CONFIG_SECRET=${EMAIL_CONFIG_SECRET:-docforge-email-secret-key-2026}`.
+- Configure or update credentials on the host using:
+  ```bash
+  ./scripts/setup_email.sh
+  ```
+  Changes take effect immediately without rebuilding container images.
+- For complete setup instructions and registration verification details, see [`email-configuration-guide.md`](email-configuration-guide.md).

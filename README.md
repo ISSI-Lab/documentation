@@ -110,6 +110,25 @@ Verify all internal relative links, kebab-case file naming, and LF line endings 
 python3 scripts/validate_docs.py
 ```
 
+### 3. Setup & Manage Email Configuration (`email_config.json`)
+Configure your SMTP server account and credentials with AES-256-GCM encryption:
+
+```bash
+# Launch interactive terminal setup wizard:
+./scripts/setup_email.sh
+
+# Or launch directly before starting services:
+./scripts/start.sh --email
+
+# View current configuration (password masked):
+python3 scripts/manage_email_config.py view
+
+# Check email server status:
+python3 scripts/manage_email_config.py status
+```
+
+For complete security architecture, troubleshooting, and registration verification details, see the [Email Setup Guide](docs/memory/runbooks/email-configuration-guide.md).
+
 ---
 
 ## AI Assistant & Agent Guidelines

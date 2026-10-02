@@ -47,3 +47,20 @@ This runbook provides step-by-step instructions for setting up your local develo
    ```bash
    git config --global core.autocrlf input
    ```
+
+---
+
+## 4. Initial Launch & Email Configuration
+1. (Optional) Run the interactive email setup wizard to configure your SMTP server:
+   ```bash
+   ./scripts/setup_email.sh
+   ```
+2. Start the local development stack:
+   ```bash
+   ./scripts/start.sh
+   ```
+   Or run the setup wizard directly as part of starting:
+   ```bash
+   ./scripts/start.sh --email
+   ```
+   For full instructions on credential encryption and registration email delivery, see [`email-configuration-guide.md`](email-configuration-guide.md).
