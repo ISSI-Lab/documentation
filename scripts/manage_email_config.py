@@ -276,8 +276,48 @@ def cmd_test(config_path: str = DEFAULT_CONFIG_PATH, recipient: str = None):
 
         server.quit()
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"⚠️  SMTP Authentication Failed: {e}")
+        print("\n🔍 Diagnosis & Solutions:")
+        if "gmail" in str(host).lower():
+            print("  • Gmail Account: You MUST use a 16-character Google 'App Password', not your standard account password.")
+            print("    Generate one at: https://myaccount.google.com/apppasswords (requires 2-Step Verification enabled).")
+        elif "office365" in str(host).lower() or "outlook" in str(host).lower():
+            print("  • Microsoft 365 / Outlook: Ensure 'Authenticated SMTP' is enabled for this mailbox in the M365 Admin Portal.")
+        else:
+            print(f"  • Verify your username ({user}) and password are correct without trailing spaces.")
+        return False
+    except smtplib.SMTPSenderRefused as e:
+        print(f"⚠️  Sender Address Refused: {e}")
+        print("\n🔍 Diagnosis:")
+        print(f"  • Your SMTP server rejected the From address: '{from_addr}'.")
+        print(f"  • Ensure the Sender/From address exactly matches your authenticated email account ({user}) or a verified domain.")
+        return False
+    except smtplib.SMTPRecipientsRefused as e:
+        print(f"⚠️  Recipient Address Refused: {e}")
+        print("\n🔍 Diagnosis:")
+        print(f"  • The SMTP server rejected the recipient address: '{recipient}'.")
+        return False
+    except TimeoutError:
+        print(f"⚠️  Connection Timeout: Unable to reach {host}:{port} within 10 seconds.")
+        print("\n🔍 Diagnosis:")
+        print(f"  • Your ISP or network firewall may be blocking outbound traffic on port {port}.")
+        print("  • Try switching ports: use 587 (STARTTLS) or 465 (Direct SSL).")
+        return False
     except Exception as e:
+        err_str = str(e)
         print(f"⚠️  SMTP Connection or Authentication failed: {e}")
+        print("\n🔍 Diagnosis & Common Causes:")
+        if "nodename nor servname provided" in err_str or "getaddrinfo failed" in err_str:
+            print(f"  • Invalid Hostname: Could not resolve '{host}'.")
+            print("    Ensure you are using a real, reachable SMTP server (e.g. smtp.gmail.com) instead of the default placeholder.")
+        elif "WRONG_VERSION_NUMBER" in err_str or "unknown protocol" in err_str:
+            print(f"  • Protocol Mismatch: Port {port} does not match the SSL setting.")
+            print("    Port 587 requires STARTTLS (Direct SSL: False). Port 465 requires Direct SSL (Direct SSL: True).")
+        elif "Connection refused" in err_str:
+            print(f"  • Connection Refused: No SMTP server listening on {host}:{port}.")
+        else:
+            print(f"  • Check hostname ({host}), port ({port}), security mode, and network connectivity.")
         return False
 
 

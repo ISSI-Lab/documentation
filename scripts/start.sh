@@ -198,6 +198,18 @@ else
   fi
 fi
 
+# Helper: Check if a port is already mapped to one of our project's running containers
+is_port_used_by_container() {
+  local container_name="$1"
+  local port="$2"
+  if command -v docker &> /dev/null; then
+    if docker ps --filter "name=^/?${container_name}$" --filter "status=running" --format '{{.Ports}}' 2>/dev/null | grep -q -E ":${port}->"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 # Port Conflict Detection and Auto-Resolution Helper
 find_free_port() {
   local req_port="$1"
@@ -226,6 +238,20 @@ check_and_resolve_port() {
   local var_name="$1"
   local current_port="$2"
   local service_name="$3"
+  local container_name="$4"
+
+  # 1. If this project's own container is already running on this port, it's not a conflict.
+  # Docker Compose will gracefully reload or recreate the container on the same port.
+  if [[ -n "$container_name" ]] && is_port_used_by_container "$container_name" "$current_port"; then
+    export "${var_name}=${current_port}"
+    return 0
+  fi
+
+  # 2. In production, never dynamically shift ports: Host Nginx depends on static proxy targets.
+  if [[ "$CURRENT_ENV" == "production" ]]; then
+    export "${var_name}=${current_port}"
+    return 0
+  fi
 
   local free_port
   free_port=$(find_free_port "$current_port")
@@ -243,11 +269,11 @@ check_and_resolve_port() {
 }
 
 echo -e "${CYAN}==> Validating host port availability...${NC}"
-check_and_resolve_port "FRONTEND_PORT" "${FRONTEND_PORT:-3939}" "Frontend UI (Nginx)"
-check_and_resolve_port "BACKEND_PORT" "${BACKEND_PORT:-5000}" "Backend Debug Port"
-check_and_resolve_port "MYSQL_PORT" "${MYSQL_PORT:-13306}" "MySQL Service"
+check_and_resolve_port "FRONTEND_PORT" "${FRONTEND_PORT:-3939}" "Frontend UI (Nginx)" "web_frontend"
+check_and_resolve_port "BACKEND_PORT" "${BACKEND_PORT:-5000}" "Backend Debug Port" "web_backend"
+check_and_resolve_port "MYSQL_PORT" "${MYSQL_PORT:-13306}" "MySQL Service" "db_mysql"
 if [[ "$IS_PMA" == true ]]; then
-  check_and_resolve_port "PMA_PORT" "${PMA_PORT:-28080}" "phpMyAdmin"
+  check_and_resolve_port "PMA_PORT" "${PMA_PORT:-28080}" "phpMyAdmin" "db_phpmyadmin"
 fi
 
 CERTBOT_WEBROOT="${CERTBOT_WEBROOT:-/var/www/certbot}"
