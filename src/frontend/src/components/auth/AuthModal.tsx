@@ -28,7 +28,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     userId?: string;
     email?: string;
     username?: string;
-    tokenPreview?: string;
   } | null>(null);
   const [verificationCode, setVerificationCode] = useState('');
   const [timeLeft, setTimeLeft] = useState<number>(30);
@@ -87,7 +86,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             userId: res.user_id,
             email: res.email,
             username: res.username,
-            tokenPreview: res.verification_token,
           });
           setTimeLeft(res.expires_in_seconds || 30);
           setMode('verify');
@@ -118,7 +116,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           userId: err.user_id,
           email: err.email,
           username: err.data?.username,
-          tokenPreview: err.verification_token,
         });
         setTimeLeft(err.expires_in_seconds || 30);
         setMode('verify');
@@ -145,7 +142,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       setPendingVerification((prev) => ({
         ...prev,
-        tokenPreview: res.verification_token,
         email: res.email || prev?.email,
       }));
       setTimeLeft(res.expires_in_seconds || 30);
@@ -217,24 +213,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           {mode === 'verify' ? (
             <div className="space-y-4">
-              {/* Demo Helper Badge if tokenPreview is present */}
-              {pendingVerification?.tokenPreview && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <div className="flex items-center justify-between text-xs text-indigo-800 font-medium mb-1">
-                    <span>Generated Verification Token:</span>
-                    <button
-                      type="button"
-                      onClick={() => setVerificationCode(pendingVerification.tokenPreview || '')}
-                      className="text-indigo-600 hover:underline text-[11px] font-semibold"
-                    >
-                      Autofill
-                    </button>
-                  </div>
-                  <div className="font-mono text-center tracking-widest text-lg font-bold text-indigo-900 bg-white py-1 rounded border border-indigo-100">
-                    {pendingVerification.tokenPreview}
-                  </div>
-                </div>
-              )}
 
               {/* Countdown Timer Widget */}
               <div
