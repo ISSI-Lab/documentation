@@ -181,21 +181,90 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 4. Projects Table
+      // 4. Organization Teams Table
       await conn.query(`
-        CREATE TABLE IF NOT EXISTS projects (
+        CREATE TABLE IF NOT EXISTS organization_teams (
           id VARCHAR(64) PRIMARY KEY,
-          organization_id VARCHAR(64) NULL,
+          organization_id VARCHAR(64) NOT NULL,
           name VARCHAR(255) NOT NULL,
           description TEXT,
           created_by VARCHAR(64) NOT NULL,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_organization_id (organization_id)
+          INDEX idx_org_id (organization_id),
+          INDEX idx_created_by (created_by)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 5. Templates Table
+      // 4.1 Organization Team Members Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS organization_team_members (
+          team_id VARCHAR(64) NOT NULL,
+          user_id VARCHAR(64) NOT NULL,
+          role VARCHAR(64) NOT NULL DEFAULT 'member',
+          joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, user_id),
+          INDEX idx_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 4.2 Team Assignment Sets Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS team_assignment_sets (
+          id VARCHAR(64) PRIMARY KEY,
+          organization_id VARCHAR(64) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          created_by VARCHAR(64) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_org_id (organization_id),
+          INDEX idx_created_by (created_by)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 4.3 Team Assignment Set Items Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS team_assignment_set_items (
+          set_id VARCHAR(64) NOT NULL,
+          team_id VARCHAR(64) NOT NULL,
+          assigned_role VARCHAR(100) NULL,
+          PRIMARY KEY (set_id, team_id),
+          INDEX idx_team_id (team_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 5. Projects Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id VARCHAR(64) PRIMARY KEY,
+          organization_id VARCHAR(64) NULL,
+          team_assignment_set_id VARCHAR(64) NULL,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          created_by VARCHAR(64) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_organization_id (organization_id),
+          INDEX idx_team_assignment_set_id (team_assignment_set_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 5.1 Project Team Assignments Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS project_team_assignments (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          team_id VARCHAR(64) NOT NULL,
+          assigned_role VARCHAR(100) NULL,
+          assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_proj_team (project_id, team_id),
+          INDEX idx_project_id (project_id),
+          INDEX idx_team_id (team_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 6. Templates Table
       await conn.query(`
         CREATE TABLE IF NOT EXISTS templates (
           id VARCHAR(64) PRIMARY KEY,
@@ -215,7 +284,7 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      // 6. Documents Table
+      // 7. Documents Table
       await conn.query(`
         CREATE TABLE IF NOT EXISTS documents (
           id VARCHAR(64) PRIMARY KEY,
@@ -254,6 +323,8 @@ export async function initDatabase(): Promise<void> {
       }
 
       await ensureColumnExists(conn, 'users', 'is_verified', 'BOOLEAN NOT NULL DEFAULT FALSE');
+
+      await ensureColumnExists(conn, 'projects', 'team_assignment_set_id', 'VARCHAR(64) NULL');
 
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
       await ensureColumnExists(conn, 'templates', 'organization_id', 'VARCHAR(64) NULL');
@@ -384,17 +455,115 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
       if (config.defaultProject) {
         const p = config.defaultProject;
         await runner.query(
-          `INSERT INTO projects (id, organization_id, name, description, created_by, created_at, updated_at)
+          `INSERT INTO projects (id, organization_id, team_assignment_set_id, name, description, created_by, created_at, updated_at)
+           VALUES (?, ?, 'set-fullstack-delivery', ?, ?, ?, NOW(), NOW())
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name),
+             description = VALUES(description),
+             team_assignment_set_id = COALESCE(team_assignment_set_id, 'set-fullstack-delivery')`,
+          [p.id, t.id, p.name, p.description || '', creatorId]
+        );
+      }
+
+      // 4. Seed demo organization teams
+      const demoTeams = [
+        {
+          id: 'team-core-eng',
+          name: 'Core Engineering & Architecture',
+          description: 'System architecture, core data modeling, and performance standards.',
+        },
+        {
+          id: 'team-web-ui',
+          name: 'Frontend Experience Squad',
+          description: 'React design system, dynamic template editor components, and UX workflows.',
+        },
+        {
+          id: 'team-api-cloud',
+          name: 'Cloud & Microservices Squad',
+          description: 'RESTful API routing, JWT authentication, Docker orchestration, and CI/CD.',
+        },
+      ];
+
+      for (const tm of demoTeams) {
+        await runner.query(
+          `INSERT INTO organization_teams (id, organization_id, name, description, created_by, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, NOW(), NOW())
            ON DUPLICATE KEY UPDATE
              name = VALUES(name),
              description = VALUES(description)`,
-          [p.id, t.id, p.name, p.description || '', creatorId]
+          [tm.id, t.id, tm.name, tm.description, creatorId]
         );
+      }
+
+      // Seed team members
+      await runner.query(
+        `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+         VALUES ('team-core-eng', ?, 'lead', NOW())
+         ON DUPLICATE KEY UPDATE role = 'lead'`,
+        [creatorId]
+      );
+      if (regularId) {
+        await runner.query(
+          `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+           VALUES ('team-core-eng', ?, 'member', NOW())
+           ON DUPLICATE KEY UPDATE role = 'member'`,
+          [regularId]
+        );
+        await runner.query(
+          `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+           VALUES ('team-web-ui', ?, 'lead', NOW())
+           ON DUPLICATE KEY UPDATE role = 'lead'`,
+          [regularId]
+        );
+      }
+      await runner.query(
+        `INSERT INTO organization_team_members (team_id, user_id, role, joined_at)
+         VALUES ('team-api-cloud', ?, 'lead', NOW())
+         ON DUPLICATE KEY UPDATE role = 'lead'`,
+        [creatorId]
+      );
+
+      // 5. Seed default Team Assignment Set
+      const defaultSetId = 'set-fullstack-delivery';
+      await runner.query(
+        `INSERT INTO team_assignment_sets (id, organization_id, name, description, created_by, created_at, updated_at)
+         VALUES (?, ?, 'Full-Stack Web Delivery Set', 'Standard cross-functional pod configuration for web platforms and services.', ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+           name = VALUES(name),
+           description = VALUES(description)`,
+        [defaultSetId, t.id, creatorId]
+      );
+
+      // Seed items in default Team Assignment Set
+      const setItems = [
+        { teamId: 'team-core-eng', role: 'Architecture & System Design' },
+        { teamId: 'team-web-ui', role: 'Frontend UI/UX' },
+        { teamId: 'team-api-cloud', role: 'Backend API & Cloud' },
+      ];
+      for (const item of setItems) {
+        await runner.query(
+          `INSERT INTO team_assignment_set_items (set_id, team_id, assigned_role)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE assigned_role = VALUES(assigned_role)`,
+          [defaultSetId, item.teamId, item.role]
+        );
+      }
+
+      // Seed project team assignments for default project
+      if (config.defaultProject) {
+        for (const item of setItems) {
+          const assignId = `pta-${config.defaultProject.id}-${item.teamId}`;
+          await runner.query(
+            `INSERT INTO project_team_assignments (id, project_id, team_id, assigned_role, assigned_at)
+             VALUES (?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE assigned_role = VALUES(assigned_role)`,
+            [assignId, config.defaultProject.id, item.teamId, item.role]
+          );
+        }
       }
     }
 
-    console.log('[Database] Demo users, default organization, and default project verified and seeded.');
+    console.log('[Database] Demo users, default organization, teams, assignment sets, and project verified and seeded.');
   } finally {
     if (!conn) {
       runner.release();

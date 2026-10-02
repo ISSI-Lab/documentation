@@ -8,6 +8,7 @@ import {
   Home,
   Menu,
   ChevronDown,
+  Building2,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -57,8 +58,9 @@ export const Navigation: React.FC<NavigationProps> = ({
       case 'edit_template':
         return 'Templates';
       case 'organizations':
-      case 'teams':
         return 'Organizations & Projects';
+      case 'teams':
+        return 'Teams & Assignments';
       default:
         return 'Menu';
     }
@@ -177,24 +179,45 @@ export const Navigation: React.FC<NavigationProps> = ({
                   </button>
 
                   {currentUser && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onNavigate('organizations');
-                        setIsMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-left transition-colors cursor-pointer ${
-                        currentView === 'organizations' || currentView === 'teams'
-                          ? 'bg-indigo-50 text-indigo-700 font-bold border-l-4 border-indigo-600'
-                          : 'hover:bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      <Users className="w-4 h-4 text-purple-600" />
-                      <div>
-                        <div className="font-semibold">Organizations & Projects</div>
-                        <div className="text-[10px] text-slate-400">Manage memberships, projects, & roles</div>
-                      </div>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigate('organizations');
+                          setIsMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-left transition-colors cursor-pointer ${
+                          currentView === 'organizations'
+                            ? 'bg-indigo-50 text-indigo-700 font-bold border-l-4 border-indigo-600'
+                            : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        <Building2 className="w-4 h-4 text-purple-600" />
+                        <div>
+                          <div className="font-semibold">Organizations & Projects</div>
+                          <div className="text-[10px] text-slate-400">Manage memberships, projects, & roles</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigate('teams');
+                          setIsMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-left transition-colors cursor-pointer ${
+                          currentView === 'teams'
+                            ? 'bg-indigo-50 text-indigo-700 font-bold border-l-4 border-indigo-600'
+                            : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        <Users className="w-4 h-4 text-indigo-600" />
+                        <div>
+                          <div className="font-semibold">Teams & Assignments</div>
+                          <div className="text-[10px] text-slate-400">Create teams & reusable project sets</div>
+                        </div>
+                      </button>
+                    </>
                   )}
                 </div>
               )}

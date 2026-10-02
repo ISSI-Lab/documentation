@@ -16,9 +16,12 @@ import {
   Search,
   Crown,
   Building2,
+  BookmarkCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { Project, Organization, OrganizationMember, User } from '../../types';
+import { Project, Organization, OrganizationMember, User, OrganizationTeam, TeamAssignmentSet } from '../../types';
+import { ProjectTeamAssignmentModal } from '../projects/ProjectTeamAssignmentModal';
 
 interface OrganizationManagementProps {
   currentUser: User | null;
@@ -64,8 +67,11 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
     else if (onRefreshTeams) await onRefreshTeams();
   };
 
-  const [activeTab, setActiveTab] = useState<'projects' | 'members'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'teams' | 'sets' | 'members'>('projects');
   const [currentOrgDetails, setCurrentOrgDetails] = useState<Organization | null>(null);
+  const [orgTeams, setOrgTeams] = useState<OrganizationTeam[]>([]);
+  const [orgSets, setOrgSets] = useState<TeamAssignmentSet[]>([]);
+  const [selectedProjectForAssignment, setSelectedProjectForAssignment] = useState<Project | null>(null);
   const [loadingOrg, setLoadingOrg] = useState(false);
 
   // Modals state
@@ -95,8 +101,14 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   const loadOrgDetails = async (orgId: string) => {
     try {
       setLoadingOrg(true);
-      const res = await api.getOrganization(orgId);
+      const [res, teamsData, setsData] = await Promise.all([
+        api.getOrganization(orgId),
+        api.listOrganizationTeams(orgId),
+        api.listTeamAssignmentSets(orgId),
+      ]);
       setCurrentOrgDetails(res.organization);
+      setOrgTeams(teamsData);
+      setOrgSets(setsData);
     } catch (err: any) {
       showToast(err.message || 'Failed to load organization details', 'error');
     } finally {
@@ -443,10 +455,10 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                 </div>
 
                 {/* Sub-navigation tabs */}
-                <div className="flex items-center space-x-4 border-b border-slate-200 mt-6">
+                <div className="flex items-center space-x-3 border-b border-slate-200 mt-6 overflow-x-auto">
                   <button
                     onClick={() => setActiveTab('projects')}
-                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
                       activeTab === 'projects'
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -457,8 +469,32 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                   </button>
 
                   <button
+                    onClick={() => setActiveTab('teams')}
+                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                      activeTab === 'teams'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Teams ({orgTeams.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('sets')}
+                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                      activeTab === 'sets'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <BookmarkCheck className="w-4 h-4" />
+                    <span>Assignment Sets ({orgSets.length})</span>
+                  </button>
+
+                  <button
                     onClick={() => setActiveTab('members')}
-                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors ${
+                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
                       activeTab === 'members'
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -518,9 +554,52 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                 {proj.documents_count || 0} docs
                               </span>
                             </div>
-                            <p className="text-xs text-slate-500 mt-2 line-clamp-2">
+
+                            {/* Reusable Set Badge if present */}
+                            {proj.team_assignment_set_name && (
+                              <div className="mb-2">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
+                                  <CheckCircle2 className="w-3 h-3 text-indigo-600" />
+                                  Set: {proj.team_assignment_set_name}
+                                </span>
+                              </div>
+                            )}
+
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                               {proj.description || 'No description provided.'}
                             </p>
+
+                            {/* Assigned Teams Badges */}
+                            <div className="mt-3 pt-2 border-t border-slate-100">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                  Assigned Teams ({(proj.assigned_teams || []).length}):
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProjectForAssignment(proj)}
+                                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Users className="w-3 h-3" /> Manage
+                                </button>
+                              </div>
+
+                              {(proj.assigned_teams || []).length === 0 ? (
+                                <span className="text-[11px] text-slate-400 italic">No teams assigned yet</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1">
+                                  {proj.assigned_teams?.map((at) => (
+                                    <span
+                                      key={at.team_id}
+                                      className="text-[10px] bg-slate-100 text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200"
+                                      title={at.assigned_role ? `Role: ${at.assigned_role}` : undefined}
+                                    >
+                                      {at.team_name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-4">
@@ -530,12 +609,121 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                             >
                               View Documents &rarr;
                             </button>
-                            <button
-                              onClick={() => onOpenNewDocModal(proj.id)}
-                              className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1"
-                            >
-                              <Plus className="w-3 h-3" /> Add Doc
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setSelectedProjectForAssignment(proj)}
+                                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Manage project team assignments"
+                              >
+                                <Users className="w-3 h-3" /> Teams
+                              </button>
+                              <button
+                                onClick={() => onOpenNewDocModal(proj.id)}
+                                className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1"
+                              >
+                                <Plus className="w-3 h-3" /> Add Doc
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Teams Tab in Org Workspace */}
+              {activeTab === 'teams' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">Teams in {currentOrgDetails.name}</h3>
+                      <p className="text-xs text-slate-500">Teams can be assigned to different projects in this organization.</p>
+                    </div>
+                  </div>
+
+                  {orgTeams.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                      <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-700">No teams created in this organization yet</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Use the "Teams & Assignments" page to create specialized teams.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {orgTeams.map((tm) => (
+                        <div key={tm.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="text-sm font-bold text-slate-900">{tm.name}</h4>
+                            <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {tm.members_count || tm.members?.length || 0} members
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2">{tm.description || 'No description'}</p>
+                          <div className="flex items-center gap-1 flex-wrap pt-2 border-t border-slate-100">
+                            {tm.members?.map((m) => (
+                              <span
+                                key={m.user_id}
+                                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  m.role === 'lead' ? 'bg-purple-100 text-purple-800 font-bold' : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {m.role === 'lead' && '👑 '}
+                                {m.name || m.username}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Assignment Sets Tab in Org Workspace */}
+              {activeTab === 'sets' && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Reusable Team Assignment Sets</h3>
+                    <p className="text-xs text-slate-500">
+                      Standard configurations of teams that can be associated with any project.
+                    </p>
+                  </div>
+
+                  {orgSets.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                      <BookmarkCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-700">No team assignment sets created yet</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Use the "Teams & Assignments" page to create reusable sets, or save a project's team assignments as a set.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {orgSets.map((st) => (
+                        <div key={st.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="text-sm font-bold text-slate-900">{st.name}</h4>
+                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
+                              Used in {st.associated_projects_count || 0} projects
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2">{st.description || 'No description'}</p>
+                          <div className="pt-2 border-t border-slate-100">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                              Included Teams ({st.items?.length || 0}):
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {st.items?.map((it) => (
+                                <span
+                                  key={it.team_id}
+                                  className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
+                                >
+                                  {it.team_name} {it.assigned_role && `(${it.assigned_role})`}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -903,6 +1091,21 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
           </div>
         </div>
       )}
+
+      {/* Project Team Assignment Modal */}
+      {selectedProjectForAssignment && (
+        <ProjectTeamAssignmentModal
+          isOpen={Boolean(selectedProjectForAssignment)}
+          project={selectedProjectForAssignment}
+          currentUser={currentUser}
+          onClose={() => setSelectedProjectForAssignment(null)}
+          onProjectUpdated={async () => {
+            if (activeOrganizationId) await loadOrgDetails(activeOrganizationId);
+          }}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 };
+

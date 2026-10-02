@@ -319,7 +319,7 @@ export const App: React.FC = () => {
             documents={documents}
             templates={templates}
             onNavigateToOrganizations={() => setCurrentView('organizations')}
-            onNavigateToTeams={() => setCurrentView('organizations')}
+            onNavigateToTeams={() => setCurrentView('teams')}
             onNavigateToDocuments={(orgId, pId) => {
               if (orgId) setActiveOrganizationId(orgId);
               if (pId) setActiveProjectId(pId);
@@ -327,7 +327,7 @@ export const App: React.FC = () => {
             }}
             onNavigateToTemplates={() => setCurrentView('templates')}
             onOpenCreateOrganization={() => setCurrentView('organizations')}
-            onOpenCreateTeam={() => setCurrentView('organizations')}
+            onOpenCreateTeam={() => setCurrentView('teams')}
             onOpenJoinOrganization={() => setCurrentView('organizations')}
             onOpenJoinTeam={() => setCurrentView('organizations')}
             onOpenCreateProject={(orgId) => {
@@ -422,8 +422,40 @@ export const App: React.FC = () => {
           />
         )}
 
-        {(currentView === 'organizations' || currentView === 'teams') && (
+        {currentView === 'organizations' && (
           <OrganizationManagement
+            currentUser={currentUser}
+            organizations={organizations}
+            teams={teams}
+            activeOrganizationId={activeOrganizationId}
+            activeTeamId={activeOrganizationId}
+            onSelectOrganization={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onSelectTeam={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onRefreshOrganizations={loadOrganizations}
+            onRefreshTeams={loadOrganizations}
+            onOpenAccountModal={() => setIsAccountModalOpen(true)}
+            onOpenNewDocModal={(projId) => {
+              setModalInitialTemplateId(null);
+              setModalInitialProjectId(projId || null);
+              setIsCreateModalOpen(true);
+            }}
+            onViewProjectDocs={(orgId, projId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(projId);
+              setCurrentView('documents');
+            }}
+            showToast={showToast}
+          />
+        )}
+
+        {currentView === 'teams' && (
+          <TeamManagement
             currentUser={currentUser}
             organizations={organizations}
             teams={teams}

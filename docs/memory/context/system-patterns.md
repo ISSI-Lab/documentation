@@ -29,7 +29,13 @@ This document specifies reusable engineering patterns and code standards across 
 - **Democratic Organization & Project Collaboration Pattern**:
   - Any authenticated user can create an organization and automatically assumes the `owner` role.
   - Role hierarchy: `owner` (full administration, ownership transfer, deletion) &gt; `manager` (member invitations, role modifications, project creation) &gt; `member` (view projects, create/edit documents).
-  - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `organization` (restricted to organization roster). Later on, sub-teams can be configured within organizations.
+  - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `organization` (restricted to organization roster).
+- **Organization Teams & Reusable Assignment Sets Pattern**:
+  - Organizations can define multiple functional squads (`organization_teams`) with assigned members and designated roles (`lead`, `member`).
+  - Projects can independently assign individual teams (`project_team_assignments`).
+  - To accelerate project staffing, organizations support reusable templates called "Team Assignment Sets" (`team_assignment_sets` and `team_assignment_set_items`).
+  - Projects can associate with an assignment set to auto-populate teams, or export their bespoke project team assignments into a new reusable organization set (`save-as-team-assignment-set`).
+  - Backward compatibility: `/api/v1/teams` legacy route alias is preserved for legacy API clients and scripts.
 
 ---
 

@@ -79,6 +79,9 @@ declare module 'lucide-react' {
   export const FileCode: IconComponent;
   export const RotateCcw: IconComponent;
   export const ListTree: IconComponent;
+  export const BookmarkCheck: IconComponent;
+  export const Unlink: IconComponent;
+  export const Edit2: IconComponent;
 }
 
 declare module 'marked' {

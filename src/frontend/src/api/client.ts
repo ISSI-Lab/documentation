@@ -5,7 +5,12 @@ import {
   DocumentUpdatePayload,
   Project,
   Organization,
+  OrganizationTeam,
+  OrganizationTeamMember,
   Team,
+  TeamAssignmentSet,
+  TeamAssignmentSetItem,
+  ProjectTeamAssignment,
   Template,
   TemplateCreatePayload,
   User,
@@ -455,5 +460,183 @@ export const api = {
 
   getMarkdownExportUrl(id: string): string {
     return `${API_BASE}/documents/${encodeURIComponent(id)}/export/markdown`;
+  },
+
+  // Organization Teams
+  async listOrganizationTeams(orgId: string): Promise<OrganizationTeam[]> {
+    return request<OrganizationTeam[]>(`/organizations/${encodeURIComponent(orgId)}/teams`);
+  },
+
+  async createOrganizationTeam(
+    orgId: string,
+    payload: { name: string; description?: string; initial_members?: { userId: string; role?: string }[] }
+  ): Promise<OrganizationTeam> {
+    return request<OrganizationTeam>(`/organizations/${encodeURIComponent(orgId)}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getOrganizationTeam(orgId: string, teamId: string): Promise<OrganizationTeam> {
+    return request<OrganizationTeam>(`/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async updateOrganizationTeam(
+    orgId: string,
+    teamId: string,
+    payload: { name?: string; description?: string }
+  ): Promise<OrganizationTeam> {
+    return request<OrganizationTeam>(
+      `/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async deleteOrganizationTeam(orgId: string, teamId: string): Promise<void> {
+    return request<void>(`/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async addOrganizationTeamMember(
+    orgId: string,
+    teamId: string,
+    payload: { userId: string; role?: 'lead' | 'member' }
+  ): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}/members`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async updateOrganizationTeamMemberRole(
+    orgId: string,
+    teamId: string,
+    userId: string,
+    role: 'lead' | 'member'
+  ): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ role }),
+      }
+    );
+  },
+
+  async removeOrganizationTeamMember(orgId: string, teamId: string, userId: string): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/organizations/${encodeURIComponent(orgId)}/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
+
+  // Team Assignment Sets
+  async listTeamAssignmentSets(orgId: string): Promise<TeamAssignmentSet[]> {
+    return request<TeamAssignmentSet[]>(`/organizations/${encodeURIComponent(orgId)}/team-assignment-sets`);
+  },
+
+  async createTeamAssignmentSet(
+    orgId: string,
+    payload: {
+      name: string;
+      description?: string;
+      team_ids?: string[];
+      items?: { team_id: string; assigned_role?: string }[];
+    }
+  ): Promise<TeamAssignmentSet> {
+    return request<TeamAssignmentSet>(`/organizations/${encodeURIComponent(orgId)}/team-assignment-sets`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getTeamAssignmentSet(orgId: string, setId: string): Promise<TeamAssignmentSet> {
+    return request<TeamAssignmentSet>(
+      `/organizations/${encodeURIComponent(orgId)}/team-assignment-sets/${encodeURIComponent(setId)}`
+    );
+  },
+
+  async updateTeamAssignmentSet(
+    orgId: string,
+    setId: string,
+    payload: {
+      name?: string;
+      description?: string;
+      team_ids?: string[];
+      items?: { team_id: string; assigned_role?: string }[];
+    }
+  ): Promise<TeamAssignmentSet> {
+    return request<TeamAssignmentSet>(
+      `/organizations/${encodeURIComponent(orgId)}/team-assignment-sets/${encodeURIComponent(setId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async deleteTeamAssignmentSet(orgId: string, setId: string): Promise<void> {
+    return request<void>(`/organizations/${encodeURIComponent(orgId)}/team-assignment-sets/${encodeURIComponent(setId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Project Team Assignments
+  async getProjectTeams(projectId: string): Promise<{
+    project_id: string;
+    organization_id: string | null;
+    team_assignment_set_id: string | null;
+    team_assignment_set_name: string | null;
+    assigned_teams: ProjectTeamAssignment[];
+  }> {
+    return request<any>(`/projects/${encodeURIComponent(projectId)}/teams`);
+  },
+
+  async assignProjectTeam(
+    projectId: string,
+    payload: { team_id: string; assigned_role?: string }
+  ): Promise<{ message: string; assigned_teams: ProjectTeamAssignment[] }> {
+    return request<any>(`/projects/${encodeURIComponent(projectId)}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async removeProjectTeam(projectId: string, teamId: string): Promise<{ message: string }> {
+    return request<{ message: string }>(
+      `/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(teamId)}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  },
+
+  async associateProjectTeamAssignmentSet(
+    projectId: string,
+    payload: { team_assignment_set_id: string | null; apply_teams?: boolean }
+  ): Promise<Project> {
+    return request<Project>(`/projects/${encodeURIComponent(projectId)}/team-assignment-set`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async saveProjectAsTeamAssignmentSet(
+    projectId: string,
+    payload: { name: string; description?: string }
+  ): Promise<{ message: string; set: TeamAssignmentSet }> {
+    return request<any>(`/projects/${encodeURIComponent(projectId)}/save-as-team-assignment-set`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };

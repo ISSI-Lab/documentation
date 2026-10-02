@@ -50,16 +50,76 @@ export interface Organization {
 }
 export type Team = Organization;
 
+export interface OrganizationTeamMember {
+  team_id: string;
+  user_id: string;
+  role: string; // 'lead' | 'member'
+  joined_at: string;
+  username?: string;
+  name?: string;
+  email?: string;
+  user_type?: UserType;
+}
+
+export interface OrganizationTeam {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  members_count?: number;
+  members?: OrganizationTeamMember[];
+}
+
+export interface TeamAssignmentSetItem {
+  set_id: string;
+  team_id: string;
+  assigned_role?: string | null;
+  team_name?: string;
+  team_description?: string;
+  members_count?: number;
+}
+
+export interface TeamAssignmentSet {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  teams_count?: number;
+  items?: TeamAssignmentSetItem[];
+  associated_projects_count?: number;
+}
+
+export interface ProjectTeamAssignment {
+  id: string;
+  project_id: string;
+  team_id: string;
+  assigned_role?: string | null;
+  assigned_at: string;
+  team_name?: string;
+  team_description?: string;
+  members_count?: number;
+  members?: OrganizationTeamMember[];
+}
+
 export interface Project {
   id: string;
   organization_id: string | null;
   team_id?: string | null; // compatibility
+  team_assignment_set_id?: string | null;
+  team_assignment_set_name?: string | null;
   name: string;
   description: string;
   created_by: string;
   created_at: string;
   updated_at: string;
   documents_count?: number;
+  assigned_teams?: ProjectTeamAssignment[];
 }
 
 export type DocumentElementType =
