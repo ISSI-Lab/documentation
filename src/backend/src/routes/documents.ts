@@ -381,15 +381,27 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     const { title, status, author, tags, elements_data, project_id, document_type, is_submittable } = req.body;
 
+    // Only the document creator can change the collaboration type and enable/disable submissions
+    const isDocCreator = !currentDoc.created_by || user.id === currentDoc.created_by;
+    if (!isDocCreator) {
+      if (document_type !== undefined && document_type !== currentDoc.document_type) {
+        return res.status(403).json({ error: 'Only the document creator can change the collaboration type' });
+      }
+      if (is_submittable !== undefined && Boolean(is_submittable) !== Boolean(currentDoc.is_submittable)) {
+        return res.status(403).json({ error: 'Only the document creator can enable or disable submissions' });
+      }
+    }
+
     const newTitle = title !== undefined && typeof title === 'string' ? title.trim() : currentDoc.title;
     const newStatus = status !== undefined ? status : currentDoc.status;
     const newAuthor = author !== undefined ? author : currentDoc.author;
     const newProjectId = project_id !== undefined ? project_id : currentDoc.project_id;
-    const newDocType =
-      document_type !== undefined
-        ? (document_type === 'personal' ? 'personal' : 'project_shared')
-        : currentDoc.document_type || 'project_shared';
-    const newIsSubmittable = is_submittable !== undefined ? Boolean(is_submittable) : Boolean(currentDoc.is_submittable);
+    const newDocType = isDocCreator && document_type !== undefined
+      ? (document_type === 'personal' ? 'personal' : 'project_shared')
+      : currentDoc.document_type || 'project_shared';
+    const newIsSubmittable = isDocCreator && is_submittable !== undefined
+      ? Boolean(is_submittable)
+      : Boolean(currentDoc.is_submittable);
 
     let currentTags: string[] = [];
     if (typeof currentDoc.tags === 'string') {

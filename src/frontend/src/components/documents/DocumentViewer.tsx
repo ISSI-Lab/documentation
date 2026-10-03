@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Edit3,
@@ -23,6 +23,7 @@ interface DocumentViewerProps {
   document: Document;
   template: Template | null;
   currentUser?: UserModel | null;
+  initialTab?: 'overview' | 'submissions' | 'my_submission';
   onSwitchToEdit: () => void;
   onBack: () => void;
   onExportMarkdown: (docId: string) => void;
@@ -32,12 +33,21 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   document,
   template,
   currentUser = null,
+  initialTab,
   onSwitchToEdit,
   onBack,
   onExportMarkdown,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'submissions' | 'my_submission'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'submissions' | 'my_submission'>(
+    initialTab || 'overview'
+  );
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const handleCopyMarkdown = async () => {
     try {

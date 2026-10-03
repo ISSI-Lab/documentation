@@ -25,13 +25,17 @@
 - **Frontend SPA Components & UI**:
   - `CreateDocumentModal.tsx`: Visual selection of Collaboration Type (Project Shared vs Personal) and Submittable Deliverable toggle with contextual guidance.
   - `DocumentList.tsx`: Added badges for Personal vs Shared Doc and Submittable status with submission counters.
-  - `DocumentEditor.tsx`: Metadata controls for switching document type and submittable setting.
-  - `DocumentViewer.tsx`: Segmented tab navigation (`Document Specification`, `Creator Review & Submissions`, `My Submission` / `Our Team Submission`).
+  - `DocumentEditor.tsx`:
+    - Enforced creator-only guardrails: non-creators cannot change the collaboration type or enable/disable submissions (disabled with lock badge and notice).
+    - Added "Submission" button in the document editing page header when document is submittable, enabling direct navigation to the submissions workspace.
+  - `DocumentViewer.tsx`: Segmented tab navigation (`Document Specification`, `Creator Review & Submissions`, `My Submission` / `Our Team Submission`) with dynamic `initialTab` support.
   - `SubmissionReviewDashboard.tsx`: Reviewer dashboard displaying roster stats, participant cards, markdown inspector, status updater, and feedback comment thread.
   - `ParticipantSubmissionWorkspace.tsx`: Student/team response workspace with auto-populated form fields, draft auto-saving, submit/unsubmit controls, and review feedback replies.
-  - `App.tsx`: Wired `currentUser` to `DocumentViewer`.
+  - `App.tsx`: Wired `currentUser` and `docViewerInitialTab` across `DocumentEditor` and `DocumentViewer`.
+- **Backend Creator Guardrails (`src/backend/src/routes/documents.ts`)**:
+  - Enforced in `PUT /api/v1/documents/:id` that only the document creator (`created_by`) can change `document_type` or toggle `is_submittable`, rejecting unauthorized attempts with `403 Forbidden`.
 - **Integration Test (`tests/integration/test_document_submissions.py`)**:
-  - Complete automated test covering Personal Document flow and Project Shared (Team) Document flow.
+  - Complete automated test covering Personal Document flow, Project Shared (Team) Document flow, and non-creator 403 rejection tests.
 - **Documentation & ADR**:
   - Updated `docs/memory/context/system-patterns.md` and `docs/memory/context/active-context.md`.
   - Updated API and schema specifications in `docs/design/`.

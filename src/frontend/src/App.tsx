@@ -52,6 +52,7 @@ export const App: React.FC = () => {
 
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  const [docViewerInitialTab, setDocViewerInitialTab] = useState<'overview' | 'submissions' | 'my_submission'>('overview');
 
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -382,6 +383,7 @@ export const App: React.FC = () => {
             }}
             onViewDocument={(id) => {
               setActiveDocId(id);
+              setDocViewerInitialTab('overview');
               setCurrentView('view_document');
             }}
             onDeleteDocument={handleDeleteDocument}
@@ -505,12 +507,21 @@ export const App: React.FC = () => {
           <DocumentEditor
             document={activeDoc}
             template={activeTemplate}
+            currentUser={currentUser}
             onSave={handleSaveDocument}
             onBack={() => {
               setCurrentView('documents');
               loadDocuments();
             }}
-            onSwitchToView={() => setCurrentView('view_document')}
+            onSwitchToView={() => {
+              setDocViewerInitialTab('overview');
+              setCurrentView('view_document');
+            }}
+            onOpenSubmissions={() => {
+              const isCreator = !activeDoc.created_by || (currentUser && currentUser.id === activeDoc.created_by);
+              setDocViewerInitialTab(isCreator ? 'submissions' : 'my_submission');
+              setCurrentView('view_document');
+            }}
             onExportMarkdown={handleExportMarkdown}
           />
         )}
@@ -520,6 +531,7 @@ export const App: React.FC = () => {
             document={activeDoc}
             template={activeTemplate}
             currentUser={currentUser}
+            initialTab={docViewerInitialTab}
             onSwitchToEdit={() => setCurrentView('edit_document')}
             onBack={() => {
               setCurrentView('documents');

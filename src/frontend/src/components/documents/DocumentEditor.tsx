@@ -18,6 +18,7 @@ import {
   Users,
   User,
   Send,
+  Lock,
 } from 'lucide-react';
 import { marked } from 'marked';
 import {
@@ -27,26 +28,35 @@ import {
   DocumentType,
   RepeatableSubItem,
   Template,
+  User as UserModel,
 } from '../../types';
 import { MarkdownToolbar } from './MarkdownToolbar';
 
 interface DocumentEditorProps {
   document: Document;
   template: Template | null;
+  currentUser?: UserModel | null;
   onSave: (docId: string, patch: Partial<Document>) => Promise<void>;
   onBack: () => void;
   onSwitchToView: () => void;
+  onOpenSubmissions?: () => void;
   onExportMarkdown: (docId: string) => void;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   document,
   template,
+  currentUser = null,
   onSave,
   onBack,
   onSwitchToView,
+  onOpenSubmissions,
   onExportMarkdown,
 }) => {
+  const isCreator = Boolean(
+    !document.created_by || (currentUser && currentUser.id === document.created_by)
+  );
+
   const [title, setTitle] = useState(document.title);
   const [status, setStatus] = useState<DocumentStatus>(document.status);
   const [author, setAuthor] = useState(document.author);
@@ -105,8 +115,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         status,
         author: author.trim(),
         tags,
-        document_type: documentType,
-        is_submittable: isSubmittable,
+        document_type: isCreator ? documentType : document.document_type,
+        is_submittable: isCreator ? isSubmittable : document.is_submittable,
         elements_data: elementsData,
       });
 
@@ -344,6 +354,19 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               Preview Mode
             </button>
 
+            {/* Submission button when document is submittable */}
+            {(isSubmittable || document.is_submittable) && (
+              <button
+                type="button"
+                onClick={onOpenSubmissions || onSwitchToView}
+                className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors shadow-2xs"
+                title="View Document Submissions"
+              >
+                <Send className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                Submission
+              </button>
+            )}
+
             {/* Save button */}
             <button
               type="button"
@@ -446,18 +469,26 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
                 {/* Collaboration & Document Type */}
                 <div className="pt-2 border-t border-slate-100">
-                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-blue-600" /> Collaboration Type
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-blue-600" /> Collaboration Type
+                    </label>
+                    {!isCreator && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
+                        <Lock className="w-2.5 h-2.5" /> Creator Only
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setDocumentType('project_shared')}
+                      disabled={!isCreator}
+                      onClick={() => isCreator && setDocumentType('project_shared')}
                       className={`text-left p-2 rounded-lg border text-xs transition-colors ${
                         documentType === 'project_shared'
                           ? 'bg-blue-50/70 border-blue-500 text-blue-900 font-semibold'
                           : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                      } ${!isCreator ? 'cursor-not-allowed opacity-75' : ''}`}
                     >
                       <div className="flex items-center justify-between">
                         <span>Project Shared Doc</span>
@@ -472,12 +503,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setDocumentType('personal')}
+                      disabled={!isCreator}
+                      onClick={() => isCreator && setDocumentType('personal')}
                       className={`text-left p-2 rounded-lg border text-xs transition-colors ${
                         documentType === 'personal'
                           ? 'bg-purple-50/70 border-purple-500 text-purple-900 font-semibold'
                           : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                      } ${!isCreator ? 'cursor-not-allowed opacity-75' : ''}`}
                     >
                       <div className="flex items-center justify-between">
                         <span>Personal Doc</span>
@@ -494,17 +526,27 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
                 {/* Submissions Toggle */}
                 <div className="pt-2 border-t border-slate-100">
-                  <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100/70 transition-colors">
+                  <label
+                    className={`flex items-start gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 transition-colors ${
+                      isCreator ? 'cursor-pointer hover:bg-slate-100/70' : 'cursor-not-allowed opacity-75'
+                    }`}
+                  >
                     <input
                       type="checkbox"
+                      disabled={!isCreator}
                       checked={isSubmittable}
-                      onChange={(e) => setIsSubmittable(e.target.checked)}
-                      className="mt-0.5 h-3.5 w-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                      onChange={(e) => isCreator && setIsSubmittable(e.target.checked)}
+                      className={`mt-0.5 h-3.5 w-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 ${
+                        !isCreator ? 'cursor-not-allowed' : ''
+                      }`}
                     />
                     <div>
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                        <Send className="w-3 h-3 text-blue-600" /> Enable Submissions
-                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <Send className="w-3 h-3 text-blue-600" /> Enable Submissions
+                        </span>
+                        {!isCreator && <Lock className="w-3 h-3 text-amber-600 ml-1" />}
+                      </div>
                       <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
                         {documentType === 'personal'
                           ? 'Individual submissions tracked per person for creator review.'
@@ -512,6 +554,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                       </p>
                     </div>
                   </label>
+                  {!isCreator && (
+                    <p className="text-[10px] text-amber-700 mt-1 px-1 italic">
+                      Only the document creator can change collaboration type or toggle submissions.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

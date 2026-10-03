@@ -40,10 +40,13 @@ We designed and implemented a full-stack document submissions and creator review
 - **`PUT /api/v1/documents/:id/submissions/:submissionId`**: Updates draft element responses and dynamically re-compiles markdown.
 - **`POST /api/v1/documents/:id/submissions/:submissionId/submit` & `unsubmit`**: Transitions between draft and submitted states with timestamp auditing.
 - **`PUT /api/v1/documents/:id/submissions/:submissionId/status`**: Allows project creators/managers to mark submissions as `reviewed` or request revisions.
+- **`PUT /api/v1/documents/:id` Creator Guardrail**: Only the document creator can assign or modify the collaboration type (`document_type`) and enable or disable submissions (`is_submittable`). Attempts by non-creators are rejected with `403 Forbidden`.
 - **`GET` & `POST /api/v1/documents/:id/submissions/:submissionId/comments`**: Threaded feedback and replies.
 
 ### 3. Frontend Architecture
 - **`CreateDocumentModal` & `DocumentEditor`**: Added selectors for Collaboration Type (Project Shared vs Personal) and Submittable Deliverable toggle with contextual guidance.
+- **Creator-Only Controls in `DocumentEditor`**: If the current user is not the document creator, the Collaboration Type buttons and the Submissions toggle are disabled, display lock badges, and explain that only the creator can modify these settings.
+- **"Submission" Button in Document Editing Page**: When a document is configured with submissions enabled, a prominent "Submission" button is rendered in the `DocumentEditor` action header, allowing authors and reviewers to jump directly to the submission workspace and review roster.
 - **`DocumentViewer` Tabbed Navigation**: Segmented tabs for `Document Specification`, `Creator Review & Submissions`, and `My Submission` / `Our Team Submission`.
 - **`SubmissionReviewDashboard`**: Roster cards, status counters, full markdown inspector, status updater, and review feedback thread.
 - **`ParticipantSubmissionWorkspace`**: Form-based response editor, auto-save drafts, submission controls, and creator comment replies.

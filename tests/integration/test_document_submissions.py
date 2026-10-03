@@ -178,6 +178,20 @@ def run_tests():
     assert personal_doc["is_submittable"] is True
     print(f"✓ Personal Submittable Document created: {personal_doc['title']} (ID: {personal_doc_id})")
 
+    # 4.3.1 Verify non-creator cannot change collaboration type (403 Forbidden)
+    r_hacked_type = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
+        "document_type": "project_shared"
+    }, headers=headers_participant)
+    assert r_hacked_type.status_code == 403, f"Expected 403 for non-creator changing document_type, got {r_hacked_type.status_code}"
+    print("✓ Backend rejected non-creator attempt to change collaboration type (403 Forbidden).")
+
+    # 4.3.2 Verify non-creator cannot change submission setting (403 Forbidden)
+    r_hacked_subm = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
+        "is_submittable": False
+    }, headers=headers_participant)
+    assert r_hacked_subm.status_code == 403, f"Expected 403 for non-creator disabling submissions, got {r_hacked_subm.status_code}"
+    print("✓ Backend rejected non-creator attempt to disable submissions (403 Forbidden).")
+
     # 4.4 Creator checks review roster before participant starts
     r = requests.get(f"{BASE_URL}/documents/{personal_doc_id}/submissions", headers=headers_creator)
     assert r.status_code == 200, f"List submissions failed: {r.text}"
