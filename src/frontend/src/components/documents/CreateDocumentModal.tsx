@@ -89,10 +89,12 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       }
       setSelectedOrgId(targetOrgId);
 
+      const targetProj = projects.find((proj) => proj.id === (initialSelectedProjectId || null));
+      const initIsIndiv = targetProj?.association_type === 'individual';
       setProjectId(initialSelectedProjectId || null);
       setTitle('');
       setTagsInput('');
-      setDocumentType('project_shared');
+      setDocumentType(initIsIndiv ? 'personal' : 'project_shared');
       setIsSubmittable(false);
       setError(null);
       setAuthor(currentUser?.name || currentUser?.username || '');
@@ -131,6 +133,17 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       return selectedOrgId ? tOrgId === selectedOrgId : true;
     }
   });
+
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const isIndividualProject = selectedProject?.association_type === 'individual';
+  const isTeamProject = selectedProject?.association_type === 'team';
+
+  // Force personal document if individual project is selected
+  useEffect(() => {
+    if (isIndividualProject && documentType !== 'personal') {
+      setDocumentType('personal');
+    }
+  }, [isIndividualProject, documentType]);
 
   // If current templateId is not in availableTemplates, auto-select first available
   useEffect(() => {
@@ -347,31 +360,55 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
 
           {/* Document Type: Personal Document vs Project Shared Document */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Share2 className="w-3.5 h-3.5 text-blue-600" /> Document Type & Collaboration
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <Share2 className="w-3.5 h-3.5 text-blue-600" /> Document Type & Collaboration
+              </label>
+              {isIndividualProject && (
+                <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-amber-600" /> Individual Project: Personal Only
+                </span>
+              )}
+              {isTeamProject && (
+                <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
+                  Team Formation: Choose Shared or Personal
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {/* Project Shared Document */}
               <div
-                onClick={() => setDocumentType('project_shared')}
-                className={`p-3 border cursor-pointer transition-all ${
-                  documentType === 'project_shared'
-                    ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm'
-                    : 'bg-white border-slate-300 hover:border-slate-400'
+                onClick={() => {
+                  if (!isIndividualProject) {
+                    setDocumentType('project_shared');
+                  }
+                }}
+                className={`p-3 border transition-all ${
+                  isIndividualProject
+                    ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                    : documentType === 'project_shared'
+                    ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm cursor-pointer'
+                    : 'bg-white border-slate-300 hover:border-slate-400 cursor-pointer'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
                     <Users className="w-3.5 h-3.5 text-blue-600" /> Project Shared Document
                   </span>
-                  {documentType === 'project_shared' && (
+                  {isIndividualProject ? (
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
+                      Unavailable
+                    </span>
+                  ) : documentType === 'project_shared' ? (
                     <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 font-bold rounded">
                       Selected
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
-                  Shared editing among team & project members.
+                  {isIndividualProject
+                    ? 'Unavailable: This project is assigned by individuals. Documents under it only allow Personal Documents.'
+                    : 'Shared editing among team & project members.'}
                 </p>
               </div>
 
@@ -395,7 +432,9 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
-                  Individual document authored per person.
+                  {isIndividualProject
+                    ? 'Individual document authored per person (Required for individual project).'
+                    : 'Individual document authored per person.'}
                 </p>
               </div>
             </div>

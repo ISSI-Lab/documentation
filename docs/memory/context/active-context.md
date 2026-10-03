@@ -24,6 +24,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Strict Team vs Individual Project Association | AI Agent | Completed | Implemented strictly mutually exclusive project association (Team vs. Individual, zero hybrid), database schemas, transition safeguards, and roster management ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
 | Team Formation Nomenclature Standard | AI Agent | Completed | Standardized user-facing UI labels, toasts, modals, badges, and navigation links to "Team Formation" / "Formation" across all views ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
 | Personal & Team Document Submissions | AI Agent | Completed | Implemented personal & team shared document types, submittable deliverables, pre-populated submission drafts, creator review roster, status tracking, and feedback threads ([ADR-0007](../decisions/0007-personal-and-team-document-submissions-and-review-system.md)) |
+| Individual vs Team Project Document Alignment | AI Agent | Completed | Enforced strict alignment: projects with individual association strictly allow personal documents (individual submissions only); team formation projects allow both personal and shared documents; creator-only collaboration and submission controls; in-editor submission button |
 
 ---
 
@@ -39,6 +40,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 - Implemented automatic host port collision detection and auto-reallocation in `scripts/start.sh` to prevent `port is already allocated` errors across different developer machines.
 - Automated Host Nginx site configuration (`/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`), Certbot SSL bootstrapping/issuance, and Host Nginx restarting in `scripts/start.sh --prod --init`.
 - Implemented personal vs project shared document types with submittable deliverables, supporting individual member submissions for personal documents and team-based shared submissions for project shared documents, complete with creator review rosters, status transitions, and interactive feedback threads ([ADR-0007](../decisions/0007-personal-and-team-document-submissions-and-review-system.md)).
+- Enforced strict consistency between project association types and document collaboration types: documents under individual projects strictly permit Personal Documents (each individual submits their own deliverable), while documents under team formation projects permit both Personal Documents (individual member deliverables) and Project Shared Documents (team-based deliverables). Enforced that only document creators can modify collaboration types or toggle submissions, and surfaced a direct "Submission" button in the document editor header.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

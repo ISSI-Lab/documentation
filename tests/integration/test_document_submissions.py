@@ -178,14 +178,34 @@ def run_tests():
     assert personal_doc["is_submittable"] is True
     print(f"✓ Personal Submittable Document created: {personal_doc['title']} (ID: {personal_doc_id})")
 
-    # 4.3.1 Verify non-creator cannot change collaboration type (403 Forbidden)
-    r_hacked_type = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
+    # 4.3.0 Attempting to create a project_shared document under an individual project is rejected with 400
+    r_invalid_type = requests.post(f"{BASE_URL}/documents", json={
+        "title": f"Invalid Team Shared Doc - {uid}",
+        "template_id": test_tpl["id"],
+        "organization_id": org_id,
+        "project_id": indiv_proj_id,
+        "document_type": "project_shared",
+        "is_submittable": True,
+        "author": org_user["name"],
+    }, headers=headers_creator)
+    assert r_invalid_type.status_code == 400, f"Expected 400 for project_shared under individual project, got {r_invalid_type.status_code}"
+    print("✓ Backend rejected creating project_shared document under individual project (400 Bad Request).")
+
+    # 4.3.1 Attempting to update a document under an individual project to project_shared is rejected with 400
+    r_invalid_update = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
         "document_type": "project_shared"
+    }, headers=headers_creator)
+    assert r_invalid_update.status_code == 400, f"Expected 400 for updating to project_shared under individual project, got {r_invalid_update.status_code}"
+    print("✓ Backend rejected updating document under individual project to project_shared (400 Bad Request).")
+
+    # 4.3.2 Verify non-creator cannot change collaboration type (403 Forbidden)
+    r_hacked_type = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
+        "document_type": "personal"
     }, headers=headers_participant)
     assert r_hacked_type.status_code == 403, f"Expected 403 for non-creator changing document_type, got {r_hacked_type.status_code}"
     print("✓ Backend rejected non-creator attempt to change collaboration type (403 Forbidden).")
 
-    # 4.3.2 Verify non-creator cannot change submission setting (403 Forbidden)
+    # 4.3.3 Verify non-creator cannot change submission setting (403 Forbidden)
     r_hacked_subm = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
         "is_submittable": False
     }, headers=headers_participant)
@@ -343,6 +363,26 @@ def run_tests():
     assert shared_doc["document_type"] == "project_shared"
     assert shared_doc["is_submittable"] is True
     print(f"✓ Project Shared Submittable Document created: {shared_doc['title']}")
+
+    # 5.5.1 Creator creates a Personal Submittable Document inside the Team Project (both collaboration types permitted)
+    r_team_personal = requests.post(f"{BASE_URL}/documents", json={
+        "title": f"Individual Peer Review Milestone - {uid}",
+        "template_id": test_tpl["id"],
+        "organization_id": org_id,
+        "project_id": team_proj_id,
+        "document_type": "personal",
+        "is_submittable": True,
+        "author": org_user["name"],
+        "elements_data": {
+            "title": f"Individual Milestone - {uid}",
+            "context": "Personal deliverable inside team project."
+        }
+    }, headers=headers_creator)
+    assert r_team_personal.status_code == 201, f"Create personal doc in team project failed: {r_team_personal.text}"
+    team_personal_doc = r_team_personal.json()
+    assert team_personal_doc["document_type"] == "personal"
+    assert team_personal_doc["project_association_type"] == "team"
+    print(f"✓ Created Personal Document inside Team Project: {team_personal_doc['title']} (both collaboration types permitted in team projects).")
 
     # 5.6 Creator views submissions roster (according to assigned teams)
     r = requests.get(f"{BASE_URL}/documents/{shared_doc_id}/submissions", headers=headers_creator)

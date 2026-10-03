@@ -44,6 +44,7 @@ function formatDocumentRow(row: any): Document {
     id: row.id,
     title: row.title,
     project_id: row.project_id || null,
+    project_association_type: row.project_association_type || null,
     organization_id: orgId,
     team_id: orgId, // compatibility
     template_id: row.template_id,
@@ -151,8 +152,10 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     let query = `
       SELECT d.*,
+        p.association_type as project_association_type,
         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
       FROM documents d
+      LEFT JOIN projects p ON d.project_id = p.id
     `;
     const params: any[] = [];
     const conditions: string[] = [];
@@ -229,8 +232,11 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   try {
     const [rows] = await pool.query<any[]>(
       `SELECT d.*,
+         p.association_type as project_association_type,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
-       FROM documents d WHERE d.id = ?`,
+       FROM documents d
+       LEFT JOIN projects p ON d.project_id = p.id
+       WHERE d.id = ?`,
       [req.params.id]
     );
     if (!rows || rows.length === 0) {
@@ -268,6 +274,7 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     }
 
     let resolvedOrgId: string | null = null;
+    let projAssociationType: string | null = null;
     const directOrgId = organization_id || team_id;
 
     if (project_id) {
@@ -277,6 +284,7 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       }
       const proj = projRows[0];
       resolvedOrgId = proj.organization_id || proj.team_id || null;
+      projAssociationType = proj.association_type || 'individual';
 
       if (resolvedOrgId) {
         const isMember = await isOrganizationMember(user.id, resolvedOrgId);
@@ -314,7 +322,16 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     const cleanAuthor = (author && typeof author === 'string' && author.trim()) || user.name || user.username;
     const cleanTags = Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
     const status = 'draft';
-    const docType: DocumentType = document_type === 'personal' ? 'personal' : 'project_shared';
+
+    // In projects with individual association, only personal documents are allowed
+    if (project_id && projAssociationType === 'individual') {
+      if (document_type === 'project_shared') {
+        return res.status(400).json({ error: 'Projects with individual assignments only support personal documents' });
+      }
+    }
+    const docType: DocumentType = (project_id && projAssociationType === 'individual')
+      ? 'personal'
+      : (document_type === 'personal' ? 'personal' : 'project_shared');
     const isSubm = Boolean(is_submittable);
 
     const compiledMd = compileDocumentMarkdown(
@@ -349,7 +366,10 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     );
 
     const [createdRows] = await pool.query<any[]>(
-      `SELECT d.*, 0 as submissions_count FROM documents d WHERE d.id = ?`,
+      `SELECT d.*, p.association_type as project_association_type, 0 as submissions_count
+       FROM documents d
+       LEFT JOIN projects p ON d.project_id = p.id
+       WHERE d.id = ?`,
       [docId]
     );
     res.status(201).json(formatDocumentRow(createdRows[0]));
@@ -396,9 +416,29 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     const newStatus = status !== undefined ? status : currentDoc.status;
     const newAuthor = author !== undefined ? author : currentDoc.author;
     const newProjectId = project_id !== undefined ? project_id : currentDoc.project_id;
-    const newDocType = isDocCreator && document_type !== undefined
+
+    let projAssociationType: string | null = null;
+    if (newProjectId) {
+      const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [newProjectId]);
+      if (projRows && projRows.length > 0) {
+        projAssociationType = projRows[0].association_type || 'individual';
+      }
+    }
+
+    if (newProjectId && projAssociationType === 'individual') {
+      if (document_type === 'project_shared') {
+        return res.status(400).json({ error: 'Projects with individual assignments only support personal documents' });
+      }
+    }
+
+    let newDocType: DocumentType = isDocCreator && document_type !== undefined
       ? (document_type === 'personal' ? 'personal' : 'project_shared')
       : currentDoc.document_type || 'project_shared';
+
+    if (newProjectId && projAssociationType === 'individual') {
+      newDocType = 'personal';
+    }
+
     const newIsSubmittable = isDocCreator && is_submittable !== undefined
       ? Boolean(is_submittable)
       : Boolean(currentDoc.is_submittable);
@@ -461,8 +501,11 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT d.*,
+         p.association_type as project_association_type,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
-       FROM documents d WHERE d.id = ?`,
+       FROM documents d
+       LEFT JOIN projects p ON d.project_id = p.id
+       WHERE d.id = ?`,
       [id]
     );
     res.json(formatDocumentRow(updatedRows[0]));
@@ -571,7 +614,10 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
     }
 
     const isReviewer = await canReviewSubmissions(userId, doc, project);
-    const docType: DocumentType = doc.document_type === 'personal' ? 'personal' : 'project_shared';
+    const docType: DocumentType =
+      (project && project.association_type === 'individual')
+        ? 'personal'
+        : (doc.document_type === 'personal' ? 'personal' : 'project_shared');
 
     if (isReviewer) {
       // Reviewer view: list all expected submissions
@@ -802,7 +848,18 @@ documentsRouter.get('/:id/my-submission', requireAuth, async (req: Authenticated
       return res.status(400).json({ error: 'This document is not configured for submissions' });
     }
 
-    const docType: DocumentType = doc.document_type === 'personal' ? 'personal' : 'project_shared';
+    let project: any = null;
+    if (doc.project_id) {
+      const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [doc.project_id]);
+      if (projRows && projRows.length > 0) {
+        project = projRows[0];
+      }
+    }
+
+    const docType: DocumentType =
+      (project && project.association_type === 'individual')
+        ? 'personal'
+        : (doc.document_type === 'personal' ? 'personal' : 'project_shared');
     const template = await fetchTemplateById(doc.template_id);
 
     // Initial elements data pre-populated with creator prompt & default values
@@ -1110,7 +1167,20 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
     // Permission check
     if (subm.submission_type === 'personal') {
       if (subm.user_id !== user.id) {
-        return res.status(403).json({ error: 'Only the author can submit this personal submission' });
+        let docObj: any = null;
+        let projObj: any = null;
+        if (subm.document_id) {
+          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+          if (dRows && dRows.length > 0) docObj = dRows[0];
+        }
+        if (subm.project_id) {
+          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+          if (pRows && pRows.length > 0) projObj = pRows[0];
+        }
+        const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
+        if (!isReviewer) {
+          return res.status(403).json({ error: 'Only the author can submit this personal submission' });
+        }
       }
     } else {
       const [inTeam] = await pool.query<any[]>(
@@ -1118,7 +1188,20 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
         [subm.team_id, user.id]
       );
       if (inTeam[0]?.cnt === 0) {
-        return res.status(403).json({ error: 'Only team members can submit on behalf of the team' });
+        let docObj: any = null;
+        let projObj: any = null;
+        if (subm.document_id) {
+          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+          if (dRows && dRows.length > 0) docObj = dRows[0];
+        }
+        if (subm.project_id) {
+          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+          if (pRows && pRows.length > 0) projObj = pRows[0];
+        }
+        const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
+        if (!isReviewer) {
+          return res.status(403).json({ error: 'Only team members can submit on behalf of the team' });
+        }
       }
     }
 
@@ -1166,7 +1249,20 @@ documentsRouter.post('/:id/submissions/:submissionId/unsubmit', requireAuth, asy
     // Permission check
     if (subm.submission_type === 'personal') {
       if (subm.user_id !== user.id) {
-        return res.status(403).json({ error: 'Only the author can unsubmit this personal submission' });
+        let docObj: any = null;
+        let projObj: any = null;
+        if (subm.document_id) {
+          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+          if (dRows && dRows.length > 0) docObj = dRows[0];
+        }
+        if (subm.project_id) {
+          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+          if (pRows && pRows.length > 0) projObj = pRows[0];
+        }
+        const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
+        if (!isReviewer) {
+          return res.status(403).json({ error: 'Only the author can unsubmit this personal submission' });
+        }
       }
     } else {
       const [inTeam] = await pool.query<any[]>(
@@ -1174,7 +1270,20 @@ documentsRouter.post('/:id/submissions/:submissionId/unsubmit', requireAuth, asy
         [subm.team_id, user.id]
       );
       if (inTeam[0]?.cnt === 0) {
-        return res.status(403).json({ error: 'Only team members can unsubmit this team document' });
+        let docObj: any = null;
+        let projObj: any = null;
+        if (subm.document_id) {
+          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+          if (dRows && dRows.length > 0) docObj = dRows[0];
+        }
+        if (subm.project_id) {
+          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+          if (pRows && pRows.length > 0) projObj = pRows[0];
+        }
+        const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
+        if (!isReviewer) {
+          return res.status(403).json({ error: 'Only team members can unsubmit this team document' });
+        }
       }
     }
 

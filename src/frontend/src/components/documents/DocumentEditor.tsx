@@ -56,14 +56,23 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const isCreator = Boolean(
     !document.created_by || (currentUser && currentUser.id === document.created_by)
   );
+  const isIndividualProject = document.project_association_type === 'individual';
 
   const [title, setTitle] = useState(document.title);
   const [status, setStatus] = useState<DocumentStatus>(document.status);
   const [author, setAuthor] = useState(document.author);
   const [tagsInput, setTagsInput] = useState((document.tags || []).join(', '));
-  const [documentType, setDocumentType] = useState<DocumentType>(document.document_type || 'project_shared');
+  const [documentType, setDocumentType] = useState<DocumentType>(
+    isIndividualProject ? 'personal' : (document.document_type || 'project_shared')
+  );
   const [isSubmittable, setIsSubmittable] = useState<boolean>(document.is_submittable || false);
   const [elementsData, setElementsData] = useState<Record<string, any>>(document.elements_data || {});
+
+  useEffect(() => {
+    if (isIndividualProject && documentType !== 'personal') {
+      setDocumentType('personal');
+    }
+  }, [isIndividualProject, documentType]);
 
   const [viewMode, setViewMode] = useState<'edit' | 'split'>('edit');
   const [previewTabPerElement, setPreviewTabPerElement] = useState<Record<string, 'write' | 'preview'>>({});
@@ -473,31 +482,42 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                     <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                       <Users className="w-3.5 h-3.5 text-blue-600" /> Collaboration Type
                     </label>
-                    {!isCreator && (
+                    {isIndividualProject ? (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
+                        <Lock className="w-2.5 h-2.5" /> Individual Project
+                      </span>
+                    ) : !isCreator ? (
                       <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
                         <Lock className="w-2.5 h-2.5" /> Creator Only
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <div className="grid grid-cols-1 gap-1.5">
                     <button
                       type="button"
-                      disabled={!isCreator}
-                      onClick={() => isCreator && setDocumentType('project_shared')}
+                      disabled={!isCreator || isIndividualProject}
+                      onClick={() => isCreator && !isIndividualProject && setDocumentType('project_shared')}
                       className={`text-left p-2 rounded-lg border text-xs transition-colors ${
                         documentType === 'project_shared'
                           ? 'bg-blue-50/70 border-blue-500 text-blue-900 font-semibold'
                           : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                      } ${!isCreator ? 'cursor-not-allowed opacity-75' : ''}`}
+                      } ${!isCreator || isIndividualProject ? 'cursor-not-allowed opacity-75' : ''}`}
                     >
                       <div className="flex items-center justify-between">
                         <span>Project Shared Doc</span>
                         {documentType === 'project_shared' && (
                           <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                         )}
+                        {isIndividualProject && (
+                          <span className="text-[9px] bg-slate-200 text-slate-600 px-1 py-0.2 rounded font-semibold">
+                            Unavailable
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-slate-500 font-normal mt-0.5">
-                        Shared editing (team submission)
+                        {isIndividualProject
+                          ? 'Unavailable: Only personal docs allowed for individual projects'
+                          : 'Shared editing (team submission)'}
                       </p>
                     </button>
 
@@ -518,10 +538,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                         )}
                       </div>
                       <p className="text-[10px] text-slate-500 font-normal mt-0.5">
-                        Individual per-person doc & submissions
+                        {isIndividualProject
+                          ? 'Individual per-person doc & submissions (Required)'
+                          : 'Individual per-person doc & submissions'}
                       </p>
                     </button>
                   </div>
+                  {isIndividualProject ? (
+                    <p className="text-[10px] text-amber-700 mt-1 px-1 italic">
+                      This project assigns tasks to individuals. All documents under it are personal deliverables.
+                    </p>
+                  ) : !isCreator ? (
+                    <p className="text-[10px] text-amber-700 mt-1 px-1 italic">
+                      Only the document creator can change collaboration type or toggle submissions.
+                    </p>
+                  ) : null}
                 </div>
 
                 {/* Submissions Toggle */}

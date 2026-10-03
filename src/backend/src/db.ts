@@ -397,6 +397,18 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'documents', 'document_type', "ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared'");
       await ensureColumnExists(conn, 'documents', 'is_submittable', 'BOOLEAN NOT NULL DEFAULT FALSE');
 
+      // Auto-repair: Enforce that documents under projects with individual association are strictly personal
+      try {
+        await conn.query(`
+          UPDATE documents d
+          JOIN projects p ON d.project_id = p.id
+          SET d.document_type = 'personal'
+          WHERE p.association_type = 'individual' AND d.document_type != 'personal'
+        `);
+      } catch {
+        // ignore if tables not yet populated
+      }
+
       // Seed config demo users, organizations, projects, and templates
       await seedConfigData(conn);
       await seedDefaultTemplates(conn);

@@ -237,6 +237,7 @@ export interface Document {
   id: string;
   title: string;
   project_id: string | null;
+  project_association_type?: ProjectAssociationType | null;
   organization_id: string | null;
   team_id?: string | null; // compatibility
   template_id: string;
