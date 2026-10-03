@@ -85,6 +85,8 @@ export const Navigation: React.FC<NavigationProps> = ({
         return 'Projects';
       case 'organizations':
         return 'Organizations';
+      case 'create_organization':
+        return 'Create Organization';
       case 'teams':
         return 'Team Formations';
       default:
@@ -224,17 +226,28 @@ export const Navigation: React.FC<NavigationProps> = ({
                         })
                       )}
                     </div>
-                    <div className="border-t border-slate-100 pt-1.5 mt-1 px-1">
+                    <div className="border-t border-slate-100 pt-1.5 mt-1 px-1 space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigate('create_organization');
+                          setIsOrgMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Create New Organization</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
                           onNavigate('organizations');
                           setIsOrgMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Go to Organizations / Create New</span>
+                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>All Organizations & Tokens</span>
                       </button>
                     </div>
                   </div>

@@ -10,6 +10,7 @@ import { CreateDocumentModal } from './components/documents/CreateDocumentModal'
 import { AuthModal } from './components/auth/AuthModal';
 import { AccountModal } from './components/auth/AccountModal';
 import { OrganizationManagement } from './components/organizations/OrganizationManagement';
+import { CreateOrganizationPage } from './components/organizations/CreateOrganizationPage';
 import { ProjectManagement } from './components/projects/ProjectManagement';
 import { TeamManagement } from './components/teams/TeamManagement';
 import { api, getStoredToken } from './api/client';
@@ -30,6 +31,7 @@ type ViewMode =
   | 'templates'
   | 'projects'
   | 'organizations'
+  | 'create_organization'
   | 'teams'
   | 'create_template'
   | 'edit_template'
@@ -336,8 +338,8 @@ export const App: React.FC = () => {
               setCurrentView('documents');
             }}
             onNavigateToTemplates={() => setCurrentView('templates')}
-            onOpenCreateOrganization={() => setCurrentView('organizations')}
-            onOpenCreateTeam={() => setCurrentView('teams')}
+            onOpenCreateOrganization={() => setCurrentView('create_organization')}
+            onOpenCreateTeam={() => setCurrentView('create_organization')}
             onOpenJoinOrganization={() => setCurrentView('organizations')}
             onOpenJoinTeam={() => setCurrentView('organizations')}
             onOpenCreateProject={(orgId) => {
@@ -448,6 +450,9 @@ export const App: React.FC = () => {
               setActiveOrganizationId(orgId);
               setActiveProjectId(null);
             }}
+            onNavigateToCreateOrg={() => setCurrentView('create_organization')}
+            onNavigateToProjects={() => setCurrentView('projects')}
+            onNavigateToTeams={() => setCurrentView('teams')}
             onRefreshOrganizations={loadOrganizations}
             onRefreshTeams={loadOrganizations}
             onOpenAccountModal={() => setIsAccountModalOpen(true)}
@@ -461,6 +466,19 @@ export const App: React.FC = () => {
               setActiveProjectId(projId);
               setCurrentView('documents');
             }}
+            showToast={showToast}
+          />
+        )}
+
+        {currentView === 'create_organization' && (
+          <CreateOrganizationPage
+            onSuccess={async (newOrg) => {
+              await loadOrganizations();
+              setActiveOrganizationId(newOrg.id);
+              setActiveProjectId(null);
+              setCurrentView('organizations');
+            }}
+            onCancel={() => setCurrentView('organizations')}
             showToast={showToast}
           />
         )}

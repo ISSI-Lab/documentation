@@ -71,6 +71,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     if (currentPropOrgId) {
       setSelectedOrgId(currentPropOrgId);
       setSelectedCategory('organizations');
+      setSelectedProjectId('all');
     }
   }, [activeOrganizationId, activeTeamId]);
 
