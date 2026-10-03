@@ -27,6 +27,7 @@ interface PersonalHomepageProps {
   templates: Template[];
   onNavigateToOrganizations?: () => void;
   onNavigateToTeams?: () => void; // compatibility alias
+  onNavigateToProjects?: () => void;
   onNavigateToDocuments: (organizationId?: string | null, projectId?: string | null) => void;
   onNavigateToTemplates: () => void;
   onOpenCreateOrganization?: () => void;
@@ -50,6 +51,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   templates,
   onNavigateToOrganizations,
   onNavigateToTeams,
+  onNavigateToProjects,
   onNavigateToDocuments,
   onNavigateToTemplates,
   onOpenCreateOrganization,
@@ -348,13 +350,24 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => onNavigateToDocuments()}
-                className="text-xs font-semibold text-slate-600 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
-              >
-                <span>View All Documents</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {onNavigateToProjects && (
+                  <button
+                    onClick={onNavigateToProjects}
+                    className="text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Manage Projects</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => onNavigateToDocuments()}
+                  className="text-xs font-semibold text-slate-600 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
+                >
+                  <span>View All Documents</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             {allProjects.length === 0 ? (

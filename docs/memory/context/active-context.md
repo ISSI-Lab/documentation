@@ -27,6 +27,8 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Individual vs Team Project Document Alignment | AI Agent | Completed | Enforced strict alignment: projects with individual association strictly allow personal documents (individual submissions only); team formation projects allow both personal and shared documents; creator-only collaboration and submission controls; in-editor submission button |
 | Project & Document Creator Permissions & Team Formations | AI Agent | Completed | Enforced organization creator/owner project creation authority, configurable project document creation permissions (`creator_only` vs `all_members`), document creator review roster isolation, and non-creator guardrails across UI and API |
 | Organization & Team Formation Unification with Role Separation | AI Agent | Completed | Combined organization workspace with in-situ team formation; enforced strict role separation where Organization Creator forms teams, manages sets, and creates projects, while Organization Members have view-only access across projects, formations, and staffing ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
+| Global Top Navbar Organization Switcher | AI Agent | Completed | Added persistent top navbar organization switcher dropdown with Creator/Member badge indicators, quick navigation to organization creation, and reactive global syncing across documents, templates, projects, and team formations |
+| Dedicated Project Page & Staffing Migration | AI Agent | Completed | Migrated project assignments and staffing from Team Formation to dedicated Project Page (`ProjectManagement.tsx`) with in-situ organization switching (Creator vs Member), project CRUD, team set cloning, and staffing modals |
 
 ---
 
@@ -57,6 +59,11 @@ This file tracks the current sprint state, active workstreams, and recent change
      - **Organization Creator** (`org.created_by = user.id`): Exclusive authority to create and update organizations, form teams within sets, manage assignment sets, create projects, assign project staffing (Team vs. Individual), regenerate join tokens, and manage member roles.
      - **Organization Member**: When entering an organization where they are not the creator, the member cannot create teams, cannot create assignment sets, and cannot create projects. Members have view-only access across projects, team formations, and project documents.
   3. Full-Stack Guardrails: Backend routes in `organizations.ts` and `projects.ts` enforce `isOrganizationCreator(userId, orgId)` returning `403 Forbidden` on mutation attempts by non-creators. Frontend views (`OrganizationManagement`, `TeamManagement`, `ProjectTeamAssignmentModal`, `PersonalHomepage`) conditionally render mutation controls exclusively for creators and render informational view-only banners attributing management to the organization creator.
+- Persistent Top Navbar Organization Switcher & Cross-Page State Alignment:
+  1. Implemented a prominent Organization Switcher in `Navigation.tsx` immediately adjacent to the brand logo on the top bar. It displays the active organization, a Creator (Crown) vs Member (Users) role badge, active selection indicators, and a direct button to go to the Organizations page to create or join organizations.
+  2. Integrated reactive `useEffect` synchronization in `DocumentList.tsx` and `TemplateList.tsx` so that changing the organization from the top navbar automatically switches views to the organization scope and loads matching documents and templates.
+  3. Extracted project assignment and staffing overview from the Team Formation page to a dedicated Project Management view (`ProjectManagement.tsx`). The Project page includes on-page organization switching with clear Creator vs. Member badges, project CRUD controls guarded by creator authority, and modal staffing configuration.
+  4. Streamlined `TeamManagement.tsx` to focus purely on defining reusable Team Formations & Squads with on-page organization switching.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

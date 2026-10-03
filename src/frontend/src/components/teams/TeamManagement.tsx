@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Users,
   Building2,
@@ -22,6 +22,7 @@ import {
   FolderPlus,
   ArrowRight,
   Info,
+  ChevronDown,
   User as UserIcon,
 } from 'lucide-react';
 import { api } from '../../api/client';
@@ -33,7 +34,6 @@ import {
   Project,
   User,
 } from '../../types';
-import { ProjectTeamAssignmentModal } from '../projects/ProjectTeamAssignmentModal';
 
 export interface TeamManagementProps {
   currentUser: User | null;
@@ -67,12 +67,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const activeOrgId = propActiveOrgId || propActiveTeamId || (organizations[0]?.id ?? null);
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(activeOrgId);
-  const [activeTab, setActiveTab] = useState<'sets' | 'projects'>('sets');
-
   const [loading, setLoading] = useState(false);
   const [setsList, setSetsList] = useState<TeamAssignmentSet[]>([]);
-  const [orgProjects, setOrgProjects] = useState<Project[]>([]);
   const [orgDetails, setOrgDetails] = useState<Organization | null>(null);
+
+  // Org switcher dropdown state
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
+  const orgDropdownRef = useRef<HTMLDivElement>(null);
 
   const activeOrg = organizations.find((o) => o.id === selectedOrgId) || null;
   const isUserOrgCreator = Boolean(
@@ -90,6 +91,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   // Search filter
   const [searchFilter, setSearchFilter] = useState('');
+
+  // Close org dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target as Node)) {
+        setIsOrgDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Modal: Create Team Assignment Set (First step)
   const [isCreateSetOpen, setIsCreateSetOpen] = useState(false);
@@ -125,9 +137,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const [editTeamDesc, setEditTeamDesc] = useState('');
   const [updatingTeam, setUpdatingTeam] = useState(false);
 
-  // Modal: Project Team Assignments Modal
-  const [selectedProjectForAssignment, setSelectedProjectForAssignment] = useState<Project | null>(null);
-
   useEffect(() => {
     if (activeOrgId && activeOrgId !== selectedOrgId) {
       setSelectedOrgId(activeOrgId);
@@ -137,13 +146,11 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const loadOrgData = async (orgId: string) => {
     try {
       setLoading(true);
-      const [setsData, projData, orgData] = await Promise.all([
+      const [setsData, orgData] = await Promise.all([
         api.listTeamAssignmentSets(orgId),
-        api.listProjects(orgId),
         api.getOrganization(orgId),
       ]);
       setSetsList(setsData);
-      setOrgProjects(projData);
       setOrgDetails(orgData.organization);
     } catch (err: any) {
       showToast(err.message || 'Failed to load organization data', 'error');
@@ -160,6 +167,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   const handleOrgChange = (newId: string) => {
     setSelectedOrgId(newId);
+    setIsOrgDropdownOpen(false);
     if (onSelectOrganization) onSelectOrganization(newId);
     if (onSelectTeam) onSelectTeam(newId);
   };
@@ -384,24 +392,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     }
   };
 
-  // Clone Set for Project
-  const handleCloneSetForProject = async (projectId: string) => {
-    if (!isUserOrgCreator) {
-      showToast('Only the Organization Creator can clone formations for projects.', 'error');
-      return;
-    }
-    try {
-      setLoading(true);
-      const updated = await api.cloneProjectTeamAssignmentSet(projectId);
-      showToast(`Cloned dedicated staffing formation for project "${updated.name}"!`);
-      if (selectedOrgId) await loadOrgData(selectedOrgId);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to clone formation for project', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const orgMembers = orgDetails?.members || [];
 
   const filteredSets = setsList.filter((s) => {
@@ -425,28 +415,93 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Layers className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            Team Formations & Project Staffing
+            Team Formations & Squads
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 max-w-3xl">
-            Create a <strong>Team Formation</strong> first, add functional <strong>Teams</strong> within the formation, and staff them with users from the organization. Reusable formations can then be associated with any project.
+            Create a <strong>Team Formation</strong> first, add functional <strong>Teams (Squads)</strong> within the formation, and staff them with users from the organization. Reusable formations can be associated with projects on the Projects page.
           </p>
         </div>
 
-        {/* Organization Switcher & Refresh */}
-        <div className="flex items-center gap-3">
-          {organizations.length > 1 && (
-            <select
-              value={selectedOrgId || ''}
-              onChange={(e) => handleOrgChange(e.target.value)}
-              className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        {/* Organization Switcher & Actions */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Interactive Organization Switcher */}
+          <div className="relative" ref={orgDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsOrgDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 hover:border-indigo-400 rounded-xl text-xs font-semibold text-gray-800 dark:text-gray-200 shadow-xs transition-colors cursor-pointer"
+              title="Switch Organization"
             >
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
-          )}
+              <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="font-bold truncate max-w-[150px]">
+                {activeOrg?.name || 'Select Organization'}
+              </span>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
+                  isUserOrgCreator
+                    ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                }`}
+              >
+                {isUserOrgCreator ? <Crown className="w-2.5 h-2.5 text-purple-600" /> : <Users className="w-2.5 h-2.5 text-gray-500" />}
+                {isUserOrgCreator ? 'Creator' : 'Member'}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${isOrgDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOrgDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-72 bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 py-2">
+                <div className="px-3.5 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800">
+                  Switch Organization ({organizations.length})
+                </div>
+                <div className="max-h-60 overflow-y-auto py-1">
+                  {organizations.map((org) => {
+                    const isSelected = org.id === selectedOrgId;
+                    const isCreator = Boolean(
+                      org.is_creator ||
+                      (org.created_by && currentUser?.id && org.created_by === currentUser.id) ||
+                      (org.user_role === 'owner')
+                    );
+                    return (
+                      <button
+                        key={org.id}
+                        type="button"
+                        onClick={() => handleOrgChange(org.id)}
+                        className={`w-full flex items-center justify-between px-3.5 py-2 text-left text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-bold'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Building2 className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-indigo-600' : 'text-gray-400'}`} />
+                          <div className="truncate">
+                            <div className="truncate font-medium">{org.name}</div>
+                            <div className="text-[10px] text-gray-400">
+                              {isCreator ? 'You created this organization' : `Created by ${org.creator_name || org.creator_username || 'another user'}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${
+                              isCreator
+                                ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                            }`}
+                          >
+                            {isCreator ? <Crown className="w-2.5 h-2.5 text-purple-600" /> : <Users className="w-2.5 h-2.5 text-gray-500" />}
+                            {isCreator ? 'Creator' : 'Member'}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => selectedOrgId && loadOrgData(selectedOrgId)}
@@ -460,7 +515,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           {isUserOrgCreator && (
             <button
               onClick={() => setIsCreateSetOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Create Team Formation
@@ -475,54 +530,20 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="text-xs text-amber-800 dark:text-amber-300">
             <span className="font-semibold block text-sm">Organization Member (Read-only)</span>
-            You are viewing this organization as a member. Team formations, squad structure, and project staffing are managed exclusively by the Organization Creator ({creatorDisplayName}).
+            You are viewing this organization as a member. In <strong>{activeOrg?.name}</strong>, team formations and squad structure are created and managed exclusively by the Organization Creator ({creatorDisplayName}). You have view-only access to squad rosters. Switch to an organization you created to form teams.
           </div>
         </div>
       ) : (
         <div className="mt-4 p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 flex items-center gap-2 text-xs text-purple-800 dark:text-purple-300">
           <Crown className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
           <span>
-            <strong>Organization Creator:</strong> You have full control over team formations, squads, and project staffing within this organization.
+            <strong>Organization Creator:</strong> You have full control over team formations and squads within <strong>{activeOrg?.name}</strong>.
           </span>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 mt-6 border-b border-gray-200 dark:border-gray-800">
-        <button
-          onClick={() => setActiveTab('sets')}
-          className={`flex items-center gap-2 px-4 py-2.5 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'sets'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>Team Formations</span>
-          <span className="ml-1.5 px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold">
-            {setsList.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('projects')}
-          className={`flex items-center gap-2 px-4 py-2.5 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'projects'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-          }`}
-        >
-          <FolderKanban className="w-4 h-4" />
-          <span>Project Assignments</span>
-          <span className="ml-1.5 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-semibold">
-            {orgProjects.length}
-          </span>
-        </button>
-      </div>
-
-      {/* TAB 1: Team Formations & Teams Within Them */}
-      {activeTab === 'sets' && (
-        <div className="mt-6 space-y-6">
+      {/* Team Formations & Teams Within Them */}
+      <div className="mt-6 space-y-6">
           {/* Search bar & summary */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50 dark:bg-gray-850 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
             <div className="relative w-full sm:w-80">
@@ -837,145 +858,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             </div>
           )}
         </div>
-      )}
-
-      {/* TAB 2: Project Assignments Overview */}
-      {activeTab === 'projects' && (
-        <div className="mt-6 space-y-4">
-          <div className="bg-gray-50 dark:bg-gray-850 p-4 rounded-xl border border-gray-200 dark:border-gray-800 text-xs text-gray-600 dark:text-gray-300 flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <FolderKanban className="w-4 h-4 text-indigo-500" />
-              Different projects can associate with different Team Formations in this organization, or reuse the same formation.
-            </span>
-          </div>
-
-          {orgProjects.length === 0 ? (
-            <div className="text-center py-16 bg-white dark:bg-gray-850 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8">
-              <FolderKanban className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                No Projects in this Organization
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create a project to start assigning teams and team formations.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {orgProjects.map((proj) => {
-                const assignedTeams = proj.assigned_teams || [];
-                return (
-                  <div
-                    key={proj.id}
-                    className="bg-white dark:bg-gray-850 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Project</span>
-                        {proj.association_type === 'individual' ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center gap-1 truncate max-w-[180px]">
-                            <UserIcon className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">Individual Assigned</span>
-                          </span>
-                        ) : proj.team_assignment_set_name ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center gap-1 truncate max-w-[180px]">
-                            <Layers className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">Formation: {proj.team_assignment_set_name}</span>
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
-                            No Formation Associated
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="font-bold text-gray-900 dark:text-white text-lg mt-2 truncate">
-                        {proj.name}
-                      </h3>
-                      {proj.description && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
-                          {proj.description}
-                        </p>
-                      )}
-
-                      {/* Staffing tags: Team vs Individual */}
-                      {proj.association_type === 'individual' ? (
-                        <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
-                            <UserIcon className="w-3 h-3 text-emerald-500" />
-                            Assigned Members ({(proj.individual_members || []).length})
-                          </div>
-                          {(proj.individual_members || []).length === 0 ? (
-                            <p className="text-xs text-gray-400 italic">No members assigned</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {proj.individual_members?.map((im) => (
-                                <span
-                                  key={im.user_id}
-                                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
-                                    im.role === 'lead'
-                                      ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-semibold'
-                                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                                  }`}
-                                >
-                                  <UserIcon className="w-3 h-3 text-emerald-500" />
-                                  {im.user_name || im.user_id} ({im.role})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
-                            <Users className="w-3 h-3 text-indigo-500" />
-                            Assigned Teams ({assignedTeams.length})
-                          </div>
-                          {assignedTeams.length === 0 ? (
-                            <p className="text-xs text-gray-400 italic">No teams assigned</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {assignedTeams.map((at) => (
-                                <span
-                                  key={at.team_id}
-                                  className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium flex items-center gap-1"
-                                >
-                                  <Users className="w-3 h-3 text-indigo-500" />
-                                  {at.team_name || at.team_id}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-5 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                      <button
-                        onClick={() => setSelectedProjectForAssignment(proj)}
-                        className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        {isUserOrgCreator ? 'Staffing & Teams' : 'View Staffing'}
-                      </button>
-
-                      {isUserOrgCreator && proj.team_assignment_set_id && (
-                        <button
-                          onClick={() => handleCloneSetForProject(proj.id)}
-                          title="Clone formation to create a dedicated staffing formation for this project"
-                          className="p-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* MODAL 1: Create Team Formation (First Step) */}
       {isCreateSetOpen && (
@@ -1299,18 +1181,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         </div>
       )}
 
-      {/* Project Team Assignment Modal */}
-      {selectedProjectForAssignment && (
-        <ProjectTeamAssignmentModal
-          project={selectedProjectForAssignment}
-          isOrgCreator={isUserOrgCreator}
-          onClose={() => setSelectedProjectForAssignment(null)}
-          onUpdated={async () => {
-            if (selectedOrgId) await loadOrgData(selectedOrgId);
-          }}
-          showToast={showToast}
-        />
-      )}
     </div>
   );
 };

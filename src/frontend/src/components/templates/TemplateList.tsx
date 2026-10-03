@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Layers,
@@ -56,6 +56,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'public' | 'personal' | 'organizations'>('all');
   const [selectedOrgId, setSelectedOrgId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const org = activeOrganization || activeTeam;
+    if (org?.id) {
+      setSelectedOrgId(org.id);
+      setSelectedCategory('organizations');
+    }
+  }, [activeOrganization, activeTeam]);
 
   const getIcon = (iconName: string) => {
     switch (iconName) {

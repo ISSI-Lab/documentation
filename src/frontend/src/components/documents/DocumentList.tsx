@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Search,
@@ -65,6 +65,20 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   const [search, setSearch] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  useEffect(() => {
+    const currentPropOrgId = activeOrganizationId || activeTeamId;
+    if (currentPropOrgId) {
+      setSelectedOrgId(currentPropOrgId);
+      setSelectedCategory('organizations');
+    }
+  }, [activeOrganizationId, activeTeamId]);
+
+  useEffect(() => {
+    if (activeProjectId) {
+      setSelectedProjectId(activeProjectId);
+    }
+  }, [activeProjectId]);
 
   const personalCount = documents.filter((d) => !d.organization_id && !d.team_id).length;
   const orgCount = documents.filter((d) => Boolean(d.organization_id || d.team_id)).length;

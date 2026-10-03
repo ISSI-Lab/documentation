@@ -10,6 +10,7 @@ import { CreateDocumentModal } from './components/documents/CreateDocumentModal'
 import { AuthModal } from './components/auth/AuthModal';
 import { AccountModal } from './components/auth/AccountModal';
 import { OrganizationManagement } from './components/organizations/OrganizationManagement';
+import { ProjectManagement } from './components/projects/ProjectManagement';
 import { TeamManagement } from './components/teams/TeamManagement';
 import { api, getStoredToken } from './api/client';
 import {
@@ -27,6 +28,7 @@ type ViewMode =
   | 'home'
   | 'documents'
   | 'templates'
+  | 'projects'
   | 'organizations'
   | 'teams'
   | 'create_template'
@@ -302,6 +304,12 @@ export const App: React.FC = () => {
         <Navigation
           currentView={currentView}
           currentUser={currentUser}
+          organizations={organizations}
+          activeOrganizationId={activeOrganizationId}
+          onSelectOrganization={(orgId) => {
+            setActiveOrganizationId(orgId);
+            setActiveProjectId(null);
+          }}
           onNavigate={(view) => setCurrentView(view as ViewMode)}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onOpenAccountModal={() => setIsAccountModalOpen(true)}
@@ -321,6 +329,7 @@ export const App: React.FC = () => {
             templates={templates}
             onNavigateToOrganizations={() => setCurrentView('organizations')}
             onNavigateToTeams={() => setCurrentView('teams')}
+            onNavigateToProjects={() => setCurrentView('projects')}
             onNavigateToDocuments={(orgId, pId) => {
               if (orgId) setActiveOrganizationId(orgId);
               if (pId) setActiveProjectId(pId);
@@ -333,7 +342,7 @@ export const App: React.FC = () => {
             onOpenJoinTeam={() => setCurrentView('organizations')}
             onOpenCreateProject={(orgId) => {
               setActiveOrganizationId(orgId);
-              setCurrentView('organizations');
+              setCurrentView('projects');
             }}
             onOpenNewDocModal={(orgId, pId, tplId) => {
               if (orgId) setActiveOrganizationId(orgId);
@@ -426,6 +435,38 @@ export const App: React.FC = () => {
 
         {currentView === 'organizations' && (
           <OrganizationManagement
+            currentUser={currentUser}
+            organizations={organizations}
+            teams={teams}
+            activeOrganizationId={activeOrganizationId}
+            activeTeamId={activeOrganizationId}
+            onSelectOrganization={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onSelectTeam={(orgId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(null);
+            }}
+            onRefreshOrganizations={loadOrganizations}
+            onRefreshTeams={loadOrganizations}
+            onOpenAccountModal={() => setIsAccountModalOpen(true)}
+            onOpenNewDocModal={(projId) => {
+              setModalInitialTemplateId(null);
+              setModalInitialProjectId(projId || null);
+              setIsCreateModalOpen(true);
+            }}
+            onViewProjectDocs={(orgId, projId) => {
+              setActiveOrganizationId(orgId);
+              setActiveProjectId(projId);
+              setCurrentView('documents');
+            }}
+            showToast={showToast}
+          />
+        )}
+
+        {currentView === 'projects' && (
+          <ProjectManagement
             currentUser={currentUser}
             organizations={organizations}
             teams={teams}
