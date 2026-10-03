@@ -109,13 +109,20 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const isPersonalWorkspace = !projectId && !selectedOrgId;
 
   const currentOrg = organizations.find((o) => o.id === selectedOrgId);
-  const isOrgManager = currentOrg?.user_role === 'owner' || currentOrg?.user_role === 'manager';
+  const isOrgCreator = Boolean(
+    currentOrg?.is_creator ||
+    (currentOrg?.created_by && currentUser?.id && currentOrg.created_by === currentUser.id) ||
+    currentOrg?.user_role === 'owner'
+  );
   const isSelectedProjectCreatorOnly = selectedProject?.document_creation_permission === 'creator_only';
+  const isProjectCreator = Boolean(
+    selectedProject?.created_by && currentUser?.id && selectedProject.created_by === currentUser.id
+  );
   const canCreateInSelectedProject =
     !selectedProject ||
     !isSelectedProjectCreatorOnly ||
-    selectedProject.created_by === currentUser?.id ||
-    isOrgManager;
+    isProjectCreator ||
+    isOrgCreator;
 
   // Filter projects based on selected organization
   const availableProjects = projects.filter((p) => {
@@ -191,7 +198,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       return;
     }
     if (selectedProject && !canCreateInSelectedProject) {
-      setError('Only the project creator and organization managers can create documents in this project.');
+      setError('This project is restricted to Creator Only. Only the project creator can author documents in this project.');
       return;
     }
 
@@ -311,7 +318,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   <option value="">(No Project / Standalone)</option>
                   {availableProjects.map((p) => {
                     const isCreatorOnly = p.document_creation_permission === 'creator_only';
-                    const canCreate = !isCreatorOnly || p.created_by === currentUser?.id || isOrgManager;
+                    const isProjCreator = Boolean(p.created_by && currentUser?.id && p.created_by === currentUser.id);
+                    const canCreate = !isCreatorOnly || isProjCreator || isOrgCreator;
                     return (
                       <option key={p.id} value={p.id} disabled={!canCreate}>
                         {p.name} {p.association_type ? `(${p.association_type === 'individual' ? 'Individual' : 'Team Formation'})` : ''} {!canCreate ? '(Locked: Creator Only)' : ''}

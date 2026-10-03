@@ -15,6 +15,7 @@ import {
   BookmarkCheck,
   CheckCircle2,
   User as UserIcon,
+  Lock,
 } from 'lucide-react';
 import { Document, Organization, Project, Team, Template, User } from '../../types';
 
@@ -383,6 +384,18 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                 {allProjects.map((project) => {
                   const orgId = project.organization_id || project.team_id;
                   const parentOrg = organizations.find((o) => o.id === orgId);
+                  const isOrgOwner = Boolean(
+                    parentOrg?.is_creator ||
+                    (parentOrg?.created_by && currentUser?.id && parentOrg.created_by === currentUser.id) ||
+                    parentOrg?.user_role === 'owner'
+                  );
+                  const isProjCreator = Boolean(
+                    project.created_by && currentUser?.id && project.created_by === currentUser.id
+                  );
+                  const canCreateInProj =
+                    project.document_creation_permission !== 'creator_only' ||
+                    isProjCreator ||
+                    isOrgOwner;
                   return (
                     <div
                       key={project.id}
@@ -454,13 +467,23 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                         >
                           View Documents &rarr;
                         </button>
-                        <button
-                          onClick={() => onOpenNewDocModal(orgId, project.id)}
-                          className="text-xs font-semibold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3 text-slate-500" />
-                          <span>New Doc</span>
-                        </button>
+                        {canCreateInProj ? (
+                          <button
+                            onClick={() => onOpenNewDocModal(orgId, project.id)}
+                            className="text-xs font-semibold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3 text-slate-500" />
+                            <span>New Doc</span>
+                          </button>
+                        ) : (
+                          <span
+                            className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed"
+                            title="Only the Project Creator can author documents in this project"
+                          >
+                            <Lock className="w-3 h-3 text-slate-400" />
+                            <span>Creator Only</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

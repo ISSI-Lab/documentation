@@ -638,13 +638,24 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                       )}
 
                       {onOpenNewDocModal && (
-                        <button
-                          onClick={() => onOpenNewDocModal(proj.id)}
-                          className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>Add Doc</span>
-                        </button>
+                        (proj.document_creation_permission !== 'creator_only' || isUserOrgCreator || proj.created_by === currentUser?.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenNewDocModal(proj.id)}
+                            className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add Doc</span>
+                          </button>
+                        ) : (
+                          <span
+                            className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed"
+                            title="This project is restricted to Creator Only document creation"
+                          >
+                            <Lock className="w-3 h-3 text-slate-400" />
+                            <span>Creator Docs Only</span>
+                          </span>
+                        )
                       )}
                     </div>
                   </div>

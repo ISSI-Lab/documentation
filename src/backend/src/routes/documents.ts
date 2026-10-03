@@ -11,7 +11,7 @@ import {
   SubmissionType,
   Template,
 } from '../models';
-import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
+import { AuthenticatedRequest, isOrganizationCreator, isOrganizationManager, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
 
 export const documentsRouter = Router();
 
@@ -294,11 +294,11 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
 
         const creationPerm = proj.document_creation_permission || 'all_members';
         if (creationPerm === 'creator_only') {
-          const isCreator = proj.created_by === user.id;
-          const isOrgManager = await isOrganizationManager(user.id, resolvedOrgId);
-          if (!isCreator && !isOrgManager) {
+          const isProjCreator = proj.created_by === user.id;
+          const isOrgCreator = await isOrganizationCreator(user.id, resolvedOrgId);
+          if (!isProjCreator && !isOrgCreator) {
             return res.status(403).json({
-              error: 'Only the project creator and organization managers can create documents in this project',
+              error: 'Only the project creator can create documents in this project',
             });
           }
         }
@@ -431,8 +431,32 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     let projAssociationType: string | null = null;
     if (newProjectId) {
       const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [newProjectId]);
-      if (projRows && projRows.length > 0) {
-        projAssociationType = projRows[0].association_type || 'individual';
+      if (!projRows || projRows.length === 0) {
+        return res.status(400).json({ error: 'Target project not found' });
+      }
+      const targetProj = projRows[0];
+      projAssociationType = targetProj.association_type || 'individual';
+
+      if (newProjectId !== currentDoc.project_id) {
+        const targetOrgId = targetProj.organization_id || targetProj.team_id;
+        if (targetOrgId) {
+          const isMember = await isOrganizationMember(user.id, targetOrgId);
+          if (!isMember) {
+            return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+          }
+          const creationPerm = targetProj.document_creation_permission || 'all_members';
+          if (creationPerm === 'creator_only') {
+            const isProjCreator = targetProj.created_by === user.id;
+            const isOrgCreator = await isOrganizationCreator(user.id, targetOrgId);
+            if (!isProjCreator && !isOrgCreator) {
+              return res.status(403).json({
+                error: 'Only the project creator can add documents to this creator-only project',
+              });
+            }
+          }
+        } else if (targetProj.created_by !== user.id) {
+          return res.status(403).json({ error: 'You do not have access to this personal project' });
+        }
       }
     }
 
