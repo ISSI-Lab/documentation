@@ -40,6 +40,8 @@ function formatProjectRow(
     name: row.name,
     description: row.description || '',
     created_by: row.created_by,
+    creator_name: row.creator_name || undefined,
+    creator_username: row.creator_username || undefined,
     documents_count: Number(row.documents_count || 0),
     assigned_teams: assocType === 'team' ? assigned_teams : [],
     individual_members: assocType === 'individual' ? individual_members : [],
@@ -147,9 +149,12 @@ projectsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     let sql = `
       SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
       FROM projects p
+      LEFT JOIN users u ON p.created_by = u.id
       LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
       WHERE (p.organization_id IS NULL AND p.created_by = ?)
          OR (p.organization_id IS NOT NULL AND p.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?))
@@ -185,9 +190,12 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const [rows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
        WHERE p.id = ? AND (
          (p.organization_id IS NULL AND p.created_by = ?)
@@ -249,7 +257,13 @@ projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Res
     }
 
     const [createdRows] = await pool.query<any[]>(
-      `SELECT p.*, 0 as documents_count FROM projects p WHERE p.id = ?`,
+      `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
+        0 as documents_count
+       FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
+       WHERE p.id = ?`,
       [projectId]
     );
 
@@ -298,9 +312,12 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
        WHERE p.id = ?`,
       [projectId]
@@ -564,9 +581,12 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
        WHERE p.id = ?`,
       [projectId]
@@ -682,9 +702,12 @@ projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequ
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
        WHERE p.id = ?`,
       [projectId]
@@ -928,9 +951,12 @@ projectsRouter.put('/:id/assignment-mode', requireAuth, async (req: Authenticate
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         tas.name as team_assignment_set_name,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN team_assignment_sets tas ON p.team_assignment_set_id = tas.id
        WHERE p.id = ?`,
       [projectId]

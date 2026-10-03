@@ -412,6 +412,10 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 mt-1">{project.name}</h4>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">
+                          <Crown className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                          <span>Creator: <strong className="text-slate-700">{project.creator_name || project.creator_username || 'Creator'}</strong></span>
+                        </div>
                         {project.association_type === 'individual' ? (
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
@@ -545,6 +549,10 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                     <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
                       <span>{doc.template_title}</span>
                       <span>{new Date(doc.updated_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-100">
+                      <UserIcon className="w-2.5 h-2.5 text-slate-400 flex-shrink-0" />
+                      <span className="truncate">Creator: <strong className="text-slate-700">{doc.creator_name || doc.creator_username || doc.author}</strong></span>
                     </div>
                   </div>
                 ))}

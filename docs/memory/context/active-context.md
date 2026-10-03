@@ -30,6 +30,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Global Top Navbar Organization Switcher | AI Agent | Completed | Added persistent top navbar organization switcher dropdown with Creator/Member badge indicators, quick navigation to organization creation, and reactive global syncing across documents, templates, projects, and team formations |
 | Dedicated Project Page & Staffing Migration | AI Agent | Completed | Migrated project assignments and staffing from Team Formation to dedicated Project Page (`ProjectManagement.tsx`) with in-situ organization switching (Creator vs Member), project CRUD, team set cloning, and staffing modals |
 | Dedicated Create Organization Page & Pure Org List | AI Agent | Completed | Built dedicated `CreateOrganizationPage.tsx` view for creating organizations, streamlined `OrganizationManagement.tsx` into a pure organization list with prominent join tokens and member rosters, and linked navbar selection switcher |
+| Project & Document Creator Tile Metadata | AI Agent | Completed | Exposed creator metadata (creator name & username) via SQL JOINs across project and document APIs, and rendered creator attribution badges on project tiles and document tiles across Project Management, Document List, Document Viewer, and Personal Homepage |
 
 ---
 
@@ -66,6 +67,11 @@ This file tracks the current sprint state, active workstreams, and recent change
   3. Streamlined `OrganizationManagement.tsx` to remove the embedded project section, leaving a focused list of organizations with prominent join tokens (with copy & regenerate actions), member count, member management roster, and "Create New Organization" action.
   4. Cross-Page Reactive Syncing: Switching an organization via the top navbar dropdown automatically updates active states and filtered content across Projects (`ProjectManagement.tsx`), Documents (`DocumentList.tsx`), Team Formations (`TeamManagement.tsx`), and Templates (`TemplateList.tsx`).
   4. Streamlined `TeamManagement.tsx` to focus purely on defining reusable Team Formations & Squads with on-page organization switching.
+- Project and Document Creator Information Display on Tiles:
+  1. Updated backend models and database queries (`projects.ts`, `documents.ts`, and `organizations.ts`) to join the `users` table on `created_by = users.id` to retrieve `creator_name` and `creator_username`.
+  2. Exposed `creator_name` and `creator_username` in frontend `Project` and `Document` interfaces.
+  3. Rendered prominent project creator attribution badges on project tiles in `ProjectManagement.tsx` and in the "Your Projects" grid in `PersonalHomepage.tsx`.
+  4. Rendered clear document creator badges on document tiles in `DocumentList.tsx`, in the "Recent Documents" list in `PersonalHomepage.tsx`, and in `DocumentViewer.tsx`.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

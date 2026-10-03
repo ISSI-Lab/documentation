@@ -237,8 +237,11 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
     // Fetch projects
     const [projectRows] = await pool.query<any[]>(
       `SELECT p.*,
+        u.name as creator_name,
+        u.username as creator_username,
         (SELECT COUNT(*) FROM documents WHERE project_id = p.id) as documents_count
        FROM projects p
+       LEFT JOIN users u ON p.created_by = u.id
        WHERE p.organization_id = ?
        ORDER BY p.created_at ASC`,
       [orgId]
@@ -251,6 +254,8 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
       name: p.name,
       description: p.description || '',
       created_by: p.created_by,
+      creator_name: p.creator_name || undefined,
+      creator_username: p.creator_username || undefined,
       documents_count: Number(p.documents_count || 0),
       created_at: new Date(p.created_at).toISOString(),
       updated_at: new Date(p.updated_at).toISOString(),

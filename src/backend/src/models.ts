@@ -141,6 +141,8 @@ export interface Project {
   name: string;
   description: string;
   created_by: string;
+  creator_name?: string;
+  creator_username?: string;
   created_at: string;
   updated_at: string;
   documents_count?: number;
@@ -244,6 +246,8 @@ export interface Document {
   status: DocumentStatus;
   author: string;
   created_by: string | null;
+  creator_name?: string;
+  creator_username?: string;
   last_edited_by: string | null;
   tags: string[];
   elements_data: Record<string, any>;

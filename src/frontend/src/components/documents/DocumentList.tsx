@@ -512,11 +512,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     {doc.title}
                   </h3>
 
-                  <div className="flex items-center space-x-4 text-xs text-slate-500 flex-wrap">
-                    <span className="flex items-center space-x-1">
-                      <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{doc.author || 'Anonymous'}</span>
+                  <div className="flex items-center space-x-4 text-xs text-slate-500 flex-wrap gap-y-1">
+                    <span className="flex items-center space-x-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                      <UserIcon className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Creator: <strong className="text-slate-800">{doc.creator_name || doc.creator_username || doc.author || 'Unknown'}</strong></span>
                     </span>
+                    {doc.author && doc.author !== (doc.creator_name || doc.creator_username) && (
+                      <span className="flex items-center space-x-1">
+                        <span className="text-slate-400">Author label:</span>
+                        <span className="text-slate-600">{doc.author}</span>
+                      </span>
+                    )}
                     <span className="flex items-center space-x-1">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       <span>Updated {dateStr}</span>

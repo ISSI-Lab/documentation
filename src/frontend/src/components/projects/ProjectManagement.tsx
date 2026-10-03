@@ -526,7 +526,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                     </div>
 
                     {/* Permission Tag & Doc count */}
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
                       {proj.document_creation_permission === 'creator_only' ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded">
                           <Lock className="w-2.5 h-2.5" />
@@ -541,6 +541,14 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                       <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <FileText className="w-3 h-3 text-slate-400" />
                         {proj.documents_count || 0} docs
+                      </span>
+                    </div>
+
+                    {/* Project Creator Information */}
+                    <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-200/80">
+                      <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      <span className="text-[11px]">
+                        Creator: <strong className="text-slate-800 font-semibold">{proj.creator_name || proj.creator_username || 'Creator'}</strong>
                       </span>
                     </div>
 

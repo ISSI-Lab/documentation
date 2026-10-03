@@ -54,6 +54,8 @@ function formatDocumentRow(row: any): Document {
     status: row.status,
     author: row.author || 'Anonymous',
     created_by: row.created_by || null,
+    creator_name: row.creator_name || undefined,
+    creator_username: row.creator_username || undefined,
     last_edited_by: row.last_edited_by || null,
     tags,
     elements_data: elementsData,
@@ -152,9 +154,12 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     let query = `
       SELECT d.*,
+        u.name as creator_name,
+        u.username as creator_username,
         p.association_type as project_association_type,
         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
       FROM documents d
+      LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN projects p ON d.project_id = p.id
     `;
     const params: any[] = [];
@@ -232,9 +237,12 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   try {
     const [rows] = await pool.query<any[]>(
       `SELECT d.*,
+         u.name as creator_name,
+         u.username as creator_username,
          p.association_type as project_association_type,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
        FROM documents d
+       LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
        WHERE d.id = ?`,
       [req.params.id]
@@ -377,8 +385,13 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     );
 
     const [createdRows] = await pool.query<any[]>(
-      `SELECT d.*, p.association_type as project_association_type, 0 as submissions_count
+      `SELECT d.*,
+         u.name as creator_name,
+         u.username as creator_username,
+         p.association_type as project_association_type,
+         0 as submissions_count
        FROM documents d
+       LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
        WHERE d.id = ?`,
       [docId]
@@ -536,9 +549,12 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     const [updatedRows] = await pool.query<any[]>(
       `SELECT d.*,
+         u.name as creator_name,
+         u.username as creator_username,
          p.association_type as project_association_type,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
        FROM documents d
+       LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
        WHERE d.id = ?`,
       [id]

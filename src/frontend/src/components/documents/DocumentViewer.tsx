@@ -335,8 +335,14 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
                   <span className="flex items-center gap-1 font-medium text-slate-700">
                     <User className="w-3.5 h-3.5 text-slate-400" />
-                    {document.author || 'Anonymous'}
+                    <span>Creator: {document.creator_name || document.creator_username || document.author || 'Anonymous'}</span>
                   </span>
+                  {document.author && document.author !== (document.creator_name || document.creator_username) && (
+                    <>
+                      <span>•</span>
+                      <span>Author: {document.author}</span>
+                    </>
+                  )}
                   <span>•</span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
