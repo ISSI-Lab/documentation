@@ -74,30 +74,29 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   const publicTemplates = templates.filter((t) => t.visibility === 'public');
   const recentDocuments = documents.slice(0, 5);
 
-  const getRoleBadge = (role?: string) => {
-    switch (role) {
-      case 'owner':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-            <Crown className="w-3 h-3 text-purple-600" />
-            Organization Owner
-          </span>
-        );
-      case 'manager':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
-            <ShieldCheck className="w-3 h-3 text-indigo-600" />
-            Organization Manager
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-            <Users className="w-3 h-3 text-slate-500" />
-            Organization Member
-          </span>
-        );
+  const getRoleBadge = (role?: string, isCreator?: boolean) => {
+    if (isCreator || role === 'owner') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+          <Crown className="w-3 h-3 text-purple-600" />
+          Organization Creator
+        </span>
+      );
     }
+    if (role === 'manager') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+          <ShieldCheck className="w-3 h-3 text-indigo-600" />
+          Organization Manager
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+        <Users className="w-3 h-3 text-slate-500" />
+        Organization Member
+      </span>
+    );
   };
 
   const getStatusBadge = (status: string) => {
@@ -269,7 +268,11 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {organizations.map((org) => {
                   const orgProjects = allProjects.filter((p) => (p.organization_id || p.team_id) === org.id);
-                  const isOwner = org.user_role === 'owner' || org.created_by === currentUser.id;
+                  const isCreator = Boolean(
+                    org.is_creator ||
+                    (org.created_by && currentUser?.id && org.created_by === currentUser.id) ||
+                    (org.user_role === 'owner')
+                  );
 
                   return (
                     <div
@@ -279,7 +282,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="text-base font-bold text-slate-900 line-clamp-1">{org.name}</h3>
-                          {getRoleBadge(isOwner ? 'owner' : org.user_role)}
+                          {getRoleBadge(org.user_role, isCreator)}
                         </div>
                         <p className="text-xs text-slate-500 line-clamp-2 min-h-[32px]">
                           {org.description || 'No organization description provided.'}
@@ -309,13 +312,20 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           <span>Open Workspace</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
-                        <button
-                          onClick={() => onOpenCreateProject(org.id)}
-                          className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3 text-slate-400" />
-                          <span>Add Project</span>
-                        </button>
+                        {isCreator ? (
+                          <button
+                            onClick={() => onOpenCreateProject(org.id)}
+                            className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3 text-slate-400" />
+                            <span>Add Project</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+                            <Users className="w-3 h-3 text-slate-400" />
+                            <span>Member View</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

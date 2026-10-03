@@ -33,6 +33,7 @@ interface ProjectTeamAssignmentModalProps {
   isOpen?: boolean;
   project: Project | null;
   currentUser?: UserType | null;
+  isOrgCreator?: boolean;
   onClose: () => void;
   onUpdated?: () => void;
   onProjectUpdated?: (updatedProject: Project) => void;
@@ -43,6 +44,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
   isOpen = true,
   project,
   currentUser,
+  isOrgCreator,
   onClose,
   onUpdated,
   onProjectUpdated,
@@ -50,6 +52,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
 }) => {
   const [loading, setLoading] = useState(false);
   const [associationType, setAssociationType] = useState<ProjectAssociationType>('team');
+  const [orgDetails, setOrgDetails] = useState<any>(null);
 
   // Team association data
   const [assignedTeams, setAssignedTeams] = useState<ProjectTeamAssignment[]>([]);
@@ -90,7 +93,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
     if (!project || !orgId) return;
     try {
       setLoading(true);
-      const [teamsData, indivData, orgTeamsData, orgSetsData, orgDetails] = await Promise.all([
+      const [teamsData, indivData, orgTeamsData, orgSetsData, orgRes] = await Promise.all([
         api.getProjectTeams(project.id),
         api.getProjectIndividualMembers(project.id),
         api.listOrganizationTeams(orgId),
@@ -106,13 +109,23 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       setIndividualMembers(indivData.individual_members || []);
       setOrgTeams(orgTeamsData);
       setOrgSets(orgSetsData);
-      setOrgMembers(orgDetails.organization?.members || orgDetails.team?.members || []);
+      const orgObj = orgRes.organization || orgRes.team || null;
+      setOrgDetails(orgObj);
+      setOrgMembers(orgObj?.members || []);
     } catch (err: any) {
       showToast(err.message || 'Failed to load project staffing data', 'error');
     } finally {
       setLoading(false);
     }
   };
+
+  const isCreator =
+    isOrgCreator !== undefined
+      ? isOrgCreator
+      : Boolean(
+          orgDetails?.is_creator ??
+            (orgDetails?.created_by === currentUser?.id)
+        );
 
   useEffect(() => {
     if (isOpen && project) {
@@ -141,6 +154,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
   // Mode Switching Logic (Strict Mutual Exclusion)
   // ============================================================================
   const initiateModeSwitch = (targetMode: ProjectAssociationType) => {
+    if (!isCreator) return;
     if (targetMode === associationType) return;
 
     if (targetMode === 'individual' && (assignedTeams.length > 0 || currentSetId)) {
@@ -376,6 +390,15 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
         </div>
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {!isCreator && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>
+                View-Only Mode: You are viewing staffing for this project. Only the Organization Creator can modify association modes, team assignments, or member roles.
+              </span>
+            </div>
+          )}
+
           {/* Top Segmented Association Type Selector */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -390,8 +413,12 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
             <div className="grid grid-cols-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
               <button
                 type="button"
+                disabled={!isCreator}
                 onClick={() => initiateModeSwitch('team')}
-                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                title={isCreator ? undefined : 'Only the Organization Creator can change association mode'}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  !isCreator ? 'cursor-default' : 'cursor-pointer'
+                } ${
                   associationType === 'team'
                     ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -403,8 +430,12 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
 
               <button
                 type="button"
+                disabled={!isCreator}
                 onClick={() => initiateModeSwitch('individual')}
-                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                title={isCreator ? undefined : 'Only the Organization Creator can change association mode'}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  !isCreator ? 'cursor-default' : 'cursor-pointer'
+                } ${
                   associationType === 'individual'
                     ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/80'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -466,7 +497,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     </p>
                   </div>
 
-                  {currentSetId ? (
+                  {currentSetId && isCreator ? (
                     <button
                       type="button"
                       onClick={() => handleAssociateSet(null)}
@@ -489,20 +520,22 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCloneSetForProject}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
-                        title="Clone this formation to customize teams specifically for this project"
-                      >
-                        <span>Clone Formation for Project</span>
-                      </button>
+                      {isCreator && (
+                        <button
+                          type="button"
+                          onClick={handleCloneSetForProject}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
+                          title="Clone this formation to customize teams specifically for this project"
+                        >
+                          <span>Clone Formation for Project</span>
+                        </button>
+                      )}
                       <span className="text-[11px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
                         Linked Formation
                       </span>
                     </div>
                   </div>
-                ) : (
+                ) : isCreator ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <select
@@ -533,6 +566,10 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                       </p>
                     )}
                   </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">
+                    No team formation linked to this project. Formations are managed by the Organization Creator.
+                  </p>
                 )}
               </div>
 
@@ -543,7 +580,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     <Users className="w-4 h-4 text-slate-600" />
                     Assigned Teams on this Project ({assignedTeams.length})
                   </h4>
-                  {assignedTeams.length > 0 && (
+                  {assignedTeams.length > 0 && isCreator && (
                     <button
                       type="button"
                       onClick={() => setIsSaveSetOpen((prev) => !prev)}
@@ -556,7 +593,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                 </div>
 
                 {/* Reusable Formation Creation Box */}
-                {isSaveSetOpen && (
+                {isSaveSetOpen && isCreator && (
                   <form
                     onSubmit={handleSaveAsSet}
                     className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3 animate-fadeIn"
@@ -618,7 +655,9 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     <Users className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
                     <p className="text-xs font-semibold text-slate-700">No teams assigned to this project yet</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Select a team below to assign it, or associate with a reusable team formation above.
+                      {isCreator
+                        ? 'Select a team below to assign it, or associate with a reusable team formation above.'
+                        : 'The organization creator has not assigned any teams to this project yet.'}
                     </p>
                   </div>
                 ) : (
@@ -658,14 +697,16 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTeam(at.team_id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-3 cursor-pointer"
-                          title="Unassign team from project"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {isCreator && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTeam(at.team_id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-3 cursor-pointer"
+                            title="Unassign team from project"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -673,56 +714,58 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
               </div>
 
               {/* Section 3: Add Individual Team to Project */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Plus className="w-4 h-4 text-slate-600" />
-                  Assign Additional Team to Project
-                </h4>
-                <form onSubmit={handleAssignTeam} className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Select Organization Team
-                      </label>
-                      <select
-                        value={selectedTeamIdToAssign}
-                        onChange={(e) => setSelectedTeamIdToAssign(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="">-- Choose Team to Assign --</option>
-                        {unassignedTeams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} ({t.members_count || 0} members)
-                          </option>
-                        ))}
-                      </select>
+              {isCreator && (
+                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Plus className="w-4 h-4 text-slate-600" />
+                    Assign Additional Team to Project
+                  </h4>
+                  <form onSubmit={handleAssignTeam} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Select Organization Team
+                        </label>
+                        <select
+                          value={selectedTeamIdToAssign}
+                          onChange={(e) => setSelectedTeamIdToAssign(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">-- Choose Team to Assign --</option>
+                          {unassignedTeams.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.members_count || 0} members)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Assigned Project Role (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={assignedRoleInput}
+                          onChange={(e) => setAssignedRoleInput(e.target.value)}
+                          placeholder="e.g. Core Dev, QA, Reviewers"
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Assigned Project Role (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={assignedRoleInput}
-                        onChange={(e) => setAssignedRoleInput(e.target.value)}
-                        placeholder="e.g. Core Dev, QA, Reviewers"
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
 
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      disabled={!selectedTeamIdToAssign || assigningTeam}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{assigningTeam ? 'Assigning...' : 'Assign Team'}</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="submit"
+                        disabled={!selectedTeamIdToAssign || assigningTeam}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{assigningTeam ? 'Assigning...' : 'Assign Team'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
           )}
 
@@ -790,25 +833,27 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleMemberRole(im)}
-                            className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                            title="Toggle between Project Lead and Contributor"
-                          >
-                            {im.role === 'lead' ? 'Set as Contributor' : 'Make Lead'}
-                          </button>
+                        {isCreator && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMemberRole(im)}
+                              className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                              title="Toggle between Project Lead and Contributor"
+                            >
+                              {im.role === 'lead' ? 'Set as Contributor' : 'Make Lead'}
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveIndividualMember(im.user_id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
-                            title="Remove member from project"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIndividualMember(im.user_id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Remove member from project"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -816,59 +861,61 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
               </div>
 
               {/* Assign Individual Member Form */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <UserPlus className="w-4 h-4 text-emerald-600" />
-                  Assign User to Project
-                </h4>
+              {isCreator && (
+                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <UserPlus className="w-4 h-4 text-emerald-600" />
+                    Assign User to Project
+                  </h4>
 
-                <form onSubmit={handleAssignIndividualMember} className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Select Organization Member
-                      </label>
-                      <select
-                        value={selectedUserIdToAssign}
-                        onChange={(e) => setSelectedUserIdToAssign(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="">-- Choose Member to Assign --</option>
-                        {unassignedOrgMembers.map((m) => (
-                          <option key={m.user_id} value={m.user_id}>
-                            {m.name || m.username || m.user_id} ({m.email || m.role})
-                          </option>
-                        ))}
-                      </select>
+                  <form onSubmit={handleAssignIndividualMember} className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Select Organization Member
+                        </label>
+                        <select
+                          value={selectedUserIdToAssign}
+                          onChange={(e) => setSelectedUserIdToAssign(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="">-- Choose Member to Assign --</option>
+                          {unassignedOrgMembers.map((m) => (
+                            <option key={m.user_id} value={m.user_id}>
+                              {m.name || m.username || m.user_id} ({m.email || m.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Role in Project
+                        </label>
+                        <select
+                          value={selectedMemberRole}
+                          onChange={(e) => setSelectedMemberRole(e.target.value as 'lead' | 'member')}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="member">Contributor (Standard)</option>
+                          <option value="lead">Project Lead</option>
+                        </select>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Role in Project
-                      </label>
-                      <select
-                        value={selectedMemberRole}
-                        onChange={(e) => setSelectedMemberRole(e.target.value as 'lead' | 'member')}
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="submit"
+                        disabled={!selectedUserIdToAssign || assigningMember}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
                       >
-                        <option value="member">Contributor (Standard)</option>
-                        <option value="lead">Project Lead</option>
-                      </select>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>{assigningMember ? 'Assigning...' : 'Assign Member'}</span>
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      disabled={!selectedUserIdToAssign || assigningMember}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>{assigningMember ? 'Assigning...' : 'Assign Member'}</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
+                  </form>
+                </div>
+              )}
             </div>
           )}
         </div>

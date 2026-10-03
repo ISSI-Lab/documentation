@@ -20,6 +20,11 @@ import {
   BookmarkCheck,
   CheckCircle2,
   Lock,
+  Edit2,
+  Trash2,
+  Layers,
+  Sparkles,
+  Info,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import {
@@ -110,6 +115,36 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   const [addingMember, setAddingMember] = useState(false);
 
   const [copiedToken, setCopiedToken] = useState(false);
+
+  // Modals state for Team Formations & Teams
+  const [isCreateSetOpen, setIsCreateSetOpen] = useState(false);
+  const [newSetName, setNewSetName] = useState('');
+  const [newSetDesc, setNewSetDesc] = useState('');
+  const [creatingSet, setCreatingSet] = useState(false);
+
+  const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
+  const [targetSetForTeam, setTargetSetForTeam] = useState<TeamAssignmentSet | null>(null);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDesc, setNewTeamDesc] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
+
+  const [isAddTeamMemberOpen, setIsAddTeamMemberOpen] = useState(false);
+  const [targetTeamForMember, setTargetTeamForMember] = useState<OrganizationTeam | null>(null);
+  const [selectedTeamMemberUserId, setSelectedTeamMemberUserId] = useState('');
+  const [newTeamMemberRole, setNewTeamMemberRole] = useState<'lead' | 'member'>('member');
+  const [addingTeamMember, setAddingTeamMember] = useState(false);
+
+  const [isEditSetOpen, setIsEditSetOpen] = useState(false);
+  const [targetSetForEdit, setTargetSetForEdit] = useState<TeamAssignmentSet | null>(null);
+  const [editSetName, setEditSetName] = useState('');
+  const [editSetDesc, setEditSetDesc] = useState('');
+  const [updatingSet, setUpdatingSet] = useState(false);
+
+  const [isEditTeamOpen, setIsEditTeamOpen] = useState(false);
+  const [targetTeamForEdit, setTargetTeamForEdit] = useState<OrganizationTeam | null>(null);
+  const [editTeamName, setEditTeamName] = useState('');
+  const [editTeamDesc, setEditTeamDesc] = useState('');
+  const [updatingTeam, setUpdatingTeam] = useState(false);
 
   const loadOrgDetails = async (orgId: string) => {
     try {
@@ -286,12 +321,182 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
     }
   };
 
-  const isUserOrgOwner =
-    currentOrgDetails?.user_role === 'owner' || currentOrgDetails?.created_by === currentUser?.id;
-  const isUserOrgManager =
-    isUserOrgOwner ||
-    currentOrgDetails?.user_role === 'manager' ||
-    currentUser?.user_type === 'organizer';
+  // Team Formation & Teams Handlers
+  const handleCreateSetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgDetails || !newSetName.trim()) return;
+    try {
+      setCreatingSet(true);
+      const created = await api.createTeamAssignmentSet(currentOrgDetails.id, {
+        name: newSetName.trim(),
+        description: newSetDesc.trim(),
+      });
+      showToast(`Team Formation "${newSetName.trim()}" created! You can now add teams inside.`);
+      setNewSetName('');
+      setNewSetDesc('');
+      setIsCreateSetOpen(false);
+      await loadOrgDetails(currentOrgDetails.id);
+      setTargetSetForTeam(created);
+      setIsCreateTeamOpen(true);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create team formation', 'error');
+    } finally {
+      setCreatingSet(false);
+    }
+  };
+
+  const handleEditSetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgDetails || !targetSetForEdit || !editSetName.trim()) return;
+    try {
+      setUpdatingSet(true);
+      await api.updateTeamAssignmentSet(currentOrgDetails.id, targetSetForEdit.id, {
+        name: editSetName.trim(),
+        description: editSetDesc.trim(),
+      });
+      showToast('Team formation updated successfully');
+      setIsEditSetOpen(false);
+      setTargetSetForEdit(null);
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update formation', 'error');
+    } finally {
+      setUpdatingSet(false);
+    }
+  };
+
+  const handleCloneSet = async (setId: string) => {
+    if (!currentOrgDetails) return;
+    try {
+      setLoadingOrg(true);
+      const cloned = await api.cloneTeamAssignmentSet(currentOrgDetails.id, setId);
+      showToast(`Team formation cloned as "${cloned.name}"!`);
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clone formation', 'error');
+    } finally {
+      setLoadingOrg(false);
+    }
+  };
+
+  const handleDeleteSet = async (setId: string) => {
+    if (!currentOrgDetails) return;
+    if (!window.confirm('Delete this team formation? Teams defined within this formation will also be deleted, and associated projects will be unlinked.')) return;
+    try {
+      await api.deleteTeamAssignmentSet(currentOrgDetails.id, setId);
+      showToast('Team formation deleted');
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete formation', 'error');
+    }
+  };
+
+  const handleCreateTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgDetails || !targetSetForTeam || !newTeamName.trim()) return;
+    try {
+      setCreatingTeam(true);
+      await api.createTeamInSet(currentOrgDetails.id, targetSetForTeam.id, {
+        name: newTeamName.trim(),
+        description: newTeamDesc.trim(),
+      });
+      showToast(`Team "${newTeamName.trim()}" added to "${targetSetForTeam.name}"!`);
+      setNewTeamName('');
+      setNewTeamDesc('');
+      setIsCreateTeamOpen(false);
+      setTargetSetForTeam(null);
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create team in formation', 'error');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  const handleEditTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgDetails || !targetTeamForEdit || !editTeamName.trim()) return;
+    try {
+      setUpdatingTeam(true);
+      await api.updateOrganizationTeam(currentOrgDetails.id, targetTeamForEdit.id, {
+        name: editTeamName.trim(),
+        description: editTeamDesc.trim(),
+      });
+      showToast('Team updated successfully');
+      setIsEditTeamOpen(false);
+      setTargetTeamForEdit(null);
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update team', 'error');
+    } finally {
+      setUpdatingTeam(false);
+    }
+  };
+
+  const handleDeleteTeam = async (teamId: string) => {
+    if (!currentOrgDetails) return;
+    if (!window.confirm('Delete this team from the formation?')) return;
+    try {
+      await api.deleteOrganizationTeam(currentOrgDetails.id, teamId);
+      showToast('Team removed from formation');
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete team', 'error');
+    }
+  };
+
+  const handleAddTeamMemberSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgDetails || !targetTeamForMember || !selectedTeamMemberUserId) return;
+    try {
+      setAddingTeamMember(true);
+      await api.addOrganizationTeamMember(currentOrgDetails.id, targetTeamForMember.id, {
+        userId: selectedTeamMemberUserId,
+        role: newTeamMemberRole,
+      });
+      showToast('Member added to team!');
+      setIsAddTeamMemberOpen(false);
+      setTargetTeamForMember(null);
+      setSelectedTeamMemberUserId('');
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add member to team', 'error');
+    } finally {
+      setAddingTeamMember(false);
+    }
+  };
+
+  const handleToggleTeamMemberRole = async (teamId: string, userId: string, currentRole: string) => {
+    if (!currentOrgDetails) return;
+    const newRole = currentRole === 'lead' ? 'member' : 'lead';
+    try {
+      await api.updateOrganizationTeamMemberRole(currentOrgDetails.id, teamId, userId, newRole);
+      showToast(`Member role updated to ${newRole}`);
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update member role', 'error');
+    }
+  };
+
+  const handleRemoveTeamMember = async (teamId: string, userId: string) => {
+    if (!currentOrgDetails) return;
+    if (!window.confirm('Remove this member from the team?')) return;
+    try {
+      await api.removeOrganizationTeamMember(currentOrgDetails.id, teamId, userId);
+      showToast('Member removed from team');
+      await loadOrgDetails(currentOrgDetails.id);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove member from team', 'error');
+    }
+  };
+
+  const isUserOrgCreator = Boolean(
+    currentOrgDetails?.is_creator ?? (currentOrgDetails?.created_by === currentUser?.id)
+  );
+  const creatorDisplayName =
+    currentOrgDetails?.creator_name || currentOrgDetails?.creator_username || 'Creator';
+  const isUserOrgOwner = isUserOrgCreator;
+  const isUserOrgManager = isUserOrgCreator;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -419,19 +624,24 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                       <h2 className="text-xl font-bold text-slate-900">{currentOrgDetails.name}</h2>
                       <span
                         className={`text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
-                          isUserOrgOwner
-                            ? 'bg-purple-100 text-purple-800'
-                            : currentOrgDetails.user_role === 'manager'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : 'bg-slate-100 text-slate-700'
+                          isUserOrgCreator
+                            ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
                         }`}
                       >
-                        {isUserOrgOwner && <Crown className="w-3.5 h-3.5 text-purple-600" />}
-                        {isUserOrgOwner
-                          ? 'You are Organization Owner (Full control)'
-                          : currentOrgDetails.user_role === 'manager'
-                          ? 'You are Organization Manager'
-                          : 'You are Organization Member'}
+                        {isUserOrgCreator ? (
+                          <>
+                            <Crown className="w-3.5 h-3.5 text-purple-600" />
+                            <span>You are Organization Creator (Full control: form teams & create projects)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
+                            <span>
+                              Organization Member (View-only for teams & projects. Formations managed by {creatorDisplayName})
+                            </span>
+                          </>
+                        )}
                       </span>
                     </div>
                     <p className="text-sm text-slate-600 mt-1">
@@ -445,11 +655,11 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                       <span className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
                         <KeyRound className="w-3.5 h-3.5" /> Join Token
                       </span>
-                      {isUserOrgManager && (
+                      {isUserOrgCreator && (
                         <button
                           onClick={handleRegenerateToken}
                           title="Regenerate Join Code"
-                          className="text-slate-400 hover:text-white transition-colors"
+                          className="text-slate-400 hover:text-white transition-colors cursor-pointer"
                         >
                           <RefreshCw className="w-3 h-3" />
                         </button>
@@ -488,25 +698,13 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                   <button
                     onClick={() => setActiveTab('teams')}
                     className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
-                      activeTab === 'teams'
+                      activeTab === 'teams' || activeTab === 'sets'
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-transparent text-slate-500 hover:text-slate-800'
                     }`}
                   >
-                    <Users className="w-4 h-4" />
-                    <span>Teams ({orgTeams.length})</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('sets')}
-                    className={`pb-2.5 text-sm font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
-                      activeTab === 'sets'
-                        ? 'border-indigo-600 text-indigo-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <BookmarkCheck className="w-4 h-4" />
-                    <span>Assignment Sets ({orgSets.length})</span>
+                    <Layers className="w-4 h-4" />
+                    <span>Team Formations & Squads ({orgSets.length})</span>
                   </button>
 
                   <button
@@ -526,15 +724,26 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
               {/* Projects Tab */}
               {activeTab === 'projects' && (
                 <div className="space-y-4">
+                  {!isUserOrgCreator && (
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center gap-2">
+                      <Info className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                      <span>
+                        You are an Organization Member (Read-only). Projects are created and configured by the Organization Creator ({creatorDisplayName}). You can view project details and open documents.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-800">Organization Projects</h3>
-                    <button
-                      onClick={() => setIsCreateProjectOpen(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
-                    >
-                      <FolderPlus className="w-3.5 h-3.5" />
-                      <span>New Project</span>
-                    </button>
+                    {isUserOrgCreator && (
+                      <button
+                        onClick={() => setIsCreateProjectOpen(true)}
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        <span>New Project</span>
+                      </button>
+                    )}
                   </div>
 
                   {(currentOrgDetails.projects || []).length === 0 ? (
@@ -542,14 +751,18 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                       <FolderKanban className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                       <p className="text-sm font-semibold text-slate-700">No projects created in this organization yet</p>
                       <p className="text-xs text-slate-500 mt-1">
-                        Create a project to organize and co-author documents with your organization.
+                        {isUserOrgCreator
+                          ? 'Create a project to organize and co-author documents with your organization.'
+                          : `The organization creator (${creatorDisplayName}) will establish projects here.`}
                       </p>
-                      <button
-                        onClick={() => setIsCreateProjectOpen(true)}
-                        className="mt-4 px-3.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded-lg transition-colors"
-                      >
-                        Create First Project
-                      </button>
+                      {isUserOrgCreator && (
+                        <button
+                          onClick={() => setIsCreateProjectOpen(true)}
+                          className="mt-4 px-3.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
+                        >
+                          Create First Project
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -634,7 +847,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                   ) : (
                                     <Users className="w-3 h-3" />
                                   )}
-                                  Manage Staffing
+                                  {isUserOrgCreator ? 'Manage Staffing' : 'View Staffing'}
                                 </button>
                               </div>
 
@@ -689,21 +902,23 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               <button
                                 onClick={() => setSelectedProjectForAssignment(proj)}
                                 className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-                                title="Manage project staffing & association"
+                                title={isUserOrgCreator ? 'Manage project staffing & association' : 'View project staffing'}
                               >
                                 {proj.association_type === 'individual' ? (
                                   <UserIcon className="w-3 h-3" />
                                 ) : (
                                   <Users className="w-3 h-3" />
                                 )}
-                                Staffing
+                                {isUserOrgCreator ? 'Staffing' : 'View Staffing'}
                               </button>
-                              <button
-                                onClick={() => onOpenNewDocModal(proj.id)}
-                                className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1"
-                              >
-                                <Plus className="w-3 h-3" /> Add Doc
-                              </button>
+                              {((proj.document_creation_permission !== 'creator_only') || isUserOrgCreator) && (
+                                <button
+                                  onClick={() => onOpenNewDocModal(proj.id)}
+                                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" /> Add Doc
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -713,110 +928,331 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                 </div>
               )}
 
-              {/* Teams Tab in Org Workspace */}
-              {activeTab === 'teams' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+              {/* Team Formations & Squads Tab in Org Workspace */}
+              {(activeTab === 'teams' || activeTab === 'sets') && (
+                <div className="space-y-6">
+                  {/* Tab Header Banner */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800">Teams in {currentOrgDetails.name}</h3>
-                      <p className="text-xs text-slate-500">Teams can be assigned to different projects in this organization.</p>
-                    </div>
-                  </div>
-
-                  {orgTeams.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-                      <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-700">No teams created in this organization yet</p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Use the "Teams & Assignments" page to create specialized teams.
+                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <Layers className="w-5 h-5 text-indigo-600" />
+                        Team Formations & Squads in {currentOrgDetails.name}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Create team formations, add functional squads inside them, and assign organization members. Formations can be reused across projects.
                       </p>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {orgTeams.map((tm) => (
-                        <div key={tm.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="text-sm font-bold text-slate-900">{tm.name}</h4>
-                            <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                              {tm.members_count || tm.members?.length || 0} members
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mb-2">{tm.description || 'No description'}</p>
-                          <div className="flex items-center gap-1 flex-wrap pt-2 border-t border-slate-100">
-                            {tm.members?.map((m) => (
-                              <span
-                                key={m.user_id}
-                                className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                  m.role === 'lead' ? 'bg-purple-100 text-purple-800 font-bold' : 'bg-slate-100 text-slate-700'
-                                }`}
-                              >
-                                {m.role === 'lead' && '👑 '}
-                                {m.name || m.username}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+
+                    {isUserOrgCreator && (
+                      <button
+                        onClick={() => setIsCreateSetOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Create Team Formation</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!isUserOrgCreator && (
+                    <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      <span>
+                        Read-Only Mode: You are an Organization Member. Team formations and squad staffing are formed and managed by the Organization Creator ({creatorDisplayName}).
+                      </span>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Assignment Sets Tab in Org Workspace */}
-              {activeTab === 'sets' && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">Reusable Team Assignment Sets</h3>
-                    <p className="text-xs text-slate-500">
-                      Standard configurations of teams that can be associated with any project.
-                    </p>
-                  </div>
 
                   {orgSets.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-                      <BookmarkCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-700">No team assignment sets created yet</p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Use the "Teams & Assignments" page to create reusable sets, or save a project's team assignments as a set.
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+                      <Layers className="w-12 h-12 mx-auto text-indigo-400 mb-2 opacity-80" />
+                      <h4 className="text-base font-bold text-slate-800">
+                        No Team Formations Created Yet
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        {isUserOrgCreator
+                          ? 'Start by creating your first Team Formation. Then, within the formation, you can define functional squads (Frontend, Backend, QA) and assign organization members.'
+                          : `The organization creator (${creatorDisplayName}) has not established any team formations yet.`}
                       </p>
+                      {isUserOrgCreator && (
+                        <button
+                          onClick={() => setIsCreateSetOpen(true)}
+                          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Create First Team Formation</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {orgSets.map((st) => (
-                        <div key={st.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="text-sm font-bold text-slate-900">{st.name}</h4>
-                            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
-                              Used in {st.associated_projects_count || 0} projects
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mb-2">{st.description || 'No description'}</p>
-                          <div className="pt-2 border-t border-slate-100">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                              Included Teams ({st.teams?.length || st.items?.length || 0}):
-                            </span>
-                            <div className="flex flex-wrap gap-1">
-                              {st.teams && st.teams.length > 0
-                                ? st.teams.map((tm) => (
-                                    <span
+                    <div className="space-y-6">
+                      {orgSets.map((set) => {
+                        const teams = set.teams || [];
+                        return (
+                          <div
+                            key={set.id}
+                            className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all"
+                          >
+                            {/* Set Header */}
+                            <div className="p-5 bg-gradient-to-r from-slate-50/80 via-white to-indigo-50/20 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                                    Team Formation
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {teams.length} {teams.length === 1 ? 'Team' : 'Teams'}
+                                  </span>
+                                  {set.associated_projects_count !== undefined && set.associated_projects_count > 0 && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Used in {set.associated_projects_count} {set.associated_projects_count === 1 ? 'project' : 'projects'}
+                                    </span>
+                                  )}
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900 mt-1">
+                                  {set.name}
+                                </h3>
+                                {set.description && (
+                                  <p className="text-xs text-slate-600 mt-0.5">
+                                    {set.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Set Action Buttons (Creator Only) */}
+                              {isUserOrgCreator && (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => {
+                                      setTargetSetForTeam(set);
+                                      setIsCreateTeamOpen(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+                                    title="Add functional team inside this formation"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Add Team to Formation</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleCloneSet(set.id)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                                    title="Duplicate formation with all its squads and members"
+                                  >
+                                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Clone</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      setTargetSetForEdit(set);
+                                      setEditSetName(set.name);
+                                      setEditSetDesc(set.description || '');
+                                      setIsEditSetOpen(true);
+                                    }}
+                                    className="p-1.5 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                    title="Edit formation name and description"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteSet(set.id)}
+                                    className="p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                                    title="Delete formation"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Teams inside the Formation */}
+                            <div className="p-5">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Users className="w-4 h-4 text-indigo-500" />
+                                  Functional Teams within this formation ({teams.length})
+                                </h4>
+
+                                {teams.length > 0 && isUserOrgCreator && (
+                                  <button
+                                    onClick={() => {
+                                      setTargetSetForTeam(set);
+                                      setIsCreateTeamOpen(true);
+                                    }}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    Add Another Team
+                                  </button>
+                                )}
+                              </div>
+
+                              {teams.length === 0 ? (
+                                <div className="border border-dashed border-slate-200 rounded-xl p-6 text-center bg-slate-50/50">
+                                  <Users className="w-7 h-7 mx-auto text-slate-400 mb-1.5" />
+                                  <p className="text-xs font-medium text-slate-700">
+                                    No functional teams in this formation yet
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 mt-0.5">
+                                    {isUserOrgCreator
+                                      ? 'Add functional squads (e.g., Frontend Squad, Backend Squad) inside this formation.'
+                                      : 'No squads have been added to this formation yet.'}
+                                  </p>
+                                  {isUserOrgCreator && (
+                                    <button
+                                      onClick={() => {
+                                        setTargetSetForTeam(set);
+                                        setIsCreateTeamOpen(true);
+                                      }}
+                                      className="mt-2.5 inline-flex items-center gap-1 px-3 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      Create Team in Formation
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                  {teams.map((tm) => (
+                                    <div
                                       key={tm.id}
-                                      className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
+                                      className="border border-slate-200 bg-slate-50/50 rounded-xl p-3.5 flex flex-col justify-between"
                                     >
-                                      {tm.name} ({tm.members_count || tm.members?.length || 0} members)
-                                    </span>
-                                  ))
-                                : st.items?.map((it) => (
-                                    <span
-                                      key={it.team_id}
-                                      className="text-[10px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200"
-                                    >
-                                      {it.team_name} {it.assigned_role && `(${it.assigned_role})`}
-                                    </span>
+                                      <div>
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div>
+                                            <h5 className="font-bold text-slate-900 text-sm">
+                                              {tm.name}
+                                            </h5>
+                                            {tm.description && (
+                                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                                {tm.description}
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          {isUserOrgCreator && (
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                onClick={() => {
+                                                  setTargetTeamForEdit(tm);
+                                                  setEditTeamName(tm.name);
+                                                  setEditTeamDesc(tm.description || '');
+                                                  setIsEditTeamOpen(true);
+                                                }}
+                                                className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                                                title="Edit team"
+                                              >
+                                                <Edit2 className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteTeam(tm.id)}
+                                                className="p-1 text-red-400 hover:text-red-600 rounded cursor-pointer"
+                                                title="Delete team"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Members in this Squad */}
+                                        <div className="mt-2.5 pt-2 border-t border-slate-200">
+                                          <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[11px] font-semibold text-slate-600">
+                                              Assigned Members ({tm.members?.length || 0})
+                                            </span>
+                                            {isUserOrgCreator && (
+                                              <button
+                                                onClick={() => {
+                                                  setTargetTeamForMember(tm);
+                                                  setIsAddTeamMemberOpen(true);
+                                                }}
+                                                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-0.5 cursor-pointer"
+                                              >
+                                                <UserPlus className="w-3 h-3" />
+                                                Add Member
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {!tm.members || tm.members.length === 0 ? (
+                                            <p className="text-[11px] text-slate-400 italic py-0.5">
+                                              No members assigned to this squad yet.
+                                            </p>
+                                          ) : (
+                                            <div className="space-y-1">
+                                              {tm.members.map((m) => (
+                                                <div
+                                                  key={m.user_id}
+                                                  className="flex items-center justify-between py-1 px-2 rounded-lg bg-white border border-slate-200/80 text-xs"
+                                                >
+                                                  <div className="flex items-center gap-2 truncate">
+                                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                                                      {(m.name || m.username || 'U')[0].toUpperCase()}
+                                                    </div>
+                                                    <span className="font-semibold text-slate-900 truncate">
+                                                      {m.name || m.username}
+                                                    </span>
+                                                    <span className="text-slate-400 text-[10px] truncate">
+                                                      @{m.username}
+                                                    </span>
+                                                  </div>
+
+                                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                                    {isUserOrgCreator ? (
+                                                      <button
+                                                        onClick={() => handleToggleTeamMemberRole(tm.id, m.user_id, m.role)}
+                                                        title={`Click to switch to ${m.role === 'lead' ? 'Member' : 'Lead'}`}
+                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors flex items-center gap-0.5 cursor-pointer ${
+                                                          m.role === 'lead'
+                                                            ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                        }`}
+                                                      >
+                                                        {m.role === 'lead' && <Crown className="w-2.5 h-2.5 text-purple-600" />}
+                                                        {m.role.toUpperCase()}
+                                                      </button>
+                                                    ) : (
+                                                      <span
+                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 ${
+                                                          m.role === 'lead'
+                                                            ? 'bg-purple-100 text-purple-800'
+                                                            : 'bg-slate-100 text-slate-600'
+                                                        }`}
+                                                      >
+                                                        {m.role === 'lead' && <Crown className="w-2.5 h-2.5 text-purple-600" />}
+                                                        {m.role.toUpperCase()}
+                                                      </span>
+                                                    )}
+
+                                                    {isUserOrgCreator && (
+                                                      <button
+                                                        onClick={() => handleRemoveTeamMember(tm.id, m.user_id)}
+                                                        className="text-slate-400 hover:text-red-500 p-0.5 cursor-pointer"
+                                                        title="Remove member from squad"
+                                                      >
+                                                        <UserMinus className="w-3 h-3" />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
                                   ))}
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -827,10 +1263,10 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-800">Organization Collaborators</h3>
-                    {isUserOrgManager && (
+                    {isUserOrgCreator && (
                       <button
                         onClick={() => setIsAddMemberOpen(true)}
-                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors"
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>Add Member</span>
@@ -838,11 +1274,20 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                     )}
                   </div>
 
+                  {!isUserOrgCreator && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center gap-2">
+                      <Info className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                      <span>
+                        Organization members and access roles are managed by the Organization Creator ({creatorDisplayName}).
+                      </span>
+                    </div>
+                  )}
+
                   <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
                     <div className="divide-y divide-slate-100">
                       {currentOrgDetails.members?.map((member) => {
                         const isSelf = member.user_id === currentUser?.id;
-                        const isMemberOwner = member.role === 'owner' || member.user_id === currentOrgDetails.created_by;
+                        const isMemberCreator = member.user_id === currentOrgDetails.created_by;
                         return (
                           <div key={member.user_id} className="p-4 flex items-center justify-between hover:bg-slate-50/50">
                             <div className="flex items-center space-x-3">
@@ -861,22 +1306,22 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                                   )}
                                   <span
                                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                                      isMemberOwner
+                                      isMemberCreator
                                         ? 'bg-purple-100 text-purple-800'
                                         : member.role === 'manager'
                                         ? 'bg-indigo-100 text-indigo-800'
                                         : 'bg-emerald-50 text-emerald-700'
                                     }`}
                                   >
-                                    {isMemberOwner ? (
+                                    {isMemberCreator ? (
                                       <Crown className="w-3 h-3 text-purple-600" />
                                     ) : member.role === 'manager' ? (
                                       <ShieldCheck className="w-3 h-3 text-indigo-600" />
                                     ) : (
                                       <Users className="w-3 h-3" />
                                     )}
-                                    {isMemberOwner
-                                      ? 'Organization Owner'
+                                    {isMemberCreator
+                                      ? 'Organization Creator'
                                       : member.role === 'manager'
                                       ? 'Organization Manager'
                                       : 'Organization Member'}
@@ -888,12 +1333,12 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               </div>
                             </div>
 
-                            {isUserOrgManager && !isSelf && !isMemberOwner && (
+                            {isUserOrgCreator && !isSelf && !isMemberCreator && (
                               <div className="flex items-center space-x-2">
                                 <button
                                   onClick={() => handleToggleMemberRole(member)}
                                   className="text-xs font-semibold text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                                  title={member.role === 'manager' ? 'Demote to regular member' : 'Promote to manager (allows creating templates)'}
+                                  title={member.role === 'manager' ? 'Demote to regular member' : 'Promote to manager'}
                                 >
                                   {member.role === 'manager' ? 'Demote to Member' : 'Promote to Manager'}
                                 </button>
@@ -1274,12 +1719,330 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
           isOpen={Boolean(selectedProjectForAssignment)}
           project={selectedProjectForAssignment}
           currentUser={currentUser}
+          isOrgCreator={isUserOrgCreator}
           onClose={() => setSelectedProjectForAssignment(null)}
           onProjectUpdated={async () => {
             if (activeOrganizationId) await loadOrgDetails(activeOrganizationId);
           }}
           showToast={showToast}
         />
+      )}
+
+      {/* Modal 1: Create Team Formation */}
+      {isCreateSetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                1
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                Create Team Formation
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              A Team Formation organizes functional teams (e.g. Frontend, Backend) within <strong>{currentOrgDetails?.name}</strong>. After creating the formation, you can immediately add functional squads inside it.
+            </p>
+
+            <form onSubmit={handleCreateSetSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Formation Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Core Product Engineering Pod"
+                  value={newSetName}
+                  onChange={(e) => setNewSetName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Describe the staffing purpose of this formation..."
+                  value={newSetDesc}
+                  onChange={(e) => setNewSetDesc(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateSetOpen(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingSet || !newSetName.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingSet ? 'Creating...' : 'Create & Add Teams'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Create Team in Formation */}
+      {isCreateTeamOpen && targetSetForTeam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                2
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Add Functional Team
+                </h3>
+                <span className="text-xs text-indigo-600 font-medium">
+                  Formation: {targetSetForTeam.name}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Define a functional team (e.g. Frontend Squad, Security Core) inside this formation.
+            </p>
+
+            <form onSubmit={handleCreateTeamSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Team Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Frontend Architecture Squad"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Focus areas, responsibilities..."
+                  value={newTeamDesc}
+                  onChange={(e) => setNewTeamDesc(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateTeamOpen(false);
+                    setTargetSetForTeam(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingTeam || !newTeamName.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingTeam ? 'Adding...' : 'Add Team'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Add Member to Team */}
+      {isAddTeamMemberOpen && targetTeamForMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                3
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Assign Member to Team
+                </h3>
+                <span className="text-xs text-indigo-600 font-medium">
+                  Team: {targetTeamForMember.name}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Select an existing organization member from <strong>{currentOrgDetails?.name}</strong> to assign to this functional squad.
+            </p>
+
+            <form onSubmit={handleAddTeamMemberSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Select Organization Member *
+                </label>
+                <select
+                  required
+                  value={selectedTeamMemberUserId}
+                  onChange={(e) => setSelectedTeamMemberUserId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Choose Member to Add --</option>
+                  {(currentOrgDetails?.members || [])
+                    .filter((m) => !(targetTeamForMember.members || []).some((tm) => tm.user_id === m.user_id))
+                    .map((m) => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {m.name || m.username} (@{m.username})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Team Role
+                </label>
+                <select
+                  value={newTeamMemberRole}
+                  onChange={(e) => setNewTeamMemberRole(e.target.value as 'lead' | 'member')}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="member">Regular Member</option>
+                  <option value="lead">👑 Team Lead</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddTeamMemberOpen(false);
+                    setTargetTeamForMember(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingTeamMember || !selectedTeamMemberUserId}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {addingTeamMember ? 'Adding...' : 'Add to Team'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Edit Team Formation */}
+      {isEditSetOpen && targetSetForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900 mb-2">Edit Team Formation</h3>
+            <form onSubmit={handleEditSetSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Formation Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editSetName}
+                  onChange={(e) => setEditSetName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editSetDesc}
+                  onChange={(e) => setEditSetDesc(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditSetOpen(false);
+                    setTargetSetForEdit(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingSet || !editSetName.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {updatingSet ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 5: Edit Team */}
+      {isEditTeamOpen && targetTeamForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <h3 className="text-base font-bold text-slate-900 mb-2">Edit Team</h3>
+            <form onSubmit={handleEditTeamSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Team Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editTeamName}
+                  onChange={(e) => setEditTeamName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editTeamDesc}
+                  onChange={(e) => setEditTeamDesc(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditTeamOpen(false);
+                    setTargetTeamForEdit(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingTeam || !editTeamName.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {updatingTeam ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

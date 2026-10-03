@@ -96,6 +96,21 @@ export async function getOrganizationRole(userId: string, organizationId: string
   }
 }
 
+export async function isOrganizationCreator(userId: string, organizationId: string): Promise<boolean> {
+  try {
+    const [rows] = await pool.query<any[]>(
+      'SELECT created_by FROM organizations WHERE id = ?',
+      [organizationId]
+    );
+    if (rows && rows.length > 0) {
+      return rows[0].created_by === userId;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
 export async function isOrganizationOwner(userId: string, organizationId: string): Promise<boolean> {
   const role = await getOrganizationRole(userId, organizationId);
   return role === 'owner';
@@ -112,6 +127,7 @@ export async function isOrganizationMember(userId: string, organizationId: strin
 }
 
 // Aliases for backwards compatibility
+export const isTeamCreator = isOrganizationCreator;
 export const getTeamRole = getOrganizationRole;
 export const isTeamOwner = isOrganizationOwner;
 export const isTeamManager = isOrganizationManager;

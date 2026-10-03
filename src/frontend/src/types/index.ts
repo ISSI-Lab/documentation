@@ -41,6 +41,9 @@ export interface Organization {
   description: string;
   join_code: string;
   created_by: string;
+  creator_name?: string;
+  creator_username?: string;
+  is_creator?: boolean;
   created_at: string;
   updated_at: string;
   members?: OrganizationMember[];

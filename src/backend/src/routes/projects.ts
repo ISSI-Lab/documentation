@@ -1,7 +1,13 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
-import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, requireAuth } from '../auth';
+import {
+  AuthenticatedRequest,
+  isOrganizationCreator,
+  isOrganizationManager,
+  isOrganizationMember,
+  requireAuth,
+} from '../auth';
 import {
   Project,
   ProjectTeamAssignment,
@@ -216,10 +222,10 @@ projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Res
     const resolvedOrgId = rawOrgId && typeof rawOrgId === 'string' && rawOrgId.trim() ? rawOrgId.trim() : null;
 
     if (resolvedOrgId) {
-      // Verify user is an owner, creator, or manager of the organization
-      const isManager = await isOrganizationManager(userId, resolvedOrgId);
-      if (!isManager) {
-        return res.status(403).json({ error: 'Only organization owners and managers can create projects in an organization' });
+      // Verify user is the organization creator
+      const isCreator = await isOrganizationCreator(userId, resolvedOrgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can create projects in an organization' });
       }
     }
 
@@ -269,10 +275,10 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isManager = await isOrganizationManager(userId, currentOrgId);
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
       const isProjCreator = current.created_by === userId;
-      if (!isManager && !isProjCreator) {
-        return res.status(403).json({ error: 'Only the project creator and organization managers can update this project' });
+      if (!isCreator && !isProjCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can update this organization project' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to update this personal project' });
@@ -322,9 +328,9 @@ projectsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isManager = await isOrganizationManager(userId, currentOrgId);
-      if (!isManager && current.created_by !== userId) {
-        return res.status(403).json({ error: 'Only organization managers or the project creator can delete projects' });
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
+      if (!isCreator && current.created_by !== userId) {
+        return res.status(403).json({ error: 'Only the organization creator can delete organization projects' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to delete this personal project' });
@@ -412,9 +418,9 @@ projectsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedRequest,
       return res.status(400).json({ error: 'Team assignments are only supported for organization projects' });
     }
 
-    const isMember = await isOrganizationMember(userId, currentOrgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+    const isCreator = await isOrganizationCreator(userId, currentOrgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can manage project team assignments' });
     }
 
     // Verify team belongs to the same organization
@@ -451,7 +457,7 @@ projectsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-// DELETE /api/v1/projects/:id/teams/:teamId - Remove a team from project
+// DELETE /api/v1/projects/:id/teams/:teamId - Remove a team from project (only organization creator)
 projectsRouter.delete('/:id/teams/:teamId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -465,9 +471,9 @@ projectsRouter.delete('/:id/teams/:teamId', requireAuth, async (req: Authenticat
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isMember = await isOrganizationMember(userId, currentOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can manage project team assignments' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have access to this personal project' });
@@ -484,7 +490,7 @@ projectsRouter.delete('/:id/teams/:teamId', requireAuth, async (req: Authenticat
   }
 });
 
-// PUT /api/v1/projects/:id/team-assignment-set - Associate project with a team assignment set
+// PUT /api/v1/projects/:id/team-assignment-set - Associate project with a team assignment set (only organization creator)
 projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -502,9 +508,9 @@ projectsRouter.put('/:id/team-assignment-set', requireAuth, async (req: Authenti
       return res.status(400).json({ error: 'Team assignment sets can only be associated with organization projects' });
     }
 
-    const isMember = await isOrganizationMember(userId, currentOrgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+    const isCreator = await isOrganizationCreator(userId, currentOrgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can associate team formations with projects' });
     }
 
     if (team_assignment_set_id) {
@@ -592,9 +598,9 @@ projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequ
       return res.status(400).json({ error: 'Only organization projects can clone team assignment sets' });
     }
 
-    const isMember = await isOrganizationMember(userId, currentOrgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+    const isCreator = await isOrganizationCreator(userId, currentOrgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can clone team formations for projects' });
     }
 
     const targetSourceSetId = source_set_id || current.team_assignment_set_id;
@@ -691,7 +697,7 @@ projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequ
   }
 });
 
-// POST /api/v1/projects/:id/save-as-team-assignment-set - Allow project team assignments to be saved/reused as a set
+// POST /api/v1/projects/:id/save-as-team-assignment-set - Allow project team assignments to be saved/reused as a set (only organization creator)
 projectsRouter.post('/:id/save-as-team-assignment-set', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -713,9 +719,9 @@ projectsRouter.post('/:id/save-as-team-assignment-set', requireAuth, async (req:
       return res.status(400).json({ error: 'Only organization projects can export team assignment sets' });
     }
 
-    const isMember = await isOrganizationMember(userId, currentOrgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+    const isCreator = await isOrganizationCreator(userId, currentOrgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can save project team assignments as a formation' });
     }
 
     // Get current assigned teams for this project
@@ -990,9 +996,9 @@ projectsRouter.post('/:id/individual-members', requireAuth, async (req: Authenti
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isMember = await isOrganizationMember(userId, currentOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can manage project member assignments' });
       }
       // Check target member belongs to the organization
       const targetIsMember = await isOrganizationMember(memberUserId, currentOrgId);
@@ -1030,7 +1036,7 @@ projectsRouter.post('/:id/individual-members', requireAuth, async (req: Authenti
   }
 });
 
-// PUT /api/v1/projects/:id/individual-members/:memberUserId - Update role of an individual member
+// PUT /api/v1/projects/:id/individual-members/:memberUserId - Update role of an individual member (only creator)
 projectsRouter.put('/:id/individual-members/:memberUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -1045,9 +1051,9 @@ projectsRouter.put('/:id/individual-members/:memberUserId', requireAuth, async (
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isMember = await isOrganizationMember(userId, currentOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can manage project member assignments' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have access to this personal project' });
@@ -1069,7 +1075,7 @@ projectsRouter.put('/:id/individual-members/:memberUserId', requireAuth, async (
   }
 });
 
-// DELETE /api/v1/projects/:id/individual-members/:memberUserId - Remove an individual member from project
+// DELETE /api/v1/projects/:id/individual-members/:memberUserId - Remove an individual member from project (only creator)
 projectsRouter.delete('/:id/individual-members/:memberUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -1083,9 +1089,9 @@ projectsRouter.delete('/:id/individual-members/:memberUserId', requireAuth, asyn
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isMember = await isOrganizationMember(userId, currentOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      const isCreator = await isOrganizationCreator(userId, currentOrgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can manage project member assignments' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have access to this personal project' });

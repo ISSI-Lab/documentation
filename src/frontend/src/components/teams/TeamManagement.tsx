@@ -74,6 +74,20 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const [orgProjects, setOrgProjects] = useState<Project[]>([]);
   const [orgDetails, setOrgDetails] = useState<Organization | null>(null);
 
+  const activeOrg = organizations.find((o) => o.id === selectedOrgId) || null;
+  const isUserOrgCreator = Boolean(
+    orgDetails?.is_creator ||
+    (orgDetails?.created_by && currentUser?.id && orgDetails.created_by === currentUser.id) ||
+    activeOrg?.is_creator ||
+    (activeOrg?.created_by && currentUser?.id && activeOrg.created_by === currentUser.id)
+  );
+  const creatorDisplayName =
+    orgDetails?.creator_name ||
+    orgDetails?.creator_username ||
+    activeOrg?.creator_name ||
+    activeOrg?.creator_username ||
+    'the Organization Creator';
+
   // Search filter
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -154,6 +168,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const handleCreateSetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !newSetName.trim()) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can create team formations.', 'error');
+      return;
+    }
 
     try {
       setCreatingSet(true);
@@ -180,6 +198,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const handleEditSetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !targetSetForEdit || !editSetName.trim()) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can edit team formations.', 'error');
+      return;
+    }
     try {
       setUpdatingSet(true);
       await api.updateTeamAssignmentSet(selectedOrgId, targetSetForEdit.id, {
@@ -200,6 +222,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Clone Set
   const handleCloneSet = async (setId: string) => {
     if (!selectedOrgId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can clone team formations.', 'error');
+      return;
+    }
     try {
       setLoading(true);
       const cloned = await api.cloneTeamAssignmentSet(selectedOrgId, setId);
@@ -215,6 +241,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Delete Set
   const handleDeleteSet = async (setId: string) => {
     if (!selectedOrgId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can delete team formations.', 'error');
+      return;
+    }
     if (!window.confirm('Delete this team formation? Teams defined within this formation will also be deleted, and associated projects will be unlinked.')) return;
     try {
       await api.deleteTeamAssignmentSet(selectedOrgId, setId);
@@ -229,6 +259,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const handleCreateTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !targetSetForTeam || !newTeamName.trim()) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can create teams.', 'error');
+      return;
+    }
     try {
       setCreatingTeam(true);
       await api.createTeamInSet(selectedOrgId, targetSetForTeam.id, {
@@ -252,6 +286,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const handleEditTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !targetTeamForEdit || !editTeamName.trim()) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can edit teams.', 'error');
+      return;
+    }
     try {
       setUpdatingTeam(true);
       await api.updateOrganizationTeam(selectedOrgId, targetTeamForEdit.id, {
@@ -272,6 +310,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Delete Team
   const handleDeleteTeam = async (teamId: string) => {
     if (!selectedOrgId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can delete teams.', 'error');
+      return;
+    }
     if (!window.confirm('Delete this team from the formation?')) return;
     try {
       await api.deleteOrganizationTeam(selectedOrgId, teamId);
@@ -286,6 +328,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const handleAddMemberToTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !targetTeamForMember || !selectedMemberUserId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can add members to teams.', 'error');
+      return;
+    }
     try {
       setAddingTeamMember(true);
       await api.addOrganizationTeamMember(selectedOrgId, targetTeamForMember.id, {
@@ -307,6 +353,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Update Member Role
   const handleToggleMemberRole = async (teamId: string, userId: string, currentRole: string) => {
     if (!selectedOrgId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can update team member roles.', 'error');
+      return;
+    }
     const newRole = currentRole === 'lead' ? 'member' : 'lead';
     try {
       await api.updateOrganizationTeamMemberRole(selectedOrgId, teamId, userId, newRole);
@@ -320,6 +370,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Remove Member
   const handleRemoveMemberFromTeam = async (teamId: string, userId: string) => {
     if (!selectedOrgId) return;
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can remove team members.', 'error');
+      return;
+    }
     if (!window.confirm('Remove this user from the team?')) return;
     try {
       await api.removeOrganizationTeamMember(selectedOrgId, teamId, userId);
@@ -332,6 +386,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   // Clone Set for Project
   const handleCloneSetForProject = async (projectId: string) => {
+    if (!isUserOrgCreator) {
+      showToast('Only the Organization Creator can clone formations for projects.', 'error');
+      return;
+    }
     try {
       setLoading(true);
       const updated = await api.cloneProjectTeamAssignmentSet(projectId);
@@ -344,7 +402,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     }
   };
 
-  const activeOrg = organizations.find((o) => o.id === selectedOrgId) || null;
   const orgMembers = orgDetails?.members || [];
 
   const filteredSets = setsList.filter((s) => {
@@ -400,15 +457,35 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
-          <button
-            onClick={() => setIsCreateSetOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Create Team Formation
-          </button>
+          {isUserOrgCreator && (
+            <button
+              onClick={() => setIsCreateSetOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Create Team Formation
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Role Banner */}
+      {!isUserOrgCreator ? (
+        <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-start gap-3">
+          <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            <span className="font-semibold block text-sm">Organization Member (Read-only)</span>
+            You are viewing this organization as a member. Team formations, squad structure, and project staffing are managed exclusively by the Organization Creator ({creatorDisplayName}).
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 p-3 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 flex items-center gap-2 text-xs text-purple-800 dark:text-purple-300">
+          <Crown className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+          <span>
+            <strong>Organization Creator:</strong> You have full control over team formations, squads, and project staffing within this organization.
+          </span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-2 mt-6 border-b border-gray-200 dark:border-gray-800">
@@ -479,7 +556,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   ? 'Try searching with another keyword.'
                   : 'Start by creating your first Team Formation. Then, within the formation, you can define functional teams (Frontend, Backend, etc.) and assign organization members.'}
               </p>
-              {!searchFilter && (
+              {!searchFilter && isUserOrgCreator && (
                 <button
                   onClick={() => setIsCreateSetOpen(true)}
                   className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
@@ -526,49 +603,51 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       </div>
 
                       {/* Set Action Buttons */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          onClick={() => {
-                            setTargetSetForTeam(set);
-                            setIsCreateTeamOpen(true);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors shadow-xs"
-                          title="Create a new functional team inside this formation"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Add Team to this Formation
-                        </button>
+                      {isUserOrgCreator && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => {
+                              setTargetSetForTeam(set);
+                              setIsCreateTeamOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors shadow-xs"
+                            title="Create a new functional team inside this formation"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Add Team to this Formation
+                          </button>
 
-                        <button
-                          onClick={() => handleCloneSet(set.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition-colors"
-                          title="Duplicate this formation with all its teams and members"
-                        >
-                          <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-                          Clone Formation
-                        </button>
+                          <button
+                            onClick={() => handleCloneSet(set.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition-colors"
+                            title="Duplicate this formation with all its teams and members"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                            Clone Formation
+                          </button>
 
-                        <button
-                          onClick={() => {
-                            setTargetSetForEdit(set);
-                            setEditSetName(set.name);
-                            setEditSetDesc(set.description || '');
-                            setIsEditSetOpen(true);
-                          }}
-                          className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
-                          title="Edit Formation Name/Description"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                          <button
+                            onClick={() => {
+                              setTargetSetForEdit(set);
+                              setEditSetName(set.name);
+                              setEditSetDesc(set.description || '');
+                              setIsEditSetOpen(true);
+                            }}
+                            className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+                            title="Edit Formation Name/Description"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
 
-                        <button
-                          onClick={() => handleDeleteSet(set.id)}
-                          className="p-1.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                          title="Delete Formation"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => handleDeleteSet(set.id)}
+                            className="p-1.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                            title="Delete Formation"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Teams inside the Set */}
@@ -579,7 +658,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           Teams within this formation ({teams.length})
                         </h3>
 
-                        {teams.length > 0 && (
+                        {teams.length > 0 && isUserOrgCreator && (
                           <button
                             onClick={() => {
                               setTargetSetForTeam(set);
@@ -587,7 +666,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             }}
                             className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-3.5 h-3.5" />
                             Add Another Team
                           </button>
                         )}
@@ -600,18 +679,22 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             No teams in this formation yet
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Click below to create the first team (e.g., Frontend Squad, Backend Squad) inside this formation.
+                            {isUserOrgCreator
+                              ? 'Click below to create the first team (e.g., Frontend Squad, Backend Squad) inside this formation.'
+                              : 'Teams in this formation are managed by the Organization Creator.'}
                           </p>
-                          <button
-                            onClick={() => {
-                              setTargetSetForTeam(set);
-                              setIsCreateTeamOpen(true);
-                            }}
-                            className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg text-xs font-semibold transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            Create Team in Formation
-                          </button>
+                          {isUserOrgCreator && (
+                            <button
+                              onClick={() => {
+                                setTargetSetForTeam(set);
+                                setIsCreateTeamOpen(true);
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg text-xs font-semibold transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Create Team in Formation
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -632,27 +715,29 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                       </p>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => {
-                                        setTargetTeamForEdit(team);
-                                        setEditTeamName(team.name);
-                                        setEditTeamDesc(team.description || '');
-                                        setIsEditTeamOpen(true);
-                                      }}
-                                      className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
-                                      title="Edit team"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteTeam(team.id)}
-                                      className="p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 rounded"
-                                      title="Delete team"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                  {isUserOrgCreator && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => {
+                                          setTargetTeamForEdit(team);
+                                          setEditTeamName(team.name);
+                                          setEditTeamDesc(team.description || '');
+                                          setIsEditTeamOpen(true);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
+                                        title="Edit team"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteTeam(team.id)}
+                                        className="p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 rounded"
+                                        title="Delete team"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Members in this Team */}
@@ -661,16 +746,18 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                     <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                                       Members ({team.members?.length || 0})
                                     </span>
-                                    <button
-                                      onClick={() => {
-                                        setTargetTeamForMember(team);
-                                        setIsAddTeamMemberOpen(true);
-                                      }}
-                                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                                    >
-                                      <UserPlus className="w-3 h-3" />
-                                      Add Member
-                                    </button>
+                                    {isUserOrgCreator && (
+                                      <button
+                                        onClick={() => {
+                                          setTargetTeamForMember(team);
+                                          setIsAddTeamMemberOpen(true);
+                                        }}
+                                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                      >
+                                        <UserPlus className="w-3 h-3" />
+                                        Add Member
+                                      </button>
+                                    )}
                                   </div>
 
                                   {!team.members || team.members.length === 0 ? (
@@ -697,26 +784,41 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                                           </div>
 
                                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                                            <button
-                                              onClick={() => handleToggleMemberRole(team.id, m.user_id, m.role)}
-                                              title={`Click to switch to ${m.role === 'lead' ? 'Member' : 'Lead'}`}
-                                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 ${
-                                                m.role === 'lead'
-                                                  ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 hover:bg-purple-200'
-                                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                                              }`}
-                                            >
-                                              {m.role === 'lead' && <Crown className="w-2.5 h-2.5" />}
-                                              {m.role.toUpperCase()}
-                                            </button>
+                                            {isUserOrgCreator ? (
+                                              <>
+                                                <button
+                                                  onClick={() => handleToggleMemberRole(team.id, m.user_id, m.role)}
+                                                  title={`Click to switch to ${m.role === 'lead' ? 'Member' : 'Lead'}`}
+                                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 ${
+                                                    m.role === 'lead'
+                                                      ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 hover:bg-purple-200'
+                                                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                                                  }`}
+                                                >
+                                                  {m.role === 'lead' && <Crown className="w-2.5 h-2.5" />}
+                                                  {m.role.toUpperCase()}
+                                                </button>
 
-                                            <button
-                                              onClick={() => handleRemoveMemberFromTeam(team.id, m.user_id)}
-                                              className="text-gray-400 hover:text-red-500 p-0.5"
-                                              title="Remove member"
-                                            >
-                                              <UserMinus className="w-3 h-3" />
-                                            </button>
+                                                <button
+                                                  onClick={() => handleRemoveMemberFromTeam(team.id, m.user_id)}
+                                                  className="text-gray-400 hover:text-red-500 p-0.5"
+                                                  title="Remove member"
+                                                >
+                                                  <UserMinus className="w-3 h-3" />
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <span
+                                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 ${
+                                                  m.role === 'lead'
+                                                    ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300'
+                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                                }`}
+                                              >
+                                                {m.role === 'lead' && <Crown className="w-2.5 h-2.5" />}
+                                                {m.role.toUpperCase()}
+                                              </span>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
@@ -854,10 +956,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Layers className="w-3.5 h-3.5" />
-                        Staffing & Teams
+                        {isUserOrgCreator ? 'Staffing & Teams' : 'View Staffing'}
                       </button>
 
-                      {proj.team_assignment_set_id && (
+                      {isUserOrgCreator && proj.team_assignment_set_id && (
                         <button
                           onClick={() => handleCloneSetForProject(proj.id)}
                           title="Clone formation to create a dedicated staffing formation for this project"
@@ -1201,6 +1303,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       {selectedProjectForAssignment && (
         <ProjectTeamAssignmentModal
           project={selectedProjectForAssignment}
+          isOrgCreator={isUserOrgCreator}
           onClose={() => setSelectedProjectForAssignment(null)}
           onUpdated={async () => {
             if (selectedOrgId) await loadOrgData(selectedOrgId);

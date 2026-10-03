@@ -1,7 +1,13 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
-import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, requireAuth } from '../auth';
+import {
+  AuthenticatedRequest,
+  isOrganizationCreator,
+  isOrganizationManager,
+  isOrganizationMember,
+  requireAuth,
+} from '../auth';
 import {
   Organization,
   OrganizationMember,
@@ -14,13 +20,20 @@ import {
 
 export const organizationsRouter = Router();
 
-function formatOrganizationRow(row: any): Organization {
+function formatOrganizationRow(row: any, currentUserId?: string): Organization {
+  const isCreator = currentUserId
+    ? row.created_by === currentUserId
+    : (row.is_creator ?? (row.created_by === row.user_id || row.user_role === 'owner'));
+
   return {
     id: row.id,
     name: row.name,
     description: row.description || '',
     join_code: row.join_code,
     created_by: row.created_by,
+    creator_name: row.creator_name || undefined,
+    creator_username: row.creator_username || undefined,
+    is_creator: isCreator,
     user_role: row.user_role,
     members_count: Number(row.members_count || 0),
     created_at: new Date(row.created_at).toISOString(),
@@ -35,15 +48,18 @@ organizationsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res:
     const [rows] = await pool.query<any[]>(
       `SELECT o.*, 
         CASE WHEN o.created_by = ? THEN 'owner' ELSE om.role END as user_role,
-        (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count
+        (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count,
+        cu.name as creator_name,
+        cu.username as creator_username
        FROM organizations o
        JOIN organization_members om ON o.id = om.organization_id
+       LEFT JOIN users cu ON o.created_by = cu.id
        WHERE om.user_id = ?
        ORDER BY o.created_at ASC`,
       [userId, userId]
     );
 
-    res.json(rows.map(formatOrganizationRow));
+    res.json(rows.map((r) => formatOrganizationRow(r, userId)));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve organizations', detail: err.message });
   }
@@ -90,12 +106,15 @@ organizationsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res
     );
 
     const [rows] = await pool.query<any[]>(
-      `SELECT o.*, 'owner' as user_role, 1 as members_count
-       FROM organizations o WHERE o.id = ?`,
+      `SELECT o.*, 'owner' as user_role, 1 as members_count,
+        cu.name as creator_name, cu.username as creator_username
+       FROM organizations o
+       LEFT JOIN users cu ON o.created_by = cu.id
+       WHERE o.id = ?`,
       [orgId]
     );
 
-    res.status(201).json(formatOrganizationRow(rows[0]));
+    res.status(201).json(formatOrganizationRow(rows[0], user.id));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to create organization', detail: err.message });
   }
@@ -112,7 +131,13 @@ organizationsRouter.post('/join', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const cleanCode = join_code.trim().toUpperCase();
-    const [orgRows] = await pool.query<any[]>('SELECT * FROM organizations WHERE UPPER(join_code) = ?', [cleanCode]);
+    const [orgRows] = await pool.query<any[]>(
+      `SELECT o.*, cu.name as creator_name, cu.username as creator_username
+       FROM organizations o
+       LEFT JOIN users cu ON o.created_by = cu.id
+       WHERE UPPER(o.join_code) = ?`,
+      [cleanCode]
+    );
     if (!orgRows || orgRows.length === 0) {
       return res.status(404).json({ error: 'Invalid join code. No organization found matching this code.' });
     }
@@ -128,8 +153,8 @@ organizationsRouter.post('/join', requireAuth, async (req: AuthenticatedRequest,
     if (memberRows && memberRows.length > 0) {
       return res.json({
         message: 'You are already a member of this organization',
-        organization: formatOrganizationRow({ ...org, user_role: memberRows[0].role }),
-        team: formatOrganizationRow({ ...org, user_role: memberRows[0].role }),
+        organization: formatOrganizationRow({ ...org, user_role: memberRows[0].role }, userId),
+        team: formatOrganizationRow({ ...org, user_role: memberRows[0].role }, userId),
       });
     }
 
@@ -142,15 +167,18 @@ organizationsRouter.post('/join', requireAuth, async (req: AuthenticatedRequest,
 
     const [updatedOrgRows] = await pool.query<any[]>(
       `SELECT o.*, 'member' as user_role,
-        (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count
-       FROM organizations o WHERE o.id = ?`,
+        (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count,
+        cu.name as creator_name, cu.username as creator_username
+       FROM organizations o
+       LEFT JOIN users cu ON o.created_by = cu.id
+       WHERE o.id = ?`,
       [org.id]
     );
 
     res.json({
       message: `Successfully joined organization "${org.name}"!`,
-      organization: formatOrganizationRow(updatedOrgRows[0]),
-      team: formatOrganizationRow(updatedOrgRows[0]),
+      organization: formatOrganizationRow(updatedOrgRows[0], userId),
+      team: formatOrganizationRow(updatedOrgRows[0], userId),
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to join organization', detail: err.message });
@@ -169,7 +197,13 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
       return res.status(403).json({ error: 'You are not a member of this organization' });
     }
 
-    const [orgRows] = await pool.query<any[]>('SELECT * FROM organizations WHERE id = ?', [orgId]);
+    const [orgRows] = await pool.query<any[]>(
+      `SELECT o.*, cu.name as creator_name, cu.username as creator_username
+       FROM organizations o
+       LEFT JOIN users cu ON o.created_by = cu.id
+       WHERE o.id = ?`,
+      [orgId]
+    );
     if (!orgRows || orgRows.length === 0) {
       return res.status(404).json({ error: 'Organization not found' });
     }
@@ -223,10 +257,14 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
     }));
 
     const userMembership = members.find((m) => m.user_id === userId);
-    const resolvedUserRole = org.created_by === userId ? 'owner' : (userMembership?.role || 'member');
+    const isCreator = org.created_by === userId;
+    const resolvedUserRole = isCreator ? 'owner' : (userMembership?.role || 'member');
 
     const formattedOrg = {
-      ...formatOrganizationRow({ ...org, user_role: resolvedUserRole, members_count: members.length }),
+      ...formatOrganizationRow({ ...org, user_role: resolvedUserRole, members_count: members.length }, userId),
+      is_creator: isCreator,
+      creator_name: org.creator_name || undefined,
+      creator_username: org.creator_username || undefined,
       members,
       projects,
     };
@@ -240,15 +278,15 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
-// PUT /api/v1/organizations/:id - Update organization name/desc (only manager)
+// PUT /api/v1/organizations/:id - Update organization name/desc (only organization creator)
 organizationsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const orgId = req.params.id;
 
-    const isManager = await isOrganizationManager(userId, orgId);
-    if (!isManager) {
-      return res.status(403).json({ error: 'Only organization managers can update organization settings' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can update organization settings' });
     }
 
     const { name, description } = req.body;
@@ -266,22 +304,28 @@ organizationsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, r
       [newName, newDesc, orgId]
     );
 
-    const [updatedRows] = await pool.query<any[]>('SELECT * FROM organizations WHERE id = ?', [orgId]);
-    res.json(formatOrganizationRow(updatedRows[0]));
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT o.*, cu.name as creator_name, cu.username as creator_username
+       FROM organizations o
+       LEFT JOIN users cu ON o.created_by = cu.id
+       WHERE o.id = ?`,
+      [orgId]
+    );
+    res.json(formatOrganizationRow(updatedRows[0], userId));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update organization', detail: err.message });
   }
 });
 
-// POST /api/v1/organizations/:id/regenerate-token - Regenerate join token (only manager)
+// POST /api/v1/organizations/:id/regenerate-token - Regenerate join token (only organization creator)
 organizationsRouter.post('/:id/regenerate-token', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const orgId = req.params.id;
 
-    const isManager = await isOrganizationManager(userId, orgId);
-    if (!isManager) {
-      return res.status(403).json({ error: 'Only organization managers can regenerate the organization join token' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can regenerate the organization join token' });
     }
 
     const randomCode = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -298,15 +342,15 @@ organizationsRouter.post('/:id/regenerate-token', requireAuth, async (req: Authe
   }
 });
 
-// POST /api/v1/organizations/:id/members - Add member by userId or username (only manager)
+// POST /api/v1/organizations/:id/members - Add member by userId or username (only organization creator)
 organizationsRouter.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const orgId = req.params.id;
 
-    const isManager = await isOrganizationManager(currentUserId, orgId);
-    if (!isManager) {
-      return res.status(403).json({ error: 'Only organization managers can add new members' });
+    const isCreator = await isOrganizationCreator(currentUserId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can add new members' });
     }
 
     const { userId, usernameOrEmail, role } = req.body;
@@ -344,16 +388,16 @@ organizationsRouter.post('/:id/members', requireAuth, async (req: AuthenticatedR
   }
 });
 
-// PUT /api/v1/organizations/:id/members/:targetUserId - Update member role (Owner / Manager check)
+// PUT /api/v1/organizations/:id/members/:targetUserId - Update member role (only organization creator)
 organizationsRouter.put('/:id/members/:targetUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const orgId = req.params.id;
     const targetUserId = req.params.targetUserId;
 
-    const isManager = await isOrganizationManager(currentUserId, orgId);
-    if (!isManager) {
-      return res.status(403).json({ error: 'Only organization managers or owners can change member roles' });
+    const isCreator = await isOrganizationCreator(currentUserId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can change member roles' });
     }
 
     const [orgRows] = await pool.query<any[]>('SELECT created_by FROM organizations WHERE id = ?', [orgId]);
@@ -388,10 +432,12 @@ organizationsRouter.delete('/:id/members/:targetUserId', requireAuth, async (req
     const orgId = req.params.id;
     const targetUserId = req.params.targetUserId;
 
-    // Allow user to leave organization OR manager/owner to remove member
-    const isManager = await isOrganizationManager(currentUserId, orgId);
-    if (currentUserId !== targetUserId && !isManager) {
-      return res.status(403).json({ error: 'Only organization managers or owners can remove other members' });
+    // Allow user to leave organization OR creator to remove member
+    if (currentUserId !== targetUserId) {
+      const isCreator = await isOrganizationCreator(currentUserId, orgId);
+      if (!isCreator) {
+        return res.status(403).json({ error: 'Only the organization creator can remove other members' });
+      }
     }
 
     // Prevent removing creator / owner
@@ -514,15 +560,15 @@ organizationsRouter.get('/:id/teams', requireAuth, async (req: AuthenticatedRequ
   }
 });
 
-// POST /api/v1/organizations/:id/teams - Create a team in organization (with optional set_id)
+// POST /api/v1/organizations/:id/teams - Create a team in organization (with optional set_id; only organization creator)
 organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const orgId = req.params.id;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can form teams in this organization' });
     }
 
     const { name, description, set_id, initial_members } = req.body;
@@ -615,15 +661,15 @@ organizationsRouter.post('/:id/teams', requireAuth, async (req: AuthenticatedReq
   }
 });
 
-// POST /api/v1/organizations/:id/team-assignment-sets/:setId/teams - Create a team WITHIN a team assignment set
+// POST /api/v1/organizations/:id/team-assignment-sets/:setId/teams - Create a team WITHIN a team assignment set (only organization creator)
 organizationsRouter.post('/:id/team-assignment-sets/:setId/teams', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, setId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can form teams in this organization' });
     }
 
     const [setCheck] = await pool.query<any[]>(
@@ -753,15 +799,15 @@ organizationsRouter.get('/:id/teams/:teamId', requireAuth, async (req: Authentic
   }
 });
 
-// PUT /api/v1/organizations/:id/teams/:teamId - Update team name/description
+// PUT /api/v1/organizations/:id/teams/:teamId - Update team name/description (only organization creator)
 organizationsRouter.put('/:id/teams/:teamId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, teamId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can update teams in this organization' });
     }
 
     const [rows] = await pool.query<any[]>(
@@ -794,15 +840,15 @@ organizationsRouter.put('/:id/teams/:teamId', requireAuth, async (req: Authentic
   }
 });
 
-// DELETE /api/v1/organizations/:id/teams/:teamId - Delete team
+// DELETE /api/v1/organizations/:id/teams/:teamId - Delete team (only organization creator)
 organizationsRouter.delete('/:id/teams/:teamId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, teamId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can delete teams in this organization' });
     }
 
     const [rows] = await pool.query<any[]>(
@@ -825,15 +871,15 @@ organizationsRouter.delete('/:id/teams/:teamId', requireAuth, async (req: Authen
   }
 });
 
-// POST /api/v1/organizations/:id/teams/:teamId/members - Add member to team
+// POST /api/v1/organizations/:id/teams/:teamId/members - Add member to team (only organization creator)
 organizationsRouter.post('/:id/teams/:teamId/members', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const { id: orgId, teamId } = req.params;
 
-    const isMember = await isOrganizationMember(currentUserId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(currentUserId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can add members to teams in this organization' });
     }
 
     const { userId, role } = req.body;
@@ -862,15 +908,15 @@ organizationsRouter.post('/:id/teams/:teamId/members', requireAuth, async (req: 
   }
 });
 
-// PUT /api/v1/organizations/:id/teams/:teamId/members/:targetUserId - Update member role in team
+// PUT /api/v1/organizations/:id/teams/:teamId/members/:targetUserId - Update member role in team (only organization creator)
 organizationsRouter.put('/:id/teams/:teamId/members/:targetUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const { id: orgId, teamId, targetUserId } = req.params;
 
-    const isMember = await isOrganizationMember(currentUserId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(currentUserId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can update member roles in teams' });
     }
 
     const { role } = req.body;
@@ -887,15 +933,15 @@ organizationsRouter.put('/:id/teams/:teamId/members/:targetUserId', requireAuth,
   }
 });
 
-// DELETE /api/v1/organizations/:id/teams/:teamId/members/:targetUserId - Remove member from team
+// DELETE /api/v1/organizations/:id/teams/:teamId/members/:targetUserId - Remove member from team (only organization creator)
 organizationsRouter.delete('/:id/teams/:teamId/members/:targetUserId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const currentUserId = req.user!.id;
     const { id: orgId, teamId, targetUserId } = req.params;
 
-    const isMember = await isOrganizationMember(currentUserId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(currentUserId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can remove members from teams' });
     }
 
     await pool.query(
@@ -1054,15 +1100,15 @@ organizationsRouter.get('/:id/team-assignment-sets', requireAuth, async (req: Au
   }
 });
 
-// POST /api/v1/organizations/:id/team-assignment-sets - Create a reusable team assignment set
+// POST /api/v1/organizations/:id/team-assignment-sets - Create a reusable team assignment set (only organization creator)
 organizationsRouter.post('/:id/team-assignment-sets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const orgId = req.params.id;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can create team formations in this organization' });
     }
 
     const { name, description, team_ids, items } = req.body;
@@ -1147,15 +1193,15 @@ organizationsRouter.get('/:id/team-assignment-sets/:setId', requireAuth, async (
   }
 });
 
-// POST /api/v1/organizations/:id/team-assignment-sets/:setId/clone - Clone a set with all its teams and members
+// POST /api/v1/organizations/:id/team-assignment-sets/:setId/clone - Clone a set with all its teams and members (only organization creator)
 organizationsRouter.post('/:id/team-assignment-sets/:setId/clone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, setId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can clone team formations in this organization' });
     }
 
     const [existingSets] = await pool.query<any[]>(
@@ -1221,15 +1267,15 @@ organizationsRouter.post('/:id/team-assignment-sets/:setId/clone', requireAuth, 
   }
 });
 
-// PUT /api/v1/organizations/:id/team-assignment-sets/:setId - Update set
+// PUT /api/v1/organizations/:id/team-assignment-sets/:setId - Update set (only organization creator)
 organizationsRouter.put('/:id/team-assignment-sets/:setId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, setId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can update team formations in this organization' });
     }
 
     const [setRows] = await pool.query<any[]>(
@@ -1287,15 +1333,15 @@ organizationsRouter.put('/:id/team-assignment-sets/:setId', requireAuth, async (
   }
 });
 
-// DELETE /api/v1/organizations/:id/team-assignment-sets/:setId - Delete set and cascade
+// DELETE /api/v1/organizations/:id/team-assignment-sets/:setId - Delete set and cascade (only organization creator)
 organizationsRouter.delete('/:id/team-assignment-sets/:setId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id: orgId, setId } = req.params;
 
-    const isMember = await isOrganizationMember(userId, orgId);
-    if (!isMember) {
-      return res.status(403).json({ error: 'You are not a member of this organization' });
+    const isCreator = await isOrganizationCreator(userId, orgId);
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the organization creator can delete team formations in this organization' });
     }
 
     // Disassociate any projects pointing to this set

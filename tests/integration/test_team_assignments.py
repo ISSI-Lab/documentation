@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integration tests for Organization Teams and Reusable Project Team Assignment Sets.
+"""Integration tests for Organization Teams, Reusable Project Team Assignment Sets, and Role Separation.
 
 Validates the exact sequence and containment hierarchy:
 1. Creating a Team Assignment Set in an organization.
@@ -7,6 +7,7 @@ Validates the exact sequence and containment hierarchy:
 3. Adding Users from the Organization into each Team with designated roles ('lead', 'member').
 4. Associating Projects with a Team Assignment Set (so different projects have different sets).
 5. Cloning / reusing Team Assignment Sets across the organization and per-project.
+6. Strict role separation: Organization Creators form teams & create projects; Organization Members have view-only access (403 Forbidden on mutations, 200 OK on views).
 """
 
 import sys
@@ -326,8 +327,60 @@ def run_tests():
     print("✓ Successfully switched from Team -> Individual mode: team assignments and set purged, individual members populated")
     print("✓ Strict Mutual Exclusion verified: No hybrid association can exist!")
 
-    # 11. Cleanup & Disassociate
-    print("\n--- 11. Disassociating Set and Deleting ---")
+    # 11. Testing Role Separation: Non-Creator Guardrails (Creator vs Member)
+    print("\n--- 11. Testing Role Separation: Non-Creator Guardrails (Creator vs Member) ---")
+
+    # 11.1 Non-creator cannot create a project under the organization
+    r_hack_proj = requests.post(f"{BASE_URL}/projects", json={
+        "name": f"Unauthorized Project {uid}",
+        "organization_id": org_id,
+        "description": "Should fail because regular user is not creator"
+    }, headers=headers_reg)
+    assert r_hack_proj.status_code == 403, f"Expected 403 Forbidden for non-creator project creation, got {r_hack_proj.status_code}: {r_hack_proj.text}"
+    print("✓ Non-creator blocked from creating projects in organization (403 Forbidden)")
+
+    # 11.2 Non-creator cannot create a team formation (assignment set)
+    r_hack_set = requests.post(f"{BASE_URL}/organizations/{org_id}/team-assignment-sets", json={
+        "name": f"Unauthorized Formation {uid}",
+        "description": "Should fail"
+    }, headers=headers_reg)
+    assert r_hack_set.status_code == 403, f"Expected 403 Forbidden for non-creator formation creation, got {r_hack_set.status_code}: {r_hack_set.text}"
+    print("✓ Non-creator blocked from creating team formations (403 Forbidden)")
+
+    # 11.3 Non-creator cannot create a team
+    r_hack_team = requests.post(f"{BASE_URL}/organizations/{org_id}/teams", json={
+        "name": f"Unauthorized Team {uid}",
+        "team_assignment_set_id": set_web["id"]
+    }, headers=headers_reg)
+    assert r_hack_team.status_code == 403, f"Expected 403 Forbidden for non-creator team creation, got {r_hack_team.status_code}: {r_hack_team.text}"
+    print("✓ Non-creator blocked from creating teams (403 Forbidden)")
+
+    # 11.4 Non-creator cannot mutate project staffing
+    r_hack_staffing = requests.put(f"{BASE_URL}/projects/{proj_web['id']}/team-assignment-set", json={
+        "team_assignment_set_id": set_cloud["id"]
+    }, headers=headers_reg)
+    assert r_hack_staffing.status_code == 403, f"Expected 403 Forbidden for non-creator staffing mutation, got {r_hack_staffing.status_code}: {r_hack_staffing.text}"
+    print("✓ Non-creator blocked from modifying project staffing (403 Forbidden)")
+
+    # 11.5 Non-creator CAN view projects under the organization
+    r_view_projs = requests.get(f"{BASE_URL}/projects?organization_id={org_id}", headers=headers_reg)
+    assert r_view_projs.status_code == 200, f"Expected 200 OK for viewing projects, got {r_view_projs.status_code}: {r_view_projs.text}"
+    projs_list = r_view_projs.json()
+    assert any(p["id"] == proj_web["id"] for p in projs_list), "Created project not visible in organization projects list for member"
+    print("✓ Non-creator successfully viewed organization projects (200 OK)")
+
+    # 11.6 Non-creator CAN view individual project details
+    r_view_p = requests.get(f"{BASE_URL}/projects/{proj_web['id']}", headers=headers_reg)
+    assert r_view_p.status_code == 200, f"Expected 200 OK for viewing project detail, got {r_view_p.status_code}: {r_view_p.text}"
+    print("✓ Non-creator successfully viewed project details (200 OK)")
+
+    # 11.7 Non-creator CAN view team assignment sets
+    r_view_sets = requests.get(f"{BASE_URL}/organizations/{org_id}/team-assignment-sets", headers=headers_reg)
+    assert r_view_sets.status_code == 200, f"Expected 200 OK for viewing sets, got {r_view_sets.status_code}: {r_view_sets.text}"
+    print("✓ Non-creator successfully viewed team formations (200 OK)")
+
+    # 12. Cleanup & Disassociate
+    print("\n--- 12. Disassociating Set and Deleting ---")
     r_disassoc = requests.put(f"{BASE_URL}/projects/{proj_cloud['id']}/team-assignment-set", json={
         "team_assignment_set_id": None
     }, headers=headers_org)

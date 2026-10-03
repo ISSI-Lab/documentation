@@ -26,6 +26,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Personal & Team Document Submissions | AI Agent | Completed | Implemented personal & team shared document types, submittable deliverables, pre-populated submission drafts, creator review roster, status tracking, and feedback threads ([ADR-0007](../decisions/0007-personal-and-team-document-submissions-and-review-system.md)) |
 | Individual vs Team Project Document Alignment | AI Agent | Completed | Enforced strict alignment: projects with individual association strictly allow personal documents (individual submissions only); team formation projects allow both personal and shared documents; creator-only collaboration and submission controls; in-editor submission button |
 | Project & Document Creator Permissions & Team Formations | AI Agent | Completed | Enforced organization creator/owner project creation authority, configurable project document creation permissions (`creator_only` vs `all_members`), document creator review roster isolation, and non-creator guardrails across UI and API |
+| Organization & Team Formation Unification with Role Separation | AI Agent | Completed | Combined organization workspace with in-situ team formation; enforced strict role separation where Organization Creator forms teams, manages sets, and creates projects, while Organization Members have view-only access across projects, formations, and staffing ([ADR-0006](../decisions/0006-teams-and-reusable-project-team-assignment-sets.md)) |
 
 ---
 
@@ -50,6 +51,12 @@ This file tracks the current sprint state, active workstreams, and recent change
   4. In `all_members` projects, any organization member can create documents, and the authoring member becomes the document creator (`document.created_by = user.id`).
   5. Only the document creator can change collaboration type or toggle submissions.
   6. Submissions review rosters are restricted to the document creator (and org managers). Regular members can only see and edit their own personal submission or their assigned team's submission.
+- Unified Organization Workspace with in-situ Team Formation & Role Separation:
+  1. Integrated Team Formation and squad creation directly within `OrganizationManagement.tsx` so the Organization Creator can form teams and reusable assignment sets without context switching.
+  2. Strict Role Distinction between Organization Creator and Organization Member:
+     - **Organization Creator** (`org.created_by = user.id`): Exclusive authority to create and update organizations, form teams within sets, manage assignment sets, create projects, assign project staffing (Team vs. Individual), regenerate join tokens, and manage member roles.
+     - **Organization Member**: When entering an organization where they are not the creator, the member cannot create teams, cannot create assignment sets, and cannot create projects. Members have view-only access across projects, team formations, and project documents.
+  3. Full-Stack Guardrails: Backend routes in `organizations.ts` and `projects.ts` enforce `isOrganizationCreator(userId, orgId)` returning `403 Forbidden` on mutation attempts by non-creators. Frontend views (`OrganizationManagement`, `TeamManagement`, `ProjectTeamAssignmentModal`, `PersonalHomepage`) conditionally render mutation controls exclusively for creators and render informational view-only banners attributing management to the organization creator.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---
