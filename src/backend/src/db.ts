@@ -328,6 +328,45 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
+      // 7.1 Document Submissions Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS document_submissions (
+          id VARCHAR(64) PRIMARY KEY,
+          document_id VARCHAR(64) NOT NULL,
+          project_id VARCHAR(64) NOT NULL,
+          submission_type ENUM('personal', 'team') NOT NULL,
+          user_id VARCHAR(64) NULL,
+          team_id VARCHAR(64) NULL,
+          status ENUM('draft', 'submitted', 'reviewed') NOT NULL DEFAULT 'draft',
+          elements_data JSON NOT NULL,
+          compiled_markdown LONGTEXT NOT NULL,
+          submitted_at DATETIME NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_doc_subm_user (document_id, user_id),
+          UNIQUE KEY uk_doc_subm_team (document_id, team_id),
+          INDEX idx_document_id (document_id),
+          INDEX idx_project_id (project_id),
+          INDEX idx_user_id (user_id),
+          INDEX idx_team_id (team_id),
+          INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      // 7.2 Submission Comments Table
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS submission_comments (
+          id VARCHAR(64) PRIMARY KEY,
+          submission_id VARCHAR(64) NOT NULL,
+          user_id VARCHAR(64) NOT NULL,
+          content TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_submission_id (submission_id),
+          INDEX idx_user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
       // Column migrations for pre-existing tables if any
       try {
         await conn.query(`ALTER TABLE \`organization_members\` MODIFY COLUMN role ENUM('owner', 'manager', 'member') NOT NULL DEFAULT 'member'`);
@@ -355,6 +394,8 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'documents', 'organization_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'created_by', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'last_edited_by', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'document_type', "ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared'");
+      await ensureColumnExists(conn, 'documents', 'is_submittable', 'BOOLEAN NOT NULL DEFAULT FALSE');
 
       // Seed config demo users, organizations, projects, and templates
       await seedConfigData(conn);

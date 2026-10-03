@@ -600,8 +600,8 @@ projectsRouter.post('/:id/clone-set', requireAuth, async (req: AuthenticatedRequ
     }
 
     const source = setRows[0];
-    const newSetName = name?.trim() || `${current.name} Staffing Set`;
-    const newSetDesc = description !== undefined ? description : `Dedicated staffing set cloned from ${source.name} for ${current.name}`;
+    const newSetName = name?.trim() || `${current.name} Staffing Formation`;
+    const newSetDesc = description !== undefined ? description : `Dedicated staffing formation cloned from ${source.name} for ${current.name}`;
     const newSetId = `set-${crypto.randomBytes(4).toString('hex')}`;
 
     // Create cloned set
@@ -783,11 +783,11 @@ projectsRouter.post('/:id/save-as-team-assignment-set', requireAuth, async (req:
     };
 
     res.status(201).json({
-      message: `Team assignments saved as reusable set "${name.trim()}"!`,
+      message: `Team assignments saved as reusable formation "${name.trim()}"!`,
       set: createdSet,
     });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to save project team assignments as reusable set', detail: err.message });
+    res.status(500).json({ error: 'Failed to save project team assignments as reusable formation', detail: err.message });
   }
 });
 

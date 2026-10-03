@@ -190,6 +190,40 @@ export interface Template {
 }
 
 export type DocumentStatus = 'draft' | 'in_review' | 'approved' | 'published';
+export type DocumentType = 'personal' | 'project_shared';
+export type SubmissionType = 'personal' | 'team';
+export type SubmissionStatus = 'draft' | 'submitted' | 'reviewed';
+
+export interface SubmissionComment {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentSubmission {
+  id: string;
+  document_id: string;
+  project_id: string;
+  submission_type: SubmissionType;
+  user_id?: string | null;
+  user_name?: string;
+  user_email?: string;
+  team_id?: string | null;
+  team_name?: string;
+  status: SubmissionStatus;
+  elements_data: Record<string, any>;
+  compiled_markdown: string;
+  submitted_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  comments_count?: number;
+  comments?: SubmissionComment[];
+}
 
 export interface Document {
   id: string;
@@ -199,6 +233,8 @@ export interface Document {
   team_id?: string | null;
   template_id: string;
   template_title: string;
+  document_type: DocumentType;
+  is_submittable: boolean;
   status: DocumentStatus;
   author: string;
   created_by: string | null;
@@ -206,6 +242,8 @@ export interface Document {
   tags: string[];
   elements_data: Record<string, any>;
   compiled_markdown: string;
+  submissions_count?: number;
   created_at: string;
   updated_at: string;
 }
+

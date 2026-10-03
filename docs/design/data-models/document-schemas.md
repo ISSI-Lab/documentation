@@ -58,9 +58,51 @@ For elements with `field_type: "repeatable_list"`, items added dynamically via t
 | `template_id` | `string` | Foreign ID referencing the source template. |
 | `template_title` | `string` | Display name of the source template. |
 | `status` | `string` | Workflow status: `draft`, `in_review`, `approved`, `published`. |
+| `document_type` | `string` | Collaboration model: `personal` (individual document) or `project_shared` (collaborative editing). |
+| `is_submittable` | `boolean` | Whether participants/teams submit responses for creator review. |
 | `author` | `string` | Document author name. |
 | `tags` | `list[string]` | Categorical tags. |
-| `elements_data` | `dict[string, str]` | Key-value mapping of `element_id -> content`. |
+| `elements_data` | `dict[string, any]` | Key-value mapping of `element_id -> content`. |
 | `compiled_markdown` | `string` | Dynamically generated single markdown document representing all elements. |
+| `submissions_count` | `integer` | Count of active submissions (when `is_submittable: true`). |
 | `created_at` | `ISO 8601 string` | Timestamp of creation. |
 | `updated_at` | `ISO 8601 string` | Timestamp of last update. |
+
+---
+
+## 4. Document Submission Model (`DocumentSubmission`)
+
+Represents an individual student's or team's submitted response to a submittable deliverable document.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` | Unique submission identifier (`subm-...`). |
+| `document_id` | `string` | Parent deliverable document UUID. |
+| `project_id` | `string` | Associated project UUID. |
+| `submission_type` | `string` | Submission mode: `personal` (individual) or `team` (shared deliverable). |
+| `user_id` | `string` | Member UUID (required for `personal` submissions, submitter for `team`). |
+| `team_id` | `string` | Assigned team UUID (for `team` submissions). |
+| `status` | `string` | Submission status: `draft`, `submitted`, `reviewed`. |
+| `elements_data` | `dict[string, any]` | Key-value mapping of answers to template elements. |
+| `compiled_markdown` | `string` | Rendered compiled markdown document for this submission. |
+| `submitted_at` | `ISO 8601 string` | Timestamp of submission, or `null` if draft. |
+| `created_at` | `ISO 8601 string` | Timestamp of creation. |
+| `updated_at` | `ISO 8601 string` | Timestamp of last modification. |
+| `comments_count` | `integer` | Total comments/feedback messages posted on this submission. |
+
+---
+
+## 5. Submission Comment Model (`SubmissionComment`)
+
+Represents bidirectional feedback comments between project creators/reviewers and submitting participants or teams.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` | Unique comment identifier. |
+| `submission_id` | `string` | Target submission UUID. |
+| `user_id` | `string` | Author user UUID. |
+| `user_name` | `string` | Display name of author. |
+| `content` | `string` | Markdown/text content of the review feedback or reply. |
+| `created_at` | `ISO 8601 string` | Timestamp of comment. |
+| `updated_at` | `ISO 8601 string` | Timestamp of last update. |
+

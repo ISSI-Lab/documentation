@@ -77,7 +77,19 @@ Projects support two distinct, strictly mutually exclusive association models:
 - Switching to `team`: the backend transaction deletes all rows in `project_individual_members` for the project and associates with the designated team assignment set.
 - Dedicated endpoints:
   - `PUT /api/v1/projects/:id/assignment-mode`: switches mode and clears inactive configuration.
-  - `GET / POST / PUT / DELETE /api/v1/projects/:id/individual-members`: manages individual member roster.
+### 5. User-Facing Nomenclature: "Team Formation"
+To maximize intuitive comprehension for organization leads and project managers, user-facing UI labels, toasts, modals, badges, and navigation links standardize on **"Team Formation"** (or **"Formation"**):
+- **Rationale**: One "team formation" clearly communicates how individual functional teams are formed, staffed, and assembled together.
+- **Key Label Mappings**:
+  - "Team Assignment Set" / "Team Set" &rarr; **"Team Formation"**
+  - "Clone Set" &rarr; **"Clone Formation"**
+  - "Teams within this Set" &rarr; **"Teams within this formation"**
+  - "Create Team Assignment Set" &rarr; **"Create Team Formation"**
+  - "No Set Associated" &rarr; **"No Formation Associated"**
+  - "Set: [Name]" &rarr; **"Formation: [Name]"**
+  - "Allow Set to be Reused" &rarr; **"Allow Formation to be Reused"**
+  - "Save Reusable Set" &rarr; **"Save Reusable Formation"**
+- **Backwards Compatibility**: All database schemas (`team_assignment_sets`), column foreign keys (`team_assignment_set_id`), and REST endpoints (`/team-assignment-sets`) retain their canonical names to ensure zero downtime and complete backwards compatibility for existing API clients and automated scripts.
 
 ## Consequences
 

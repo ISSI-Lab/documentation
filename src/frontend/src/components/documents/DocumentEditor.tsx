@@ -15,12 +15,16 @@ import {
   Plus,
   Trash2,
   ListPlus,
+  Users,
+  User,
+  Send,
 } from 'lucide-react';
 import { marked } from 'marked';
 import {
   Document,
   DocumentElementConfig,
   DocumentStatus,
+  DocumentType,
   RepeatableSubItem,
   Template,
 } from '../../types';
@@ -47,6 +51,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [status, setStatus] = useState<DocumentStatus>(document.status);
   const [author, setAuthor] = useState(document.author);
   const [tagsInput, setTagsInput] = useState((document.tags || []).join(', '));
+  const [documentType, setDocumentType] = useState<DocumentType>(document.document_type || 'project_shared');
+  const [isSubmittable, setIsSubmittable] = useState<boolean>(document.is_submittable || false);
   const [elementsData, setElementsData] = useState<Record<string, any>>(document.elements_data || {});
 
   const [viewMode, setViewMode] = useState<'edit' | 'split'>('edit');
@@ -99,6 +105,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         status,
         author: author.trim(),
         tags,
+        document_type: documentType,
+        is_submittable: isSubmittable,
         elements_data: elementsData,
       });
 
@@ -434,6 +442,76 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                     placeholder="architecture, api, v1"
                     className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-800 outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                </div>
+
+                {/* Collaboration & Document Type */}
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-blue-600" /> Collaboration Type
+                  </label>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDocumentType('project_shared')}
+                      className={`text-left p-2 rounded-lg border text-xs transition-colors ${
+                        documentType === 'project_shared'
+                          ? 'bg-blue-50/70 border-blue-500 text-blue-900 font-semibold'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>Project Shared Doc</span>
+                        {documentType === 'project_shared' && (
+                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-normal mt-0.5">
+                        Shared editing (team submission)
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDocumentType('personal')}
+                      className={`text-left p-2 rounded-lg border text-xs transition-colors ${
+                        documentType === 'personal'
+                          ? 'bg-purple-50/70 border-purple-500 text-purple-900 font-semibold'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>Personal Doc</span>
+                        {documentType === 'personal' && (
+                          <span className="w-2 h-2 rounded-full bg-purple-600"></span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-normal mt-0.5">
+                        Individual per-person doc & submissions
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submissions Toggle */}
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="flex items-start gap-2 cursor-pointer p-2 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100/70 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isSubmittable}
+                      onChange={(e) => setIsSubmittable(e.target.checked)}
+                      className="mt-0.5 h-3.5 w-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                        <Send className="w-3 h-3 text-blue-600" /> Enable Submissions
+                      </span>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                        {documentType === 'personal'
+                          ? 'Individual submissions tracked per person for creator review.'
+                          : 'Team submissions tracked per squad for creator review.'}
+                      </p>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>

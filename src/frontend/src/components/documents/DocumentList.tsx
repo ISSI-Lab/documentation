@@ -16,6 +16,7 @@ import {
   Lock,
   Globe,
   Building2,
+  Send,
 } from 'lucide-react';
 import { Document, DocumentStatus, Organization, Project, Team, Template, User } from '../../types';
 
@@ -430,6 +431,35 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         </>
                       )}
                     </span>
+
+                    {/* Collaboration Type: Personal vs Shared Doc */}
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded ${
+                        doc.document_type === 'personal'
+                          ? 'bg-purple-50 text-purple-800 border-purple-200'
+                          : 'bg-blue-50 text-blue-800 border-blue-200'
+                      }`}
+                    >
+                      {doc.document_type === 'personal' ? (
+                        <>
+                          <UserIcon className="w-2.5 h-2.5 text-purple-600" /> Personal Doc
+                        </>
+                      ) : (
+                        <>
+                          <Users className="w-2.5 h-2.5 text-blue-600" /> Shared Doc
+                        </>
+                      )}
+                    </span>
+
+                    {/* Submittable badge if active */}
+                    {doc.is_submittable && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded bg-emerald-50 text-emerald-800 border-emerald-300">
+                        <Send className="w-2.5 h-2.5 text-emerald-600" /> Submittable
+                        {doc.submissions_count !== undefined && doc.submissions_count > 0
+                          ? ` (${doc.submissions_count})`
+                          : ''}
+                      </span>
+                    )}
 
                     {/* Template title */}
                     <span className="text-xs px-2.5 py-0.5 bg-slate-100 text-slate-700 font-medium flex items-center gap-1 border border-slate-200 rounded">

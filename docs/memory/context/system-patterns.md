@@ -30,17 +30,25 @@ This document specifies reusable engineering patterns and code standards across 
   - Any authenticated user can create an organization and automatically assumes the `owner` role.
   - Role hierarchy: `owner` (full administration, ownership transfer, deletion) &gt; `manager` (member invitations, role modifications, project creation) &gt; `member` (view projects, create/edit documents).
   - Scoped visibility: `public` (accessible to all, including unauthenticated guests), `personal` (isolated to individual author), and `organization` (restricted to organization roster).
-- **Organization Team Assignment Sets & Team Staffing Pattern**:
-  - The sequence and containment flow begins with **Team Assignment Sets** (`team_assignment_sets`), created first within an organization.
-  - Within each Team Assignment Set, functional squads are created (`organization_teams.set_id`).
+- **Organization Team Formations (Assignment Sets) & Team Staffing Pattern**:
+  - The sequence and containment flow begins with **Team Formations** (`team_assignment_sets`), created first within an organization to define how individual teams are formed and staffed.
+  - Within each Team Formation, functional squads are created (`organization_teams.set_id`).
   - Each squad contains users from within the organization (`organization_team_members`) with designated roles (`lead`, `member`).
-  - **Projects** associate with a Team Assignment Set (`projects.team_assignment_set_id`), so different projects in the same organization can associate with different sets, reuse sets, or clone a set for dedicated project customization (`clone-set`).
+  - **Projects** associate with a Team Formation (`projects.team_assignment_set_id`), so different projects in the same organization can associate with different formations, reuse formations, or clone a formation for dedicated project customization (`clone-set`).
+  - **User-Facing Labeling**: The UI standardizes on "Team Formation" / "Formation" (e.g. "Clone Formation", "Teams within this formation", "Create Team Formation") while retaining backwards-compatible API and DB keys.
   - Backward compatibility: `/api/v1/teams` legacy route alias is preserved for legacy API clients and scripts.
 - **Strict Team vs. Individual Project Association Pattern (No Hybrid)**:
-  - Projects support two strictly mutually exclusive association models: **Team Association** (via squads and reusable sets) or **Individual Association** (via direct individual organization users). Hybrid staffing is explicitly forbidden.
+  - Projects support two strictly mutually exclusive association models: **Team Association** (via squads and reusable formations) or **Individual Association** (via direct individual organization users). Hybrid staffing is explicitly forbidden.
   - Dictated by `projects.association_type` (`team` or `individual`).
   - Switching modes executes atomic backend transactions that delete the inactive configuration (`team_assignment_set_id` and `project_team_assignments` purged on switch to individual; `project_individual_members` purged on switch to team).
   - Frontend surfaces a segmented toggle in `ProjectTeamAssignmentModal` with confirmation modals before mode transitions, and dedicated individual member roster management.
+- **Document Submissions & Creator Review Pattern**:
+  - **Document Types**: Documents can be created as either a **Personal Document** (individual ownership) or a **Project Shared Document** (collaborative shared editing).
+  - **Submittable Deliverables**: Both document types can be configured as submittable (`is_submittable: boolean`).
+  - **Personal Document Submissions**: When a personal document is submittable, each individual participant has an isolated submission (`document_submissions.submission_type = 'personal'`). The review roster tracks every individual's submission status (`not_started`, `draft`, `submitted`, `reviewed`).
+  - **Project Shared Document Submissions**: When a project shared document is submittable, submissions are strictly **according to team** (`document_submissions.submission_type = 'team'`). Members of the assigned team collaborate on a shared draft and submit on behalf of the team.
+  - **Prompt Pre-Population Strategy**: When a participant or team accesses their submission (`GET /api/v1/documents/:id/my-submission`), the draft is auto-initialized and pre-populated with the creator's prompt and element defaults rather than starting blank.
+  - **Creator Review & Bidirectional Feedback**: Project creators and organization managers can inspect all submissions, update review statuses (`reviewed`, request revisions via `draft`, `submitted`), and exchange timestamped feedback comments (`submission_comments`) with participants.
 
 ---
 

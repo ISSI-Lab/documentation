@@ -161,7 +161,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         name: newSetName.trim(),
         description: newSetDesc.trim(),
       });
-      showToast(`Team Assignment Set "${newSetName.trim()}" created! You can now add teams inside.`);
+      showToast(`Team Formation "${newSetName.trim()}" created! You can now add teams inside.`);
       setNewSetName('');
       setNewSetDesc('');
       setIsCreateSetOpen(false);
@@ -170,7 +170,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       setTargetSetForTeam(created);
       setIsCreateTeamOpen(true);
     } catch (err: any) {
-      showToast(err.message || 'Failed to create team assignment set', 'error');
+      showToast(err.message || 'Failed to create team formation', 'error');
     } finally {
       setCreatingSet(false);
     }
@@ -186,12 +186,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         name: editSetName.trim(),
         description: editSetDesc.trim(),
       });
-      showToast('Team assignment set updated successfully');
+      showToast('Team formation updated successfully');
       setIsEditSetOpen(false);
       setTargetSetForEdit(null);
       await loadOrgData(selectedOrgId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to update set', 'error');
+      showToast(err.message || 'Failed to update formation', 'error');
     } finally {
       setUpdatingSet(false);
     }
@@ -203,10 +203,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     try {
       setLoading(true);
       const cloned = await api.cloneTeamAssignmentSet(selectedOrgId, setId);
-      showToast(`Team assignment set cloned as "${cloned.name}"!`);
+      showToast(`Team formation cloned as "${cloned.name}"!`);
       await loadOrgData(selectedOrgId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to clone set', 'error');
+      showToast(err.message || 'Failed to clone formation', 'error');
     } finally {
       setLoading(false);
     }
@@ -215,13 +215,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Delete Set
   const handleDeleteSet = async (setId: string) => {
     if (!selectedOrgId) return;
-    if (!window.confirm('Delete this team assignment set? Teams defined within this set will also be deleted, and associated projects will be unlinked.')) return;
+    if (!window.confirm('Delete this team formation? Teams defined within this formation will also be deleted, and associated projects will be unlinked.')) return;
     try {
       await api.deleteTeamAssignmentSet(selectedOrgId, setId);
-      showToast('Team assignment set deleted');
+      showToast('Team formation deleted');
       await loadOrgData(selectedOrgId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to delete set', 'error');
+      showToast(err.message || 'Failed to delete formation', 'error');
     }
   };
 
@@ -242,7 +242,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       setTargetSetForTeam(null);
       await loadOrgData(selectedOrgId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to create team in set', 'error');
+      showToast(err.message || 'Failed to create team in formation', 'error');
     } finally {
       setCreatingTeam(false);
     }
@@ -272,10 +272,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   // Delete Team
   const handleDeleteTeam = async (teamId: string) => {
     if (!selectedOrgId) return;
-    if (!window.confirm('Delete this team from the set?')) return;
+    if (!window.confirm('Delete this team from the formation?')) return;
     try {
       await api.deleteOrganizationTeam(selectedOrgId, teamId);
-      showToast('Team removed from set');
+      showToast('Team removed from formation');
       await loadOrgData(selectedOrgId);
     } catch (err: any) {
       showToast(err.message || 'Failed to delete team', 'error');
@@ -335,10 +335,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     try {
       setLoading(true);
       const updated = await api.cloneProjectTeamAssignmentSet(projectId);
-      showToast(`Cloned dedicated staffing set for project "${updated.name}"!`);
+      showToast(`Cloned dedicated staffing formation for project "${updated.name}"!`);
       if (selectedOrgId) await loadOrgData(selectedOrgId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to clone set for project', 'error');
+      showToast(err.message || 'Failed to clone formation for project', 'error');
     } finally {
       setLoading(false);
     }
@@ -368,10 +368,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Layers className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            Team Assignment Sets & Project Staffing
+            Team Formations & Project Staffing
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 max-w-3xl">
-            Create a <strong>Team Assignment Set</strong> first, add functional <strong>Teams</strong> within the set, and staff them with users from the organization. Reusable sets can then be associated with any project.
+            Create a <strong>Team Formation</strong> first, add functional <strong>Teams</strong> within the formation, and staff them with users from the organization. Reusable formations can then be associated with any project.
           </p>
         </div>
 
@@ -405,7 +405,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            Create Team Assignment Set
+            Create Team Formation
           </button>
         </div>
       </div>
@@ -421,7 +421,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Team Assignment Sets</span>
+          <span>Team Formations</span>
           <span className="ml-1.5 px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold">
             {setsList.length}
           </span>
@@ -443,7 +443,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: Team Assignment Sets & Teams Within Them */}
+      {/* TAB 1: Team Formations & Teams Within Them */}
       {activeTab === 'sets' && (
         <div className="mt-6 space-y-6">
           {/* Search bar & summary */}
@@ -454,7 +454,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 type="text"
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
-                placeholder="Search assignment sets..."
+                placeholder="Search team formations..."
                 className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
               />
             </div>
@@ -462,7 +462,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <Info className="w-4 h-4 text-indigo-500" />
               <span>
-                Flow: <strong>Create Set &rarr; Create Teams within Set &rarr; Add Organization Members &rarr; Associate with Projects</strong>
+                Flow: <strong>Create Formation &rarr; Create Teams within Formation &rarr; Add Organization Members &rarr; Associate with Projects</strong>
               </span>
             </div>
           </div>
@@ -472,12 +472,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             <div className="text-center py-16 bg-white dark:bg-gray-850 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8">
               <Layers className="w-12 h-12 mx-auto text-indigo-400 mb-3 opacity-80" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {searchFilter ? 'No matching team assignment sets' : 'No Team Assignment Sets Created Yet'}
+                {searchFilter ? 'No matching team formations' : 'No Team Formations Created Yet'}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-md mx-auto">
                 {searchFilter
                   ? 'Try searching with another keyword.'
-                  : 'Start by creating your first Team Assignment Set. Then, within the set, you can define functional teams (Frontend, Backend, etc.) and assign organization members.'}
+                  : 'Start by creating your first Team Formation. Then, within the formation, you can define functional teams (Frontend, Backend, etc.) and assign organization members.'}
               </p>
               {!searchFilter && (
                 <button
@@ -485,7 +485,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
                 >
                   <Plus className="w-4 h-4" />
-                  Create First Team Assignment Set
+                  Create First Team Formation
                 </button>
               )}
             </div>
@@ -503,7 +503,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                            Team Assignment Set
+                            Team Formation
                           </span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
                             {teams.length} {teams.length === 1 ? 'Team' : 'Teams'}
@@ -533,19 +533,19 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             setIsCreateTeamOpen(true);
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium transition-colors shadow-xs"
-                          title="Create a new functional team inside this set"
+                          title="Create a new functional team inside this formation"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          Add Team to this Set
+                          Add Team to this Formation
                         </button>
 
                         <button
                           onClick={() => handleCloneSet(set.id)}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition-colors"
-                          title="Duplicate this set with all its teams and members"
+                          title="Duplicate this formation with all its teams and members"
                         >
                           <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-                          Clone Set
+                          Clone Formation
                         </button>
 
                         <button
@@ -556,7 +556,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             setIsEditSetOpen(true);
                           }}
                           className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
-                          title="Edit Set Name/Description"
+                          title="Edit Formation Name/Description"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -564,7 +564,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         <button
                           onClick={() => handleDeleteSet(set.id)}
                           className="p-1.5 text-red-500 hover:text-red-700 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                          title="Delete Set"
+                          title="Delete Formation"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -576,7 +576,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider flex items-center gap-2">
                           <Users className="w-4 h-4 text-indigo-500" />
-                          Teams within this Set ({teams.length})
+                          Teams within this formation ({teams.length})
                         </h3>
 
                         {teams.length > 0 && (
@@ -597,10 +597,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         <div className="border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center bg-gray-50/50 dark:bg-gray-800/30">
                           <Users className="w-8 h-8 mx-auto text-gray-400 mb-2" />
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            No teams in this set yet
+                            No teams in this formation yet
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Click below to create the first team (e.g., Frontend Squad, Backend Squad) inside this set.
+                            Click below to create the first team (e.g., Frontend Squad, Backend Squad) inside this formation.
                           </p>
                           <button
                             onClick={() => {
@@ -610,7 +610,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-lg text-xs font-semibold transition-colors"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            Create Team in Set
+                            Create Team in Formation
                           </button>
                         </div>
                       ) : (
@@ -743,7 +743,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           <div className="bg-gray-50 dark:bg-gray-850 p-4 rounded-xl border border-gray-200 dark:border-gray-800 text-xs text-gray-600 dark:text-gray-300 flex items-center justify-between">
             <span className="flex items-center gap-2">
               <FolderKanban className="w-4 h-4 text-indigo-500" />
-              Different projects can associate with different Team Assignment Sets in this organization, or reuse the same set.
+              Different projects can associate with different Team Formations in this organization, or reuse the same formation.
             </span>
           </div>
 
@@ -754,7 +754,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 No Projects in this Organization
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create a project to start assigning teams and team assignment sets.
+                Create a project to start assigning teams and team formations.
               </p>
             </div>
           ) : (
@@ -777,11 +777,11 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         ) : proj.team_assignment_set_name ? (
                           <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center gap-1 truncate max-w-[180px]">
                             <Layers className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{proj.team_assignment_set_name}</span>
+                            <span className="truncate">Formation: {proj.team_assignment_set_name}</span>
                           </span>
                         ) : (
                           <span className="text-[11px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">
-                            No Set Associated
+                            No Formation Associated
                           </span>
                         )}
                       </div>
@@ -860,7 +860,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                       {proj.team_assignment_set_id && (
                         <button
                           onClick={() => handleCloneSetForProject(proj.id)}
-                          title="Clone set to create a dedicated staffing set for this project"
+                          title="Clone formation to create a dedicated staffing formation for this project"
                           className="p-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg transition-colors cursor-pointer"
                         >
                           <Copy className="w-3.5 h-3.5" />
@@ -875,7 +875,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL 1: Create Team Assignment Set (First Step) */}
+      {/* MODAL 1: Create Team Formation (First Step) */}
       {isCreateSetOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
           <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-750">
@@ -884,17 +884,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 1
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Create Team Assignment Set
+                Create Team Formation
               </h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              A Team Assignment Set defines a reusable staffing template for your projects. Once created, you will add functional squads (e.g. Frontend, Backend) inside it.
+              A Team Formation defines how individual teams are formed and staffed for your projects. Once created, you will add functional squads (e.g. Frontend, Backend) inside it.
             </p>
 
             <form onSubmit={handleCreateSetSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Assignment Set Name *
+                  Formation Name *
                 </label>
                 <input
                   type="text"
@@ -912,7 +912,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Describe the purpose or staffing pattern of this set..."
+                  placeholder="Describe the purpose or staffing pattern of this formation..."
                   value={newSetDesc}
                   onChange={(e) => setNewSetDesc(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
@@ -922,7 +922,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 rounded-lg text-xs text-indigo-700 dark:text-indigo-300 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5 text-indigo-600" />
                 <span>
-                  After creating this set, you can immediately start creating teams and assigning team members within it!
+                  After creating this formation, you can immediately start creating teams and assigning team members within it!
                 </span>
               </div>
 
@@ -962,7 +962,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               </div>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Define a functional squad within this assignment set. You can assign users from your organization to this team next.
+              Define a functional squad within this team formation. You can assign users from your organization to this team next.
             </p>
 
             <form onSubmit={handleCreateTeamSubmit} className="space-y-4">
@@ -1009,7 +1009,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   disabled={creatingTeam || !newTeamName.trim()}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
                 >
-                  {creatingTeam ? 'Creating...' : 'Add Team to Set'}
+                  {creatingTeam ? 'Creating...' : 'Add Team to Formation'}
                 </button>
               </div>
             </form>
@@ -1093,17 +1093,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
         </div>
       )}
 
-      {/* MODAL 4: Edit Set */}
+      {/* MODAL 4: Edit Formation */}
       {isEditSetOpen && targetSetForEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
           <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-750">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">
-              Edit Team Assignment Set
+              Edit Team Formation
             </h3>
             <form onSubmit={handleEditSetSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Name *
+                  Formation Name *
                 </label>
                 <input
                   type="text"

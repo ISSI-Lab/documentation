@@ -2,8 +2,16 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool } from '../db';
 import { compileDocumentMarkdown } from '../compiler';
-import { Document, Template } from '../models';
-import { AuthenticatedRequest, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
+import {
+  Document,
+  DocumentSubmission,
+  DocumentType,
+  SubmissionComment,
+  SubmissionStatus,
+  SubmissionType,
+  Template,
+} from '../models';
+import { AuthenticatedRequest, isOrganizationManager, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
 
 export const documentsRouter = Router();
 
@@ -40,6 +48,8 @@ function formatDocumentRow(row: any): Document {
     team_id: orgId, // compatibility
     template_id: row.template_id,
     template_title: row.template_title,
+    document_type: row.document_type === 'personal' ? 'personal' : 'project_shared',
+    is_submittable: Boolean(row.is_submittable),
     status: row.status,
     author: row.author || 'Anonymous',
     created_by: row.created_by || null,
@@ -47,26 +57,110 @@ function formatDocumentRow(row: any): Document {
     tags,
     elements_data: elementsData,
     compiled_markdown: row.compiled_markdown || '',
+    submissions_count: Number(row.submissions_count || 0),
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
+}
+
+function formatSubmissionRow(row: any, comments: SubmissionComment[] = []): DocumentSubmission {
+  let elementsData: Record<string, any> = {};
+  if (typeof row.elements_data === 'string') {
+    try {
+      elementsData = JSON.parse(row.elements_data);
+    } catch {
+      elementsData = {};
+    }
+  } else if (typeof row.elements_data === 'object' && row.elements_data !== null) {
+    elementsData = row.elements_data;
+  }
+
+  return {
+    id: row.id,
+    document_id: row.document_id,
+    project_id: row.project_id,
+    submission_type: (row.submission_type || 'personal') as SubmissionType,
+    user_id: row.user_id || null,
+    user_name: row.user_name || undefined,
+    user_email: row.user_email || undefined,
+    team_id: row.team_id || null,
+    team_name: row.team_name || undefined,
+    status: (row.status || 'draft') as SubmissionStatus,
+    elements_data: elementsData,
+    compiled_markdown: row.compiled_markdown || '',
+    submitted_at: row.submitted_at ? new Date(row.submitted_at).toISOString() : null,
+    created_at: new Date(row.created_at).toISOString(),
+    updated_at: new Date(row.updated_at).toISOString(),
+    comments_count: Number(row.comments_count !== undefined ? row.comments_count : comments.length),
+    comments,
+  };
+}
+
+async function fetchTemplateById(templateId: string): Promise<Template | null> {
+  try {
+    const [tplRows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [templateId]);
+    if (!tplRows || tplRows.length === 0) return null;
+    const t = tplRows[0];
+    let tElements: any[] = [];
+    if (typeof t.document_elements === 'string') {
+      try {
+        tElements = JSON.parse(t.document_elements);
+      } catch {
+        tElements = [];
+      }
+    } else if (Array.isArray(t.document_elements)) {
+      tElements = t.document_elements;
+    }
+    const tOrgId = t.organization_id || t.team_id || null;
+    return {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      category: t.category,
+      icon: t.icon,
+      visibility: t.visibility || 'private',
+      organization_id: tOrgId,
+      team_id: tOrgId,
+      created_by: t.created_by || null,
+      tags: [],
+      document_elements: tElements,
+      created_at: new Date(t.created_at).toISOString(),
+      updated_at: new Date(t.updated_at).toISOString(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/v1/documents - List documents with organization/project filtering
 documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { organization_id, team_id, project_id, template_id, search, tag, scope } = req.query;
+    const {
+      organization_id,
+      team_id,
+      project_id,
+      template_id,
+      search,
+      tag,
+      scope,
+      document_type,
+      is_submittable,
+    } = req.query;
     const targetOrgId = (organization_id || team_id) as string | undefined;
 
-    let query = 'SELECT * FROM documents';
+    let query = `
+      SELECT d.*,
+        (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+      FROM documents d
+    `;
     const params: any[] = [];
     const conditions: string[] = [];
 
     // Filter by ownership/membership if user is authenticated
     if (userId) {
       conditions.push(
-        `((organization_id IS NULL AND created_by = ?) OR (organization_id IS NOT NULL AND organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
+        `((d.organization_id IS NULL AND d.created_by = ?) OR (d.organization_id IS NOT NULL AND d.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
       );
       params.push(userId, userId);
     } else {
@@ -75,27 +169,38 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     if (scope === 'personal' || targetOrgId === 'personal' || targetOrgId === 'null') {
       if (userId) {
-        conditions.push('organization_id IS NULL AND created_by = ?');
+        conditions.push('d.organization_id IS NULL AND d.created_by = ?');
         params.push(userId);
       }
     } else if (targetOrgId && typeof targetOrgId === 'string') {
-      conditions.push('organization_id = ?');
+      conditions.push('d.organization_id = ?');
       params.push(targetOrgId);
     }
 
     if (project_id && typeof project_id === 'string') {
-      conditions.push('project_id = ?');
+      conditions.push('d.project_id = ?');
       params.push(project_id);
     }
 
     if (template_id && typeof template_id === 'string') {
-      conditions.push('template_id = ?');
+      conditions.push('d.template_id = ?');
       params.push(template_id);
+    }
+
+    if (document_type && typeof document_type === 'string') {
+      conditions.push('d.document_type = ?');
+      params.push(document_type);
+    }
+
+    if (is_submittable !== undefined) {
+      const isSubm = is_submittable === 'true' || is_submittable === '1';
+      conditions.push('d.is_submittable = ?');
+      params.push(isSubm ? 1 : 0);
     }
 
     if (search && typeof search === 'string' && search.trim()) {
       const q = `%${search.trim().toLowerCase()}%`;
-      conditions.push('(LOWER(title) LIKE ? OR LOWER(author) LIKE ?)');
+      conditions.push('(LOWER(d.title) LIKE ? OR LOWER(d.author) LIKE ?)');
       params.push(q, q);
     }
 
@@ -103,7 +208,7 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
       query += ` WHERE ${conditions.join(' AND ')}`;
     }
 
-    query += ' ORDER BY updated_at DESC';
+    query += ' ORDER BY d.updated_at DESC';
 
     const [rows] = await pool.query<any[]>(query, params);
     let docs = rows.map(formatDocumentRow);
@@ -122,7 +227,12 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 // GET /api/v1/documents/:id
 documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const [rows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query<any[]>(
+      `SELECT d.*,
+         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+       FROM documents d WHERE d.id = ?`,
+      [req.params.id]
+    );
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -136,7 +246,18 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
 documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const { title, template_id, project_id, organization_id, team_id, author, tags, elements_data } = req.body;
+    const {
+      title,
+      template_id,
+      project_id,
+      organization_id,
+      team_id,
+      author,
+      tags,
+      elements_data,
+      document_type,
+      is_submittable,
+    } = req.body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'Document title is required' });
@@ -174,40 +295,10 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     }
 
     // Fetch template details
-    const [tplRows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [template_id]);
-    if (!tplRows || tplRows.length === 0) {
+    const template = await fetchTemplateById(template_id);
+    if (!template) {
       return res.status(400).json({ error: `Template with ID '${template_id}' not found` });
     }
-
-    const tplRow = tplRows[0];
-    let templateElements: any[] = [];
-    if (typeof tplRow.document_elements === 'string') {
-      try {
-        templateElements = JSON.parse(tplRow.document_elements);
-      } catch {
-        templateElements = [];
-      }
-    } else if (Array.isArray(tplRow.document_elements)) {
-      templateElements = tplRow.document_elements;
-    }
-
-    const templateOrgId = tplRow.organization_id || tplRow.team_id || null;
-
-    const template: Template = {
-      id: tplRow.id,
-      title: tplRow.title,
-      description: tplRow.description,
-      category: tplRow.category,
-      icon: tplRow.icon,
-      visibility: tplRow.visibility || 'private',
-      organization_id: templateOrgId,
-      team_id: templateOrgId,
-      created_by: tplRow.created_by || null,
-      tags: [],
-      document_elements: templateElements,
-      created_at: new Date(tplRow.created_at).toISOString(),
-      updated_at: new Date(tplRow.updated_at).toISOString(),
-    };
 
     // Initialize elements data
     const finalElementsData: Record<string, any> = {};
@@ -223,6 +314,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     const cleanAuthor = (author && typeof author === 'string' && author.trim()) || user.name || user.username;
     const cleanTags = Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
     const status = 'draft';
+    const docType: DocumentType = document_type === 'personal' ? 'personal' : 'project_shared';
+    const isSubm = Boolean(is_submittable);
 
     const compiledMd = compileDocumentMarkdown(
       title.trim(),
@@ -234,8 +327,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     );
 
     await pool.query(
-      `INSERT INTO documents (id, title, project_id, organization_id, template_id, template_title, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      `INSERT INTO documents (id, title, project_id, organization_id, template_id, template_title, document_type, is_submittable, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         docId,
         title.trim(),
@@ -243,6 +336,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         resolvedOrgId,
         template.id,
         template.title,
+        docType,
+        isSubm,
         status,
         cleanAuthor,
         user.id,
@@ -253,14 +348,17 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       ]
     );
 
-    const [createdRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    const [createdRows] = await pool.query<any[]>(
+      `SELECT d.*, 0 as submissions_count FROM documents d WHERE d.id = ?`,
+      [docId]
+    );
     res.status(201).json(formatDocumentRow(createdRows[0]));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to create document', detail: err.message });
   }
 });
 
-// PUT /api/v1/documents/:id - Update document (Co-documenting: any organization member can edit)
+// PUT /api/v1/documents/:id - Update document
 documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
@@ -281,12 +379,17 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
       }
     }
 
-    const { title, status, author, tags, elements_data, project_id } = req.body;
+    const { title, status, author, tags, elements_data, project_id, document_type, is_submittable } = req.body;
 
     const newTitle = title !== undefined && typeof title === 'string' ? title.trim() : currentDoc.title;
     const newStatus = status !== undefined ? status : currentDoc.status;
     const newAuthor = author !== undefined ? author : currentDoc.author;
     const newProjectId = project_id !== undefined ? project_id : currentDoc.project_id;
+    const newDocType =
+      document_type !== undefined
+        ? (document_type === 'personal' ? 'personal' : 'project_shared')
+        : currentDoc.document_type || 'project_shared';
+    const newIsSubmittable = is_submittable !== undefined ? Boolean(is_submittable) : Boolean(currentDoc.is_submittable);
 
     let currentTags: string[] = [];
     if (typeof currentDoc.tags === 'string') {
@@ -314,39 +417,7 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     const finalElementsData = elements_data !== undefined ? { ...currentData, ...elements_data } : currentData;
 
     // Fetch linked template for compiling markdown
-    let template: Template | null = null;
-    const [tplRows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [currentDoc.template_id]);
-    if (tplRows && tplRows.length > 0) {
-      const t = tplRows[0];
-      let tElements: any[] = [];
-      if (typeof t.document_elements === 'string') {
-        try {
-          tElements = JSON.parse(t.document_elements);
-        } catch {
-          tElements = [];
-        }
-      } else if (Array.isArray(t.document_elements)) {
-        tElements = t.document_elements;
-      }
-
-      const tOrgId = t.organization_id || t.team_id || null;
-
-      template = {
-        id: t.id,
-        title: t.title,
-        description: t.description,
-        category: t.category,
-        icon: t.icon,
-        visibility: t.visibility || 'private',
-        organization_id: tOrgId,
-        team_id: tOrgId,
-        created_by: t.created_by || null,
-        tags: [],
-        document_elements: tElements,
-        created_at: new Date(t.created_at).toISOString(),
-        updated_at: new Date(t.updated_at).toISOString(),
-      };
-    }
+    const template = await fetchTemplateById(currentDoc.template_id);
 
     const compiledMd = compileDocumentMarkdown(
       newTitle,
@@ -359,13 +430,15 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     await pool.query(
       `UPDATE documents 
-       SET title = ?, status = ?, author = ?, project_id = ?, last_edited_by = ?, tags = ?, elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+       SET title = ?, status = ?, author = ?, project_id = ?, document_type = ?, is_submittable = ?, last_edited_by = ?, tags = ?, elements_data = ?, compiled_markdown = ?, updated_at = NOW()
        WHERE id = ?`,
       [
         newTitle,
         newStatus,
         newAuthor,
         newProjectId,
+        newDocType,
+        newIsSubmittable,
         user.id,
         JSON.stringify(newTags),
         JSON.stringify(finalElementsData),
@@ -374,7 +447,12 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
       ]
     );
 
-    const [updatedRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [id]);
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT d.*,
+         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+       FROM documents d WHERE d.id = ?`,
+      [id]
+    );
     res.json(formatDocumentRow(updatedRows[0]));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update document', detail: err.message });
@@ -399,6 +477,12 @@ documentsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
       }
     }
 
+    // Cascade delete comments and submissions
+    await pool.query(
+      'DELETE FROM submission_comments WHERE submission_id IN (SELECT id FROM document_submissions WHERE document_id = ?)',
+      [req.params.id]
+    );
+    await pool.query('DELETE FROM document_submissions WHERE document_id = ?', [req.params.id]);
     await pool.query('DELETE FROM documents WHERE id = ?', [req.params.id]);
     res.status(204).send();
   } catch (err: any) {
@@ -427,5 +511,809 @@ documentsRouter.get('/:id/export/markdown', optionalAuth, async (req: Authentica
     res.send(doc.compiled_markdown);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to export document markdown', detail: err.message });
+  }
+});
+
+// ==============================================================================
+// Document Submissions & Creator Review Endpoints
+// ==============================================================================
+
+// Helper: Check if user is project creator, organization owner or manager
+async function canReviewSubmissions(userId: string, doc: any, project: any): Promise<boolean> {
+  if (doc.created_by === userId) return true;
+  if (project) {
+    if (project.created_by === userId) return true;
+    const orgId = project.organization_id || project.team_id;
+    if (orgId) {
+      return isOrganizationManager(userId, orgId);
+    }
+  }
+  const docOrgId = doc.organization_id || doc.team_id;
+  if (docOrgId) {
+    return isOrganizationManager(userId, docOrgId);
+  }
+  return false;
+}
+
+// GET /api/v1/documents/:id/submissions - List all submissions for project creator, or own submission for participants
+documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const docId = req.params.id;
+
+    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    if (!docRows || docRows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    const doc = docRows[0];
+    if (!doc.is_submittable) {
+      return res.json([]);
+    }
+
+    let project: any = null;
+    if (doc.project_id) {
+      const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [doc.project_id]);
+      if (projRows && projRows.length > 0) {
+        project = projRows[0];
+      }
+    }
+
+    const isReviewer = await canReviewSubmissions(userId, doc, project);
+    const docType: DocumentType = doc.document_type === 'personal' ? 'personal' : 'project_shared';
+
+    if (isReviewer) {
+      // Reviewer view: list all expected submissions
+      if (docType === 'personal') {
+        // Collect expected users
+        const usersMap = new Map<string, { user_id: string; user_name: string; user_email: string }>();
+
+        if (project) {
+          if (project.association_type === 'individual') {
+            const [indivs] = await pool.query<any[]>(
+              `SELECT pim.user_id, u.name, u.username, u.email
+               FROM project_individual_members pim
+               JOIN users u ON pim.user_id = u.id
+               WHERE pim.project_id = ?`,
+              [project.id]
+            );
+            for (const row of indivs) {
+              usersMap.set(row.user_id, {
+                user_id: row.user_id,
+                user_name: row.name || row.username,
+                user_email: row.email,
+              });
+            }
+          } else {
+            // Team association: users across all assigned teams
+            const [teamUsers] = await pool.query<any[]>(
+              `SELECT DISTINCT otm.user_id, u.name, u.username, u.email
+               FROM organization_team_members otm
+               JOIN project_team_assignments pta ON otm.team_id = pta.team_id
+               JOIN users u ON otm.user_id = u.id
+               WHERE pta.project_id = ?`,
+              [project.id]
+            );
+            for (const row of teamUsers) {
+              usersMap.set(row.user_id, {
+                user_id: row.user_id,
+                user_name: row.name || row.username,
+                user_email: row.email,
+              });
+            }
+          }
+        }
+
+        // Also fetch any users who already submitted
+        const [existingSubmUsers] = await pool.query<any[]>(
+          `SELECT DISTINCT ds.user_id, u.name, u.username, u.email
+           FROM document_submissions ds
+           JOIN users u ON ds.user_id = u.id
+           WHERE ds.document_id = ? AND ds.user_id IS NOT NULL`,
+          [docId]
+        );
+        for (const row of existingSubmUsers) {
+          if (!usersMap.has(row.user_id)) {
+            usersMap.set(row.user_id, {
+              user_id: row.user_id,
+              user_name: row.name || row.username,
+              user_email: row.email,
+            });
+          }
+        }
+
+        // Fetch all submission records for this document
+        const [submissions] = await pool.query<any[]>(
+          `SELECT ds.*, u.name as user_name, u.username, u.email as user_email,
+             (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+           FROM document_submissions ds
+           LEFT JOIN users u ON ds.user_id = u.id
+           WHERE ds.document_id = ?`,
+          [docId]
+        );
+        const submsByUserId = new Map<string, any>();
+        for (const s of submissions) {
+          if (s.user_id) submsByUserId.set(s.user_id, s);
+        }
+
+        const results: DocumentSubmission[] = [];
+        for (const [uId, uInfo] of usersMap.entries()) {
+          const s = submsByUserId.get(uId);
+          if (s) {
+            results.push(formatSubmissionRow(s));
+          } else {
+            results.push({
+              id: `unsubm-${uId}`,
+              document_id: docId,
+              project_id: doc.project_id || '',
+              submission_type: 'personal',
+              user_id: uId,
+              user_name: uInfo.user_name,
+              user_email: uInfo.user_email,
+              status: 'draft',
+              elements_data: {},
+              compiled_markdown: '',
+              submitted_at: null,
+              created_at: new Date(doc.created_at).toISOString(),
+              updated_at: new Date(doc.created_at).toISOString(),
+              comments_count: 0,
+              comments: [],
+            });
+          }
+        }
+
+        return res.json(results);
+      } else {
+        // Project Shared Document: Team-based submissions
+        const teamsMap = new Map<string, { team_id: string; team_name: string }>();
+
+        if (project) {
+          const [assignedTeams] = await pool.query<any[]>(
+            `SELECT ot.id as team_id, ot.name as team_name
+             FROM project_team_assignments pta
+             JOIN organization_teams ot ON pta.team_id = ot.id
+             WHERE pta.project_id = ?`,
+            [project.id]
+          );
+          for (const row of assignedTeams) {
+            teamsMap.set(row.team_id, { team_id: row.team_id, team_name: row.team_name });
+          }
+        }
+
+        // Also fetch any teams with existing submission records
+        const [existingSubmTeams] = await pool.query<any[]>(
+          `SELECT DISTINCT ds.team_id, ot.name as team_name
+           FROM document_submissions ds
+           JOIN organization_teams ot ON ds.team_id = ot.id
+           WHERE ds.document_id = ? AND ds.team_id IS NOT NULL`,
+          [docId]
+        );
+        for (const row of existingSubmTeams) {
+          if (!teamsMap.has(row.team_id)) {
+            teamsMap.set(row.team_id, { team_id: row.team_id, team_name: row.team_name });
+          }
+        }
+
+        const [submissions] = await pool.query<any[]>(
+          `SELECT ds.*, ot.name as team_name,
+             (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+           FROM document_submissions ds
+           LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+           WHERE ds.document_id = ?`,
+          [docId]
+        );
+        const submsByTeamId = new Map<string, any>();
+        for (const s of submissions) {
+          if (s.team_id) submsByTeamId.set(s.team_id, s);
+        }
+
+        const results: DocumentSubmission[] = [];
+        for (const [tId, tInfo] of teamsMap.entries()) {
+          const s = submsByTeamId.get(tId);
+          if (s) {
+            results.push(formatSubmissionRow(s));
+          } else {
+            results.push({
+              id: `unsubm-${tId}`,
+              document_id: docId,
+              project_id: doc.project_id || '',
+              submission_type: 'team',
+              team_id: tId,
+              team_name: tInfo.team_name,
+              status: 'draft',
+              elements_data: {},
+              compiled_markdown: '',
+              submitted_at: null,
+              created_at: new Date(doc.created_at).toISOString(),
+              updated_at: new Date(doc.created_at).toISOString(),
+              comments_count: 0,
+              comments: [],
+            });
+          }
+        }
+
+        return res.json(results);
+      }
+    } else {
+      // Participant view: only return caller's own submission or team's submission
+      if (docType === 'personal') {
+        const [rows] = await pool.query<any[]>(
+          `SELECT ds.*, u.name as user_name, u.username, u.email as user_email,
+             (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+           FROM document_submissions ds
+           LEFT JOIN users u ON ds.user_id = u.id
+           WHERE ds.document_id = ? AND ds.user_id = ?`,
+          [docId, userId]
+        );
+        return res.json(rows.map((r) => formatSubmissionRow(r)));
+      } else {
+        // Find user's team in project
+        const [teamRows] = await pool.query<any[]>(
+          `SELECT otm.team_id, ot.name as team_name
+           FROM organization_team_members otm
+           JOIN project_team_assignments pta ON otm.team_id = pta.team_id
+           JOIN organization_teams ot ON otm.team_id = ot.id
+           WHERE pta.project_id = ? AND otm.user_id = ?`,
+          [doc.project_id, userId]
+        );
+        const teamIds = teamRows.map((r) => r.team_id);
+        if (teamIds.length === 0) {
+          return res.json([]);
+        }
+        const [rows] = await pool.query<any[]>(
+          `SELECT ds.*, ot.name as team_name,
+             (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+           FROM document_submissions ds
+           LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+           WHERE ds.document_id = ? AND ds.team_id IN (?)`,
+          [docId, teamIds]
+        );
+        return res.json(rows.map((r) => formatSubmissionRow(r)));
+      }
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve submissions', detail: err.message });
+  }
+});
+
+// GET /api/v1/documents/:id/my-submission - Get or pre-populate draft submission for caller
+documentsRouter.get('/:id/my-submission', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const docId = req.params.id;
+
+    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    if (!docRows || docRows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    const doc = docRows[0];
+    if (!doc.is_submittable) {
+      return res.status(400).json({ error: 'This document is not configured for submissions' });
+    }
+
+    const docType: DocumentType = doc.document_type === 'personal' ? 'personal' : 'project_shared';
+    const template = await fetchTemplateById(doc.template_id);
+
+    // Initial elements data pre-populated with creator prompt & default values
+    let prePopulatedData: Record<string, any> = {};
+    if (typeof doc.elements_data === 'string') {
+      try {
+        prePopulatedData = JSON.parse(doc.elements_data);
+      } catch {
+        prePopulatedData = {};
+      }
+    } else if (typeof doc.elements_data === 'object' && doc.elements_data !== null) {
+      prePopulatedData = { ...doc.elements_data };
+    }
+
+    if (docType === 'personal') {
+      // Look up existing submission
+      const [existing] = await pool.query<any[]>(
+        `SELECT ds.*, u.name as user_name, u.username, u.email as user_email
+         FROM document_submissions ds
+         LEFT JOIN users u ON ds.user_id = u.id
+         WHERE ds.document_id = ? AND ds.user_id = ?`,
+        [docId, user.id]
+      );
+
+      if (existing && existing.length > 0) {
+        const [comments] = await pool.query<any[]>(
+          `SELECT sc.*, u.name as user_name, u.username, u.email as user_email
+           FROM submission_comments sc
+           JOIN users u ON sc.user_id = u.id
+           WHERE sc.submission_id = ?
+           ORDER BY sc.created_at ASC`,
+          [existing[0].id]
+        );
+        return res.json(formatSubmissionRow(existing[0], comments));
+      }
+
+      // Pre-populate new personal submission draft
+      const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+      const authorLabel = user.name || user.username;
+      const compiledMd = compileDocumentMarkdown(
+        `${doc.title} - ${authorLabel}`,
+        'draft',
+        authorLabel,
+        [],
+        template,
+        prePopulatedData
+      );
+
+      await pool.query(
+        `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+         VALUES (?, ?, ?, 'personal', ?, NULL, 'draft', ?, ?, NOW(), NOW())`,
+        [
+          submId,
+          docId,
+          doc.project_id || '',
+          user.id,
+          JSON.stringify(prePopulatedData),
+          compiledMd,
+        ]
+      );
+
+      const [created] = await pool.query<any[]>(
+        `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, 0 as comments_count
+         FROM document_submissions ds
+         LEFT JOIN users u ON ds.user_id = u.id
+         WHERE ds.id = ?`,
+        [submId]
+      );
+      return res.status(201).json(formatSubmissionRow(created[0], []));
+    } else {
+      // Team-based submission
+      if (!doc.project_id) {
+        return res.status(400).json({ error: 'Team submissions require a project context' });
+      }
+
+      const [teamRows] = await pool.query<any[]>(
+        `SELECT otm.team_id, ot.name as team_name
+         FROM organization_team_members otm
+         JOIN project_team_assignments pta ON otm.team_id = pta.team_id
+         JOIN organization_teams ot ON otm.team_id = ot.id
+         WHERE pta.project_id = ? AND otm.user_id = ?
+         LIMIT 1`,
+        [doc.project_id, user.id]
+      );
+
+      let targetTeamId: string;
+      let targetTeamName: string;
+
+      if (teamRows && teamRows.length > 0) {
+        targetTeamId = teamRows[0].team_id;
+        targetTeamName = teamRows[0].team_name;
+      } else {
+        // If user is project creator, allow fallback to first assigned team or error
+        const [anyTeams] = await pool.query<any[]>(
+          `SELECT ot.id as team_id, ot.name as team_name
+           FROM project_team_assignments pta
+           JOIN organization_teams ot ON pta.team_id = ot.id
+           WHERE pta.project_id = ?
+           LIMIT 1`,
+          [doc.project_id]
+        );
+        if (!anyTeams || anyTeams.length === 0) {
+          return res.status(400).json({
+            error: 'No teams have been assigned to this project yet. Please assign a team first.',
+          });
+        }
+        targetTeamId = anyTeams[0].team_id;
+        targetTeamName = anyTeams[0].team_name;
+      }
+
+      // Look up existing submission for team
+      const [existing] = await pool.query<any[]>(
+        `SELECT ds.*, ot.name as team_name
+         FROM document_submissions ds
+         LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+         WHERE ds.document_id = ? AND ds.team_id = ?`,
+        [docId, targetTeamId]
+      );
+
+      if (existing && existing.length > 0) {
+        const [comments] = await pool.query<any[]>(
+          `SELECT sc.*, u.name as user_name, u.username, u.email as user_email
+           FROM submission_comments sc
+           JOIN users u ON sc.user_id = u.id
+           WHERE sc.submission_id = ?
+           ORDER BY sc.created_at ASC`,
+          [existing[0].id]
+        );
+        return res.json(formatSubmissionRow(existing[0], comments));
+      }
+
+      // Pre-populate new team submission draft
+      const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+      const compiledMd = compileDocumentMarkdown(
+        `${doc.title} - ${targetTeamName}`,
+        'draft',
+        targetTeamName,
+        [],
+        template,
+        prePopulatedData
+      );
+
+      await pool.query(
+        `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+         VALUES (?, ?, ?, 'team', ?, ?, 'draft', ?, ?, NOW(), NOW())`,
+        [
+          submId,
+          docId,
+          doc.project_id,
+          user.id,
+          targetTeamId,
+          JSON.stringify(prePopulatedData),
+          compiledMd,
+        ]
+      );
+
+      const [created] = await pool.query<any[]>(
+        `SELECT ds.*, ot.name as team_name, 0 as comments_count
+         FROM document_submissions ds
+         LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+         WHERE ds.id = ?`,
+        [submId]
+      );
+      return res.status(201).json(formatSubmissionRow(created[0], []));
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve or initialize submission', detail: err.message });
+  }
+});
+
+// GET /api/v1/documents/:id/submissions/:submissionId - Get specific submission with comments
+documentsRouter.get('/:id/submissions/:submissionId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id: docId, submissionId } = req.params;
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name
+       FROM document_submissions ds
+       LEFT JOIN users u ON ds.user_id = u.id
+       LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+       WHERE ds.id = ? AND ds.document_id = ?`,
+      [submissionId, docId]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    const [comments] = await pool.query<any[]>(
+      `SELECT sc.*, u.name as user_name, u.username, u.email as user_email
+       FROM submission_comments sc
+       JOIN users u ON sc.user_id = u.id
+       WHERE sc.submission_id = ?
+       ORDER BY sc.created_at ASC`,
+      [submissionId]
+    );
+
+    res.json(formatSubmissionRow(rows[0], comments));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve submission', detail: err.message });
+  }
+});
+
+// PUT /api/v1/documents/:id/submissions/:submissionId - Update submission elements data
+documentsRouter.put('/:id/submissions/:submissionId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id: docId, submissionId } = req.params;
+    const { elements_data } = req.body;
+
+    const [existing] = await pool.query<any[]>(
+      'SELECT ds.*, d.template_id, d.title as doc_title FROM document_submissions ds JOIN documents d ON ds.document_id = d.id WHERE ds.id = ? AND ds.document_id = ?',
+      [submissionId, docId]
+    );
+
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+    const subm = existing[0];
+
+    // Verify permission: author of personal submission, or member of team submission
+    if (subm.submission_type === 'personal') {
+      if (subm.user_id !== user.id) {
+        const isMgr = await canReviewSubmissions(user.id, subm, null);
+        if (!isMgr) {
+          return res.status(403).json({ error: 'You do not have permission to edit this personal submission' });
+        }
+      }
+    } else {
+      // Team submission: verify user is in team
+      const [inTeam] = await pool.query<any[]>(
+        'SELECT COUNT(*) as cnt FROM organization_team_members WHERE team_id = ? AND user_id = ?',
+        [subm.team_id, user.id]
+      );
+      if (inTeam[0]?.cnt === 0) {
+        const isMgr = await canReviewSubmissions(user.id, subm, null);
+        if (!isMgr) {
+          return res.status(403).json({ error: 'You are not a member of the assigned team for this submission' });
+        }
+      }
+    }
+
+    let currentData: Record<string, any> = {};
+    if (typeof subm.elements_data === 'string') {
+      try {
+        currentData = JSON.parse(subm.elements_data);
+      } catch {
+        currentData = {};
+      }
+    } else if (typeof subm.elements_data === 'object' && subm.elements_data !== null) {
+      currentData = subm.elements_data;
+    }
+
+    const finalElementsData = elements_data !== undefined ? { ...currentData, ...elements_data } : currentData;
+    const template = await fetchTemplateById(subm.template_id);
+    const authorLabel = subm.submission_type === 'personal' ? (user.name || user.username) : (subm.team_name || 'Team');
+
+    const compiledMd = compileDocumentMarkdown(
+      subm.doc_title,
+      subm.status,
+      authorLabel,
+      [],
+      template,
+      finalElementsData
+    );
+
+    await pool.query(
+      `UPDATE document_submissions
+       SET elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [JSON.stringify(finalElementsData), compiledMd, submissionId]
+    );
+
+    const [updated] = await pool.query<any[]>(
+      `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
+         (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+       FROM document_submissions ds
+       LEFT JOIN users u ON ds.user_id = u.id
+       LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+       WHERE ds.id = ?`,
+      [submissionId]
+    );
+
+    res.json(formatSubmissionRow(updated[0]));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update submission', detail: err.message });
+  }
+});
+
+// POST /api/v1/documents/:id/submissions/:submissionId/submit - Mark submission as submitted
+documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id: docId, submissionId } = req.params;
+
+    const [existing] = await pool.query<any[]>(
+      'SELECT * FROM document_submissions WHERE id = ? AND document_id = ?',
+      [submissionId, docId]
+    );
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+    const subm = existing[0];
+
+    // Permission check
+    if (subm.submission_type === 'personal') {
+      if (subm.user_id !== user.id) {
+        return res.status(403).json({ error: 'Only the author can submit this personal submission' });
+      }
+    } else {
+      const [inTeam] = await pool.query<any[]>(
+        'SELECT COUNT(*) as cnt FROM organization_team_members WHERE team_id = ? AND user_id = ?',
+        [subm.team_id, user.id]
+      );
+      if (inTeam[0]?.cnt === 0) {
+        return res.status(403).json({ error: 'Only team members can submit on behalf of the team' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE document_submissions
+       SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
+       WHERE id = ?`,
+      [submissionId]
+    );
+
+    const [updated] = await pool.query<any[]>(
+      `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
+         (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+       FROM document_submissions ds
+       LEFT JOIN users u ON ds.user_id = u.id
+       LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+       WHERE ds.id = ?`,
+      [submissionId]
+    );
+
+    res.json({
+      message: 'Document submitted successfully!',
+      submission: formatSubmissionRow(updated[0]),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to submit document', detail: err.message });
+  }
+});
+
+// POST /api/v1/documents/:id/submissions/:submissionId/unsubmit - Revert submission to draft
+documentsRouter.post('/:id/submissions/:submissionId/unsubmit', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id: docId, submissionId } = req.params;
+
+    const [existing] = await pool.query<any[]>(
+      'SELECT * FROM document_submissions WHERE id = ? AND document_id = ?',
+      [submissionId, docId]
+    );
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+    const subm = existing[0];
+
+    // Permission check
+    if (subm.submission_type === 'personal') {
+      if (subm.user_id !== user.id) {
+        return res.status(403).json({ error: 'Only the author can unsubmit this personal submission' });
+      }
+    } else {
+      const [inTeam] = await pool.query<any[]>(
+        'SELECT COUNT(*) as cnt FROM organization_team_members WHERE team_id = ? AND user_id = ?',
+        [subm.team_id, user.id]
+      );
+      if (inTeam[0]?.cnt === 0) {
+        return res.status(403).json({ error: 'Only team members can unsubmit this team document' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE document_submissions
+       SET status = 'draft', updated_at = NOW()
+       WHERE id = ?`,
+      [submissionId]
+    );
+
+    const [updated] = await pool.query<any[]>(
+      `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
+         (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+       FROM document_submissions ds
+       LEFT JOIN users u ON ds.user_id = u.id
+       LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+       WHERE ds.id = ?`,
+      [submissionId]
+    );
+
+    res.json({
+      message: 'Submission reverted to draft',
+      submission: formatSubmissionRow(updated[0]),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to unsubmit document', detail: err.message });
+  }
+});
+
+// PUT /api/v1/documents/:id/submissions/:submissionId/status - Reviewer status update
+documentsRouter.put('/:id/submissions/:submissionId/status', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id: docId, submissionId } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['draft', 'submitted', 'reviewed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be draft, submitted, or reviewed' });
+    }
+
+    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    if (!docRows || docRows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    const doc = docRows[0];
+
+    let project: any = null;
+    if (doc.project_id) {
+      const [projRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [doc.project_id]);
+      if (projRows && projRows.length > 0) project = projRows[0];
+    }
+
+    const canReview = await canReviewSubmissions(user.id, doc, project);
+    if (!canReview) {
+      return res.status(403).json({ error: 'Only project creators or organization managers can review submissions' });
+    }
+
+    await pool.query(
+      'UPDATE document_submissions SET status = ?, updated_at = NOW() WHERE id = ?',
+      [status, submissionId]
+    );
+
+    const [updated] = await pool.query<any[]>(
+      `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
+         (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
+       FROM document_submissions ds
+       LEFT JOIN users u ON ds.user_id = u.id
+       LEFT JOIN organization_teams ot ON ds.team_id = ot.id
+       WHERE ds.id = ?`,
+      [submissionId]
+    );
+
+    res.json(formatSubmissionRow(updated[0]));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update submission status', detail: err.message });
+  }
+});
+
+// GET /api/v1/documents/:id/submissions/:submissionId/comments - List comments for submission
+documentsRouter.get('/:id/submissions/:submissionId/comments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { submissionId } = req.params;
+
+    const [comments] = await pool.query<any[]>(
+      `SELECT sc.*, u.name as user_name, u.username, u.email as user_email
+       FROM submission_comments sc
+       JOIN users u ON sc.user_id = u.id
+       WHERE sc.submission_id = ?
+       ORDER BY sc.created_at ASC`,
+      [submissionId]
+    );
+
+    res.json(
+      comments.map((c) => ({
+        id: c.id,
+        submission_id: c.submission_id,
+        user_id: c.user_id,
+        user_name: c.user_name || c.username,
+        user_email: c.user_email,
+        content: c.content,
+        created_at: new Date(c.created_at).toISOString(),
+        updated_at: new Date(c.updated_at).toISOString(),
+      }))
+    );
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve comments', detail: err.message });
+  }
+});
+
+// POST /api/v1/documents/:id/submissions/:submissionId/comments - Add comment (creator review & feedback)
+documentsRouter.post('/:id/submissions/:submissionId/comments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { submissionId } = req.params;
+    const { content } = req.body;
+
+    if (!content || typeof content !== 'string' || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    const [submRows] = await pool.query<any[]>('SELECT * FROM document_submissions WHERE id = ?', [submissionId]);
+    if (!submRows || submRows.length === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    const cmtId = `subm_cmt-${crypto.randomBytes(4).toString('hex')}`;
+    await pool.query(
+      `INSERT INTO submission_comments (id, submission_id, user_id, content, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NOW(), NOW())`,
+      [cmtId, submissionId, user.id, content.trim()]
+    );
+
+    const [newCmt] = await pool.query<any[]>(
+      `SELECT sc.*, u.name as user_name, u.username, u.email as user_email
+       FROM submission_comments sc
+       JOIN users u ON sc.user_id = u.id
+       WHERE sc.id = ?`,
+      [cmtId]
+    );
+
+    res.status(201).json({
+      id: newCmt[0].id,
+      submission_id: newCmt[0].submission_id,
+      user_id: newCmt[0].user_id,
+      user_name: newCmt[0].user_name || newCmt[0].username,
+      user_email: newCmt[0].user_email,
+      content: newCmt[0].content,
+      created_at: new Date(newCmt[0].created_at).toISOString(),
+      updated_at: new Date(newCmt[0].updated_at).toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to post comment', detail: err.message });
   }
 });

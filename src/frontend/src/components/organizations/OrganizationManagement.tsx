@@ -579,7 +579,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               <div className="mb-2">
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
                                   <CheckCircle2 className="w-3 h-3 text-indigo-600" />
-                                  Set: {proj.team_assignment_set_name}
+                                  Formation: {proj.team_assignment_set_name}
                                 </span>
                               </div>
                             ) : null}
@@ -1074,7 +1074,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                       Team Assigned
                     </div>
                     <span className="text-[10px] text-slate-500 leading-tight">
-                      Staffed via organization squads or reusable team sets
+                      Staffed via organization squads or reusable team formations
                     </span>
                   </button>
 

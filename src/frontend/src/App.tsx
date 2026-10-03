@@ -519,6 +519,7 @@ export const App: React.FC = () => {
           <DocumentViewer
             document={activeDoc}
             template={activeTemplate}
+            currentUser={currentUser}
             onSwitchToEdit={() => setCurrentView('edit_document')}
             onBack={() => {
               setCurrentView('documents');

@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, FilePlus, Sparkles, FolderKanban, Users, User as UserIcon, Globe, Lock, Building2 } from 'lucide-react';
-import { DocumentCreatePayload, Organization, Project, Team, Template, User } from '../../types';
+import {
+  X,
+  FilePlus,
+  Sparkles,
+  FolderKanban,
+  Users,
+  User as UserIcon,
+  Globe,
+  Lock,
+  Building2,
+  Send,
+  CheckSquare,
+  MessageSquare,
+  Share2,
+} from 'lucide-react';
+import { DocumentCreatePayload, DocumentType, Organization, Project, Team, Template, User } from '../../types';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
@@ -49,6 +63,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [templateId, setTemplateId] = useState('');
+  const [documentType, setDocumentType] = useState<DocumentType>('project_shared');
+  const [isSubmittable, setIsSubmittable] = useState(false);
   const [author, setAuthor] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [creating, setCreating] = useState(false);
@@ -76,6 +92,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       setProjectId(initialSelectedProjectId || null);
       setTitle('');
       setTagsInput('');
+      setDocumentType('project_shared');
+      setIsSubmittable(false);
       setError(null);
       setAuthor(currentUser?.name || currentUser?.username || '');
 
@@ -150,6 +168,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         organization_id: targetOrgId,
         team_id: targetOrgId,
         project_id: projectId || null,
+        document_type: documentType,
+        is_submittable: isSubmittable,
         author: author.trim() || currentUser?.name || currentUser?.username || 'Anonymous',
         tags,
       });
@@ -323,6 +343,92 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Document Type: Personal Document vs Project Shared Document */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Share2 className="w-3.5 h-3.5 text-blue-600" /> Document Type & Collaboration
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Project Shared Document */}
+              <div
+                onClick={() => setDocumentType('project_shared')}
+                className={`p-3 border cursor-pointer transition-all ${
+                  documentType === 'project_shared'
+                    ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm'
+                    : 'bg-white border-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-blue-600" /> Project Shared Document
+                  </span>
+                  {documentType === 'project_shared' && (
+                    <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 font-bold rounded">
+                      Selected
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  Shared editing among team & project members.
+                </p>
+              </div>
+
+              {/* Personal Document */}
+              <div
+                onClick={() => setDocumentType('personal')}
+                className={`p-3 border cursor-pointer transition-all ${
+                  documentType === 'personal'
+                    ? 'bg-purple-50/70 border-purple-600 ring-1 ring-purple-600 shadow-sm'
+                    : 'bg-white border-slate-300 hover:border-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                    <UserIcon className="w-3.5 h-3.5 text-purple-600" /> Personal Document
+                  </span>
+                  {documentType === 'personal' && (
+                    <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.2 font-bold rounded">
+                      Selected
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  Individual document authored per person.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Submittable Deliverable Toggle */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isSubmittable}
+                onChange={(e) => setIsSubmittable(e.target.checked)}
+                className="mt-0.5 h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                  <Send className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Submittable Document (Enable Submissions)</span>
+                  {isSubmittable && (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 font-bold rounded">
+                      Submissions Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  {isSubmittable
+                    ? documentType === 'personal'
+                      ? "Each person has their own submission for the project creator to view and comment."
+                      : "Team members edit together and submit according to team. The project creator can view and comment on each team's submission."
+                    : 'When disabled, this document functions as a standard collaborative document.'}
+                </p>
+              </div>
+            </label>
           </div>
 
           {/* Template Selector */}

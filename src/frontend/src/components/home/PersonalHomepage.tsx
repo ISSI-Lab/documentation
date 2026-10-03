@@ -387,7 +387,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
                               <CheckCircle2 className="w-3 h-3 text-indigo-600" />
-                              Set: {project.team_assignment_set_name}
+                              Formation: {project.team_assignment_set_name}
                             </span>
                           </div>
                         ) : null}

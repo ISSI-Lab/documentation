@@ -142,3 +142,58 @@ Delete a document by ID.
 
 ### `GET /api/v1/documents/{id}/export/markdown`
 Returns raw compiled Markdown text with `Content-Type: text/markdown`.
+
+---
+
+## 4. Document Submissions & Creator Review Endpoints
+
+Submittable documents (`is_submittable: true`) support structured student/participant deliverables and creator review workflows.
+
+### `GET /api/v1/documents/{id}/submissions`
+Retrieve the review roster for the document.
+- **Project Creators / Reviewers**: Returns all expected participants (for `personal` documents) or all assigned teams (for `project_shared` documents), indicating whether their submission is `not_started`, `draft`, `submitted`, or `reviewed`.
+- **Participants**: Returns the caller's active submission.
+
+### `GET /api/v1/documents/{id}/my-submission`
+Retrieve or auto-initialize the caller's submission draft.
+- For `personal` documents, returns the individual caller's submission pre-populated with creator defaults.
+- For `project_shared` documents, returns the caller's assigned team submission pre-populated with creator defaults.
+
+### `GET /api/v1/documents/{id}/submissions/{submissionId}`
+Retrieve full submission content, compiled markdown, and comment thread.
+
+### `PUT /api/v1/documents/{id}/submissions/{submissionId}`
+Update submission draft element data and dynamically re-compile markdown.
+
+**Request Body**:
+```json
+{
+  "elements_data": {
+    "context": "Our updated architectural proposal...",
+    "decision": "Adopted gRPC service contracts."
+  }
+}
+```
+
+### `POST /api/v1/documents/{id}/submissions/{submissionId}/submit`
+Mark deliverable as submitted (`status: "submitted"`, records `submitted_at`).
+
+### `POST /api/v1/documents/{id}/submissions/{submissionId}/unsubmit`
+Revert deliverable back to draft (`status: "draft"`), allowing the author or team to make revisions before review.
+
+### `PUT /api/v1/documents/{id}/submissions/{submissionId}/status`
+Update review status (`reviewed`, `draft`, `submitted`). Restricted to project creators and organization managers.
+
+### `GET /api/v1/documents/{id}/submissions/{submissionId}/comments`
+Retrieve chronological feedback comments for the submission.
+
+### `POST /api/v1/documents/{id}/submissions/{submissionId}/comments`
+Post review feedback or participant reply.
+
+**Request Body**:
+```json
+{
+  "content": "Detailed review feedback on architecture components."
+}
+```
+

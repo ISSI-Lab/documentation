@@ -120,8 +120,8 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       loadData();
       setIsSaveSetOpen(false);
       setPendingModeSwitch(null);
-      setNewSetName(`${project.name} Team Set`);
-      setNewSetDesc(`Reusable team assignments set derived from project "${project.name}"`);
+      setNewSetName(`${project.name} Team Formation`);
+      setNewSetDesc(`Reusable team formation derived from project "${project.name}"`);
     }
   }, [isOpen, project]);
 
@@ -167,7 +167,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       setPendingModeSwitch(null);
       showToast(
         targetMode === 'individual'
-          ? 'Switched to Individual Association. Teams and set cleared.'
+          ? 'Switched to Individual Association. Teams and formation cleared.'
           : 'Switched to Team Association. Individual members cleared.'
       );
       await loadData();
@@ -234,14 +234,14 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       });
       showToast(
         setId
-          ? 'Project associated with team assignment set and teams updated!'
-          : 'Project disassociated from team assignment set.'
+          ? 'Project associated with team formation and teams updated!'
+          : 'Project disassociated from team formation.'
       );
       await loadData();
       if (onProjectUpdated) onProjectUpdated(updated);
       if (onUpdated) onUpdated();
     } catch (err: any) {
-      showToast(err.message || 'Failed to associate team assignment set', 'error');
+      showToast(err.message || 'Failed to associate team formation', 'error');
     } finally {
       setAssociatingSet(false);
     }
@@ -252,12 +252,12 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
     try {
       setLoading(true);
       const updated = await api.cloneProjectTeamAssignmentSet(project.id);
-      showToast(`Cloned dedicated staffing set for "${project.name}"!`);
+      showToast(`Cloned dedicated staffing formation for "${project.name}"!`);
       await loadData();
       if (onProjectUpdated) onProjectUpdated(updated);
       if (onUpdated) onUpdated();
     } catch (err: any) {
-      showToast(err.message || 'Failed to clone set for project', 'error');
+      showToast(err.message || 'Failed to clone formation for project', 'error');
     } finally {
       setLoading(false);
     }
@@ -281,7 +281,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
       }
       if (onUpdated) onUpdated();
     } catch (err: any) {
-      showToast(err.message || 'Failed to save reusable set', 'error');
+      showToast(err.message || 'Failed to save reusable formation', 'error');
     } finally {
       setSavingSet(false);
     }
@@ -398,7 +398,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>Team Association (Squads / Set)</span>
+                <span>Team Association (Squads / Formation)</span>
               </button>
 
               <button
@@ -425,7 +425,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
               </div>
               <p className="text-xs text-amber-800">
                 {pendingModeSwitch === 'individual'
-                  ? `Switching to Individual Association will permanently remove all ${assignedTeams.length} assigned team(s) and unlink the team set. No hybrid association is permitted.`
+                  ? `Switching to Individual Association will permanently remove all ${assignedTeams.length} assigned team(s) and unlink the team formation. No hybrid association is permitted.`
                   : `Switching to Team Association will permanently remove all ${individualMembers.length} individually assigned member(s). No hybrid association is permitted.`}
               </p>
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -453,16 +453,16 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
           {/* ================================================================== */}
           {associationType === 'team' && (
             <div className="space-y-6">
-              {/* Section 1: Associated Team Assignment Set */}
+              {/* Section 1: Associated Team Formation */}
               <div className="bg-gradient-to-br from-indigo-50/80 to-blue-50/50 rounded-2xl border border-indigo-100 p-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                   <div>
                     <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
                       <BookmarkCheck className="w-4 h-4 text-indigo-600" />
-                      Reusable Team Assignment Set Association
+                      Reusable Team Formation Association
                     </span>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      Associate with an organization team assignment set to quickly apply pre-defined squads.
+                      Associate with an organization team formation to quickly apply pre-defined squads.
                     </p>
                   </div>
 
@@ -482,7 +482,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                 {currentSetId ? (
                   <div className="p-3 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <span className="text-xs text-slate-500 block">Associated Assignment Set:</span>
+                      <span className="text-xs text-slate-500 block">Associated Team Formation:</span>
                       <span className="text-sm font-bold text-indigo-950 flex items-center gap-1.5 mt-0.5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         {currentSetName || currentSetId}
@@ -493,12 +493,12 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                         type="button"
                         onClick={handleCloneSetForProject}
                         className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
-                        title="Clone this set to customize teams specifically for this project"
+                        title="Clone this formation to customize teams specifically for this project"
                       >
-                        <span>Clone for Project</span>
+                        <span>Clone Formation for Project</span>
                       </button>
                       <span className="text-[11px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
-                        Linked Set
+                        Linked Formation
                       </span>
                     </div>
                   </div>
@@ -510,7 +510,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                         onChange={(e) => setSelectedSetIdToAssociate(e.target.value)}
                         className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
-                        <option value="">-- Select Reusable Set to Associate --</option>
+                        <option value="">-- Select Reusable Formation to Associate --</option>
                         {orgSets.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name} ({s.teams_count || 0} teams)
@@ -529,7 +529,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     </div>
                     {orgSets.length === 0 && (
                       <p className="text-[11px] text-slate-500 italic">
-                        No team assignment sets created in this organization yet. You can assign teams below and save them as a reusable set!
+                        No team formations created in this organization yet. You can assign teams below and save them as a reusable formation!
                       </p>
                     )}
                   </div>
@@ -550,12 +550,12 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>{isSaveSetOpen ? 'Hide Save Set Form' : 'Allow Set to be Reused'}</span>
+                      <span>{isSaveSetOpen ? 'Hide Save Formation Form' : 'Allow Formation to be Reused'}</span>
                     </button>
                   )}
                 </div>
 
-                {/* Reusable Set Creation Box */}
+                {/* Reusable Formation Creation Box */}
                 {isSaveSetOpen && (
                   <form
                     onSubmit={handleSaveAsSet}
@@ -563,15 +563,15 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                   >
                     <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
                       <BookmarkCheck className="w-4 h-4 text-emerald-600" />
-                      Save Project Team Assignments as Reusable Organization Set
+                      Save Project Team Assignments as Reusable Team Formation
                     </div>
                     <p className="text-[11px] text-emerald-800">
-                      Allow other projects in this organization to reuse these exact team assignments.
+                      Allow other projects in this organization to reuse this exact team formation.
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Set Name</label>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">Formation Name</label>
                         <input
                           type="text"
                           required
@@ -606,7 +606,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                         disabled={savingSet || !newSetName.trim()}
                         className="px-3.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
                       >
-                        {savingSet ? 'Saving...' : 'Save Reusable Set'}
+                        {savingSet ? 'Saving...' : 'Save Reusable Formation'}
                       </button>
                     </div>
                   </form>
@@ -618,7 +618,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                     <Users className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
                     <p className="text-xs font-semibold text-slate-700">No teams assigned to this project yet</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Select a team below to assign it, or associate with a reusable team assignment set above.
+                      Select a team below to assign it, or associate with a reusable team formation above.
                     </p>
                   </div>
                 ) : (
@@ -740,7 +740,7 @@ export const ProjectTeamAssignmentModal: React.FC<ProjectTeamAssignmentModalProp
                   </span>
                 </div>
                 <p className="text-xs text-emerald-800">
-                  This project is staffed directly by individual organization members. Team assignment sets and squad structures are excluded from this project.
+                  This project is staffed directly by individual organization members. Team formations and squad structures are excluded from this project.
                 </p>
               </div>
 

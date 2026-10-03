@@ -168,6 +168,8 @@ CREATE TABLE IF NOT EXISTS documents (
     organization_id VARCHAR(64) NULL,
     template_id VARCHAR(64) NOT NULL,
     template_title VARCHAR(255) NOT NULL,
+    document_type ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared',
+    is_submittable BOOLEAN NOT NULL DEFAULT FALSE,
     status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
     author VARCHAR(255) DEFAULT 'Anonymous',
     created_by VARCHAR(64) NULL,
@@ -180,8 +182,45 @@ CREATE TABLE IF NOT EXISTS documents (
     INDEX idx_project_id (project_id),
     INDEX idx_organization_id (organization_id),
     INDEX idx_template_id (template_id),
+    INDEX idx_document_type (document_type),
+    INDEX idx_is_submittable (is_submittable),
     INDEX idx_status (status),
     INDEX idx_updated_at (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6.1 Document Submissions Table
+CREATE TABLE IF NOT EXISTS document_submissions (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL,
+    project_id VARCHAR(64) NOT NULL,
+    submission_type ENUM('personal', 'team') NOT NULL,
+    user_id VARCHAR(64) NULL,
+    team_id VARCHAR(64) NULL,
+    status ENUM('draft', 'submitted', 'reviewed') NOT NULL DEFAULT 'draft',
+    elements_data JSON NOT NULL,
+    compiled_markdown LONGTEXT NOT NULL,
+    submitted_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_doc_subm_user (document_id, user_id),
+    UNIQUE KEY uk_doc_subm_team (document_id, team_id),
+    INDEX idx_document_id (document_id),
+    INDEX idx_project_id (project_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_team_id (team_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6.2 Submission Comments Table
+CREATE TABLE IF NOT EXISTS submission_comments (
+    id VARCHAR(64) PRIMARY KEY,
+    submission_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_submission_id (submission_id),
+    INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. Default Seed Templates

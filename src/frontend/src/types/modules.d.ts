@@ -82,6 +82,10 @@ declare module 'lucide-react' {
   export const BookmarkCheck: IconComponent;
   export const Unlink: IconComponent;
   export const Edit2: IconComponent;
+  export const Send: IconComponent;
+  export const MessageSquare: IconComponent;
+  export const Share2: IconComponent;
+  export const ChevronRight: IconComponent;
 }
 
 declare module 'marked' {

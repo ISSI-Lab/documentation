@@ -3,6 +3,8 @@ import {
   Document,
   DocumentCreatePayload,
   DocumentUpdatePayload,
+  DocumentSubmission,
+  SubmissionComment,
   Project,
   Organization,
   OrganizationTeam,
@@ -463,6 +465,93 @@ export const api = {
 
   getMarkdownExportUrl(id: string): string {
     return `${API_BASE}/documents/${encodeURIComponent(id)}/export/markdown`;
+  },
+
+  // Document Submissions & Creator Review
+  async listDocumentSubmissions(documentId: string): Promise<DocumentSubmission[]> {
+    return request<DocumentSubmission[]>(`/documents/${encodeURIComponent(documentId)}/submissions`);
+  },
+
+  async getMySubmission(documentId: string): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(`/documents/${encodeURIComponent(documentId)}/my-submission`);
+  },
+
+  async getSubmission(documentId: string, submissionId: string): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}`
+    );
+  },
+
+  async updateSubmission(
+    documentId: string,
+    submissionId: string,
+    payload: { elements_data?: Record<string, any> }
+  ): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async submitDocument(
+    documentId: string,
+    submissionId: string
+  ): Promise<{ message: string; submission: DocumentSubmission }> {
+    return request<any>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/submit`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  async unsubmitDocument(
+    documentId: string,
+    submissionId: string
+  ): Promise<{ message: string; submission: DocumentSubmission }> {
+    return request<any>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/unsubmit`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  async updateSubmissionStatus(
+    documentId: string,
+    submissionId: string,
+    status: 'draft' | 'submitted' | 'reviewed'
+  ): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/status`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      }
+    );
+  },
+
+  async listSubmissionComments(documentId: string, submissionId: string): Promise<SubmissionComment[]> {
+    return request<SubmissionComment[]>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/comments`
+    );
+  },
+
+  async addSubmissionComment(
+    documentId: string,
+    submissionId: string,
+    payload: { content: string }
+  ): Promise<SubmissionComment> {
+    return request<SubmissionComment>(
+      `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
   },
 
   // Organization Teams

@@ -60,7 +60,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       case 'organizations':
         return 'Organizations & Projects';
       case 'teams':
-        return 'Teams & Assignments';
+        return 'Teams & Formations';
       default:
         return 'Menu';
     }
@@ -213,8 +213,8 @@ export const Navigation: React.FC<NavigationProps> = ({
                       >
                         <Users className="w-4 h-4 text-indigo-600" />
                         <div>
-                          <div className="font-semibold">Teams & Assignments</div>
-                          <div className="text-[10px] text-slate-400">Create teams & reusable project sets</div>
+                          <div className="font-semibold">Teams & Formations</div>
+                          <div className="text-[10px] text-slate-400">Manage squads & reusable team formations</div>
                         </div>
                       </button>
                     </>
