@@ -10,8 +10,6 @@ import {
   Lock,
   Building2,
   Send,
-  CheckSquare,
-  MessageSquare,
   Share2,
 } from 'lucide-react';
 import { DocumentCreatePayload, DocumentType, Organization, Project, Team, Template, User } from '../../types';
@@ -48,54 +46,45 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const organizations = propOrganizations || propTeams || [];
   const initialOrgId = initialSelectedOrganizationId || initialSelectedTeamId || null;
 
-  // Determine initial scope
-  const getInitialScope = (): 'personal' | 'organization' => {
-    if (initialOrgId) return 'organization';
-    if (initialSelectedProjectId) {
-      const p = projects.find((proj) => proj.id === initialSelectedProjectId);
-      if (p && (p.organization_id || p.team_id)) return 'organization';
-    }
-    return organizations.length > 0 ? 'organization' : 'personal';
-  };
-
-  const [scope, setScope] = useState<'personal' | 'organization'>('personal');
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [templateId, setTemplateId] = useState('');
-  const [documentType, setDocumentType] = useState<DocumentType>('project_shared');
+  const [documentType, setDocumentType] = useState<DocumentType>('personal');
   const [isSubmittable, setIsSubmittable] = useState(false);
   const [author, setAuthor] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize form state when opened or inputs change
+  // Initialize form state when opened or props change
   useEffect(() => {
     if (isOpen) {
-      const initialScopeVal = getInitialScope();
-      setScope(initialScopeVal);
-
       let targetOrgId = '';
-      if (initialOrgId) {
-        targetOrgId = initialOrgId;
-      } else if (initialSelectedProjectId) {
+      if (initialSelectedProjectId) {
         const p = projects.find((proj) => proj.id === initialSelectedProjectId);
         if (p?.organization_id || p?.team_id) {
           targetOrgId = (p.organization_id || p.team_id)!;
         }
+      } else if (initialOrgId) {
+        targetOrgId = initialOrgId;
       } else if (organizations.length > 0) {
         targetOrgId = organizations[0].id;
       }
       setSelectedOrgId(targetOrgId);
 
-      const targetProj = projects.find((proj) => proj.id === (initialSelectedProjectId || null));
-      const initIsIndiv = targetProj?.association_type === 'individual';
-      setProjectId(initialSelectedProjectId || null);
+      const targetProjId = initialSelectedProjectId || null;
+      setProjectId(targetProjId);
+
+      const targetProj = projects.find((proj) => proj.id === targetProjId);
+      const isIndiv = targetProj?.association_type === 'individual';
+      const isPersonalWs = !targetProj && !targetOrgId;
+
+      // Force personal if individual project or personal workspace
+      setDocumentType(isIndiv || isPersonalWs ? 'personal' : 'project_shared');
+      setIsSubmittable(false);
       setTitle('');
       setTagsInput('');
-      setDocumentType(initIsIndiv ? 'personal' : 'project_shared');
-      setIsSubmittable(false);
       setError(null);
       setAuthor(currentUser?.name || currentUser?.username || '');
 
@@ -105,7 +94,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       } else {
         const availableTpls = templates.filter((t) => {
           if (t.visibility === 'public') return true;
-          if (initialScopeVal === 'personal') return !t.organization_id && !t.team_id;
+          if (!targetOrgId) return !t.organization_id && !t.team_id;
           return t.organization_id === targetOrgId || t.team_id === targetOrgId;
         });
         setTemplateId(availableTpls.length > 0 ? availableTpls[0].id : (templates[0]?.id || ''));
@@ -113,46 +102,74 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
     }
   }, [isOpen, initialSelectedTemplateId, initialSelectedProjectId, initialOrgId, organizations, projects, currentUser]);
 
-  // Filter projects based on current scope & organization
-  const availableProjects = projects.filter((p) => {
-    const pOrgId = p.organization_id || p.team_id;
-    if (scope === 'personal') {
-      return !pOrgId;
-    } else {
-      return selectedOrgId ? pOrgId === selectedOrgId : true;
-    }
-  });
-
-  // Filter templates based on current scope & organization
-  const availableTemplates = templates.filter((t) => {
-    if (t.visibility === 'public') return true;
-    const tOrgId = t.organization_id || t.team_id;
-    if (scope === 'personal') {
-      return !tOrgId;
-    } else {
-      return selectedOrgId ? tOrgId === selectedOrgId : true;
-    }
-  });
-
+  // Selected project details
   const selectedProject = projects.find((p) => p.id === projectId);
   const isIndividualProject = selectedProject?.association_type === 'individual';
   const isTeamProject = selectedProject?.association_type === 'team';
+  const isPersonalWorkspace = !projectId && !selectedOrgId;
 
-  // Force personal document if individual project is selected
+  // Filter projects based on selected organization
+  const availableProjects = projects.filter((p) => {
+    const pOrgId = p.organization_id || p.team_id;
+    if (!selectedOrgId) {
+      return !pOrgId;
+    } else {
+      return pOrgId === selectedOrgId;
+    }
+  });
+
+  // Filter templates based on current organization
+  const availableTemplates = templates.filter((t) => {
+    if (t.visibility === 'public') return true;
+    const tOrgId = t.organization_id || t.team_id;
+    if (!selectedOrgId) {
+      return !tOrgId;
+    } else {
+      return tOrgId === selectedOrgId;
+    }
+  });
+
+  // Strict constraint: individual projects and personal workspaces MUST be personal documents
   useEffect(() => {
-    if (isIndividualProject && documentType !== 'personal') {
+    if ((isIndividualProject || isPersonalWorkspace) && documentType !== 'personal') {
       setDocumentType('personal');
     }
-  }, [isIndividualProject, documentType]);
+  }, [isIndividualProject, isPersonalWorkspace, documentType]);
 
   // If current templateId is not in availableTemplates, auto-select first available
   useEffect(() => {
     if (availableTemplates.length > 0 && !availableTemplates.some((t) => t.id === templateId)) {
       setTemplateId(availableTemplates[0].id);
     }
-  }, [scope, selectedOrgId, availableTemplates, templateId]);
+  }, [selectedOrgId, availableTemplates, templateId]);
 
   if (!isOpen) return null;
+
+  // Handle changing organization
+  const handleOrgChange = (newOrgId: string) => {
+    setSelectedOrgId(newOrgId);
+    if (projectId) {
+      const proj = projects.find((p) => p.id === projectId);
+      const projOrg = proj?.organization_id || proj?.team_id || '';
+      if (projOrg !== newOrgId) {
+        setProjectId(null);
+      }
+    }
+  };
+
+  // Handle changing project
+  const handleProjectChange = (newProjId: string | null) => {
+    setProjectId(newProjId);
+    if (newProjId) {
+      const proj = projects.find((p) => p.id === newProjId);
+      if (proj && (proj.organization_id || proj.team_id)) {
+        setSelectedOrgId((proj.organization_id || proj.team_id)!);
+      }
+      if (proj?.association_type === 'individual') {
+        setDocumentType('personal');
+      }
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,7 +190,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         .map((t) => t.trim().replace(/^#/, ''))
         .filter(Boolean);
 
-      const targetOrgId = scope === 'organization' ? (selectedOrgId || null) : null;
+      const targetOrgId = selectedOrgId || null;
 
       await onCreate({
         title: title.trim(),
@@ -219,7 +236,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
           <div>
             <h2 className="text-xl font-bold text-slate-900">Create New Document</h2>
             <p className="text-xs text-slate-500">
-              Author a new specification or document using reusable blueprints.
+              Author a new specification or deliverable using reusable blueprints.
             </p>
           </div>
         </div>
@@ -231,99 +248,6 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Scope Selection: Personal vs Organization */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-              Document Ownership & Scope *
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Personal Option */}
-              <div
-                onClick={() => {
-                  setScope('personal');
-                  setProjectId(null);
-                }}
-                className={`p-3 border cursor-pointer transition-all ${
-                  scope === 'personal'
-                    ? 'bg-emerald-50/70 border-emerald-600 ring-1 ring-emerald-600 shadow-sm'
-                    : 'bg-white border-slate-300 hover:border-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                    <UserIcon className="w-3.5 h-3.5 text-emerald-600" /> Personal Document
-                  </span>
-                  {scope === 'personal' && (
-                    <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.2 font-bold rounded">
-                      Selected
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500 leading-tight">
-                  Private to your personal workspace (without an organization).
-                </p>
-              </div>
-
-              {/* Organization Option */}
-              <div
-                onClick={() => {
-                  setScope('organization');
-                  if (!selectedOrgId && organizations.length > 0) {
-                    setSelectedOrgId(organizations[0].id);
-                  }
-                }}
-                className={`p-3 border cursor-pointer transition-all ${
-                  scope === 'organization'
-                    ? 'bg-indigo-50/70 border-indigo-600 ring-1 ring-indigo-600 shadow-sm'
-                    : 'bg-white border-slate-300 hover:border-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Organization Document
-                  </span>
-                  {scope === 'organization' && (
-                    <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.2 font-bold rounded">
-                      Selected
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500 leading-tight">
-                  Collaborate and co-author with members of your organization.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Organization Selector when scope === 'organization' */}
-          {scope === 'organization' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Select Target Organization *
-              </label>
-              {organizations.length > 0 ? (
-                <select
-                  value={selectedOrgId}
-                  onChange={(e) => {
-                    setSelectedOrgId(e.target.value);
-                    setProjectId(null);
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
-                >
-                  {organizations.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} {t.user_role ? `(${t.user_role})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="p-3 bg-amber-50 border border-amber-200 text-xs text-amber-800">
-                  You are not a member of any organization yet. Switch to Personal Document or join/create an organization first.
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Document Title */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
@@ -339,30 +263,54 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             />
           </div>
 
-          {/* Project Selector (Optional) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-              <FolderKanban className="w-3.5 h-3.5 text-blue-600" /> Project Workspace (Optional)
-            </label>
-            <select
-              value={projectId || ''}
-              onChange={(e) => setProjectId(e.target.value ? e.target.value : null)}
-              className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-            >
-              <option value="">(No Project / Standalone Document)</option>
-              {availableProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+          {/* Workspace & Project Location */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Organization Selector */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Workspace Location
+                </label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => handleOrgChange(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white rounded"
+                >
+                  <option value="">Personal Workspace (Private)</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name} {org.user_role ? `(${org.user_role})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Project Workspace Selector */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <FolderKanban className="w-3.5 h-3.5 text-blue-600" /> Project Workspace (Optional)
+                </label>
+                <select
+                  value={projectId || ''}
+                  onChange={(e) => handleProjectChange(e.target.value ? e.target.value : null)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white rounded"
+                >
+                  <option value="">(No Project / Standalone)</option>
+                  {availableProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.association_type ? `(${p.association_type === 'individual' ? 'Individual' : 'Team Formation'})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
-          {/* Document Type: Personal Document vs Project Shared Document */}
+          {/* Document Type & Collaboration (Single Unified Selector) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                <Share2 className="w-3.5 h-3.5 text-blue-600" /> Document Type & Collaboration
+                <Share2 className="w-3.5 h-3.5 text-blue-600" /> Document Type & Collaboration *
               </label>
               {isIndividualProject && (
                 <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
@@ -371,48 +319,18 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
               )}
               {isTeamProject && (
                 <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-medium">
-                  Team Formation: Choose Shared or Personal
+                  Team Formation: Choose Personal or Shared
+                </span>
+              )}
+              {isPersonalWorkspace && (
+                <span className="text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                  Personal Workspace: Personal Only
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Project Shared Document */}
-              <div
-                onClick={() => {
-                  if (!isIndividualProject) {
-                    setDocumentType('project_shared');
-                  }
-                }}
-                className={`p-3 border transition-all ${
-                  isIndividualProject
-                    ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
-                    : documentType === 'project_shared'
-                    ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm cursor-pointer'
-                    : 'bg-white border-slate-300 hover:border-slate-400 cursor-pointer'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-blue-600" /> Project Shared Document
-                  </span>
-                  {isIndividualProject ? (
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
-                      Unavailable
-                    </span>
-                  ) : documentType === 'project_shared' ? (
-                    <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 font-bold rounded">
-                      Selected
-                    </span>
-                  ) : null}
-                </div>
-                <p className="text-[11px] text-slate-500 leading-tight">
-                  {isIndividualProject
-                    ? 'Unavailable: This project is assigned by individuals. Documents under it only allow Personal Documents.'
-                    : 'Shared editing among team & project members.'}
-                </p>
-              </div>
 
-              {/* Personal Document */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Personal Document Option */}
               <div
                 onClick={() => setDocumentType('personal')}
                 className={`p-3 border cursor-pointer transition-all ${
@@ -433,15 +351,61 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 </div>
                 <p className="text-[11px] text-slate-500 leading-tight">
                   {isIndividualProject
-                    ? 'Individual document authored per person (Required for individual project).'
-                    : 'Individual document authored per person.'}
+                    ? 'Individual deliverable authored per person (Required for individual project).'
+                    : isTeamProject
+                    ? 'Individual deliverable authored separately by each team member.'
+                    : 'Individual personal document authored by you.'}
+                </p>
+              </div>
+
+              {/* Project Shared Document Option */}
+              <div
+                onClick={() => {
+                  if (!isIndividualProject && !isPersonalWorkspace) {
+                    setDocumentType('project_shared');
+                  }
+                }}
+                className={`p-3 border transition-all ${
+                  isIndividualProject || isPersonalWorkspace
+                    ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                    : documentType === 'project_shared'
+                    ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm cursor-pointer'
+                    : 'bg-white border-slate-300 hover:border-slate-400 cursor-pointer'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-blue-600" /> Project Shared Document
+                  </span>
+                  {isIndividualProject ? (
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
+                      Unavailable
+                    </span>
+                  ) : isPersonalWorkspace ? (
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
+                      Unavailable
+                    </span>
+                  ) : documentType === 'project_shared' ? (
+                    <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 font-bold rounded">
+                      Selected
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  {isIndividualProject
+                    ? 'Unavailable: This project is assigned by individuals. Documents under it only allow Personal Documents.'
+                    : isPersonalWorkspace
+                    ? 'Unavailable: Shared editing requires an organization or team project.'
+                    : isTeamProject
+                    ? 'Shared deliverable authored together by assigned squad/team.'
+                    : 'Shared editing among team & project members.'}
                 </p>
               </div>
             </div>
           </div>
 
           {/* Submittable Deliverable Toggle */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200">
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
@@ -470,7 +434,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             </label>
           </div>
 
-          {/* Template Selector */}
+          {/* Base Template Blueprint */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
               Base Template Blueprint *
@@ -478,7 +442,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             <select
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white rounded"
             >
               {availableTemplates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
@@ -489,7 +453,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
 
             {/* Template Info Card */}
             {selectedTemplate && (
-              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 text-xs text-slate-600">
+              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 text-xs text-slate-600 rounded">
                 <div className="flex items-center justify-between font-medium text-slate-800 mb-1">
                   <span className="flex items-center gap-1.5">
                     {selectedTemplate.visibility === 'public' ? (
@@ -520,7 +484,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 placeholder="e.g. Alex Morgan, Tech Lead"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none rounded"
               />
             </div>
 
@@ -533,7 +497,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 placeholder="e.g. cache, redis, v2"
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none rounded"
               />
             </div>
           </div>
@@ -543,14 +507,14 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors cursor-pointer rounded"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={creating}
-              className="inline-flex items-center px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm disabled:opacity-50 transition-colors cursor-pointer border border-blue-700"
+              className="inline-flex items-center px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm disabled:opacity-50 transition-colors cursor-pointer border border-blue-700 rounded"
             >
               <Sparkles className="w-4 h-4 mr-1.5" />
               {creating ? 'Creating Document...' : 'Create & Start Writing'}
