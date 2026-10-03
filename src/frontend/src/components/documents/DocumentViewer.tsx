@@ -38,16 +38,26 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onBack,
   onExportMarkdown,
 }) => {
+  const isDocCreator = Boolean(
+    !document.created_by || (currentUser && currentUser.id === document.created_by)
+  );
+
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'submissions' | 'my_submission'>(
-    initialTab || 'overview'
+    initialTab === 'submissions' && !isDocCreator
+      ? 'my_submission'
+      : (initialTab || 'overview')
   );
 
   useEffect(() => {
     if (initialTab) {
-      setActiveTab(initialTab);
+      if (initialTab === 'submissions' && !isDocCreator) {
+        setActiveTab('my_submission');
+      } else {
+        setActiveTab(initialTab);
+      }
     }
-  }, [initialTab]);
+  }, [initialTab, isDocCreator]);
 
   const handleCopyMarkdown = async () => {
     try {
@@ -186,29 +196,31 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               Document Specification
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('submissions')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                activeTab === 'submissions'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              {isPersonal ? <User className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              <span>Creator Review & Submissions</span>
-              {document.submissions_count !== undefined && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                    activeTab === 'submissions'
-                      ? 'bg-white text-blue-700'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {document.submissions_count}
-                </span>
-              )}
-            </button>
+            {isDocCreator && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('submissions')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  activeTab === 'submissions'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                {isPersonal ? <User className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
+                <span>Creator Review & Submissions</span>
+                {document.submissions_count !== undefined && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      activeTab === 'submissions'
+                        ? 'bg-white text-blue-700'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {document.submissions_count}
+                  </span>
+                )}
+              </button>
+            )}
 
             <button
               type="button"
@@ -265,13 +277,15 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('submissions')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs"
-                  >
-                    Review Submissions
-                  </button>
+                  {isDocCreator && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('submissions')}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs"
+                    >
+                      Review Submissions
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setActiveTab('my_submission')}

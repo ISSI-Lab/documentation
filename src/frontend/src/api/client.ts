@@ -15,6 +15,7 @@ import {
   ProjectTeamAssignment,
   ProjectIndividualMember,
   ProjectAssociationType,
+  ProjectDocumentCreationPermission,
   Template,
   TemplateCreatePayload,
   User,
@@ -334,6 +335,7 @@ export const api = {
     name: string;
     description?: string;
     association_type?: ProjectAssociationType;
+    document_creation_permission?: ProjectDocumentCreationPermission;
   }): Promise<Project> {
     return request<Project>('/projects', {
       method: 'POST',
@@ -344,7 +346,14 @@ export const api = {
     });
   },
 
-  async updateProject(id: string, payload: { name?: string; description?: string }): Promise<Project> {
+  async updateProject(
+    id: string,
+    payload: {
+      name?: string;
+      description?: string;
+      document_creation_permission?: ProjectDocumentCreationPermission;
+    }
+  ): Promise<Project> {
     return request<Project>(`/projects/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(payload),

@@ -19,6 +19,7 @@ import {
   Building2,
   BookmarkCheck,
   CheckCircle2,
+  Lock,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import {
@@ -29,6 +30,7 @@ import {
   OrganizationTeam,
   TeamAssignmentSet,
   ProjectAssociationType,
+  ProjectDocumentCreationPermission,
 } from '../../types';
 import { ProjectTeamAssignmentModal } from '../projects/ProjectTeamAssignmentModal';
 
@@ -97,6 +99,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [newProjectAssocType, setNewProjectAssocType] = useState<ProjectAssociationType>('team');
+  const [newProjectDocCreationPerm, setNewProjectDocCreationPerm] = useState<ProjectDocumentCreationPermission>('all_members');
   const [creatingProject, setCreatingProject] = useState(false);
 
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -204,11 +207,13 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
         name: newProjectName,
         description: newProjectDesc,
         association_type: newProjectAssocType,
+        document_creation_permission: newProjectDocCreationPerm,
       });
       showToast(`Project "${newProj.name}" created!`);
       setNewProjectName('');
       setNewProjectDesc('');
       setNewProjectAssocType('team');
+      setNewProjectDocCreationPerm('all_members');
       setIsCreateProjectOpen(false);
       await loadOrgDetails(currentOrgDetails.id);
     } catch (err: any) {
@@ -567,22 +572,37 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                               </span>
                             </div>
 
-                            {/* Association Type / Set Badge */}
-                            {proj.association_type === 'individual' ? (
-                              <div className="mb-2">
+                            {/* Badges: Association Mode & Document Creation Permission */}
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                              {proj.association_type === 'individual' ? (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
                                   <UserIcon className="w-3 h-3 text-emerald-600" />
                                   Individually Assigned
                                 </span>
-                              </div>
-                            ) : proj.team_assignment_set_name ? (
-                              <div className="mb-2">
+                              ) : proj.team_assignment_set_name ? (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
                                   <CheckCircle2 className="w-3 h-3 text-indigo-600" />
                                   Formation: {proj.team_assignment_set_name}
                                 </span>
-                              </div>
-                            ) : null}
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md">
+                                  <Users className="w-3 h-3 text-indigo-600" />
+                                  Team Formation
+                                </span>
+                              )}
+
+                              {proj.document_creation_permission === 'creator_only' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-md">
+                                  <Lock className="w-3 h-3 text-amber-600" />
+                                  Owner/Creator Docs Only
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-sky-50 text-sky-800 border border-sky-200 rounded-md">
+                                  <Users className="w-3 h-3 text-sky-600" />
+                                  All Members Can Create
+                                </span>
+                              )}
+                            </div>
 
                             <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                               {proj.description || 'No description provided.'}
@@ -1093,6 +1113,49 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                     </div>
                     <span className="text-[10px] text-slate-500 leading-tight">
                       Staffed directly by individual organization members
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Document Creation Permission
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectDocCreationPerm('all_members')}
+                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      newProjectDocCreationPerm === 'all_members'
+                        ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950">
+                      <Users className="w-4 h-4 text-indigo-600" />
+                      Each Member
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">
+                      All organization members can author documents under this project
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewProjectDocCreationPerm('creator_only')}
+                    className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      newProjectDocCreationPerm === 'creator_only'
+                        ? 'border-amber-600 bg-amber-50/50 ring-1 ring-amber-600'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-amber-950">
+                      <Lock className="w-4 h-4 text-amber-600" />
+                      Owner/Creator Only
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">
+                      Only project creator and organization managers can create documents
                     </span>
                   </button>
                 </div>

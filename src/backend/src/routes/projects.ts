@@ -7,6 +7,7 @@ import {
   ProjectTeamAssignment,
   ProjectIndividualMember,
   ProjectAssociationType,
+  ProjectDocumentCreationPermission,
   OrganizationTeamMember,
   TeamAssignmentSet,
 } from '../models';
@@ -20,11 +21,14 @@ function formatProjectRow(
 ): Project {
   const orgId = row.organization_id || row.team_id || null;
   const assocType: ProjectAssociationType = row.association_type === 'individual' ? 'individual' : 'team';
+  const docCreationPerm: ProjectDocumentCreationPermission =
+    row.document_creation_permission === 'creator_only' ? 'creator_only' : 'all_members';
   return {
     id: row.id,
     organization_id: orgId,
     team_id: orgId, // compatibility
     association_type: assocType,
+    document_creation_permission: docCreationPerm,
     team_assignment_set_id: assocType === 'individual' ? null : (row.team_assignment_set_id || null),
     team_assignment_set_name: assocType === 'individual' ? null : (row.team_assignment_set_name || null),
     name: row.name,
@@ -202,7 +206,7 @@ projectsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { organization_id, team_id, name, description, association_type } = req.body;
+    const { organization_id, team_id, name, description, association_type, document_creation_permission } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project name is required' });
@@ -212,19 +216,21 @@ projectsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Res
     const resolvedOrgId = rawOrgId && typeof rawOrgId === 'string' && rawOrgId.trim() ? rawOrgId.trim() : null;
 
     if (resolvedOrgId) {
-      // Verify user is a member of the organization
-      const isMember = await isOrganizationMember(userId, resolvedOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You must be a member of the organization to create an organization project' });
+      // Verify user is an owner, creator, or manager of the organization
+      const isManager = await isOrganizationManager(userId, resolvedOrgId);
+      if (!isManager) {
+        return res.status(403).json({ error: 'Only organization owners and managers can create projects in an organization' });
       }
     }
 
     const assocType: ProjectAssociationType = association_type === 'individual' ? 'individual' : 'team';
+    const docCreationPerm: ProjectDocumentCreationPermission =
+      document_creation_permission === 'creator_only' ? 'creator_only' : 'all_members';
     const projectId = `proj-${crypto.randomBytes(4).toString('hex')}`;
     await pool.query(
-      `INSERT INTO projects (id, organization_id, association_type, name, description, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [projectId, resolvedOrgId, assocType, name.trim(), description || '', userId]
+      `INSERT INTO projects (id, organization_id, association_type, document_creation_permission, name, description, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [projectId, resolvedOrgId, assocType, docCreationPerm, name.trim(), description || '', userId]
     );
 
     if (assocType === 'individual') {
@@ -253,7 +259,7 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
   try {
     const userId = req.user!.id;
     const projectId = req.params.id;
-    const { name, description } = req.body;
+    const { name, description, document_creation_permission } = req.body;
 
     const [existing] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [projectId]);
     if (!existing || existing.length === 0) {
@@ -263,9 +269,10 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
     const current = existing[0];
     const currentOrgId = current.organization_id || current.team_id;
     if (currentOrgId) {
-      const isMember = await isOrganizationMember(userId, currentOrgId);
-      if (!isMember) {
-        return res.status(403).json({ error: 'You are not a member of the organization for this project' });
+      const isManager = await isOrganizationManager(userId, currentOrgId);
+      const isProjCreator = current.created_by === userId;
+      if (!isManager && !isProjCreator) {
+        return res.status(403).json({ error: 'Only the project creator and organization managers can update this project' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to update this personal project' });
@@ -273,10 +280,14 @@ projectsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: R
 
     const newName = name !== undefined && typeof name === 'string' ? name.trim() : current.name;
     const newDesc = description !== undefined ? description : current.description;
+    let newDocCreationPerm = current.document_creation_permission || 'all_members';
+    if (document_creation_permission === 'creator_only' || document_creation_permission === 'all_members') {
+      newDocCreationPerm = document_creation_permission;
+    }
 
     await pool.query(
-      'UPDATE projects SET name = ?, description = ?, updated_at = NOW() WHERE id = ?',
-      [newName, newDesc, projectId]
+      'UPDATE projects SET name = ?, description = ?, document_creation_permission = ?, updated_at = NOW() WHERE id = ?',
+      [newName, newDesc, newDocCreationPerm, projectId]
     );
 
     const [updatedRows] = await pool.query<any[]>(

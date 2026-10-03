@@ -111,6 +111,7 @@ export interface ProjectTeamAssignment {
 }
 
 export type ProjectAssociationType = 'team' | 'individual';
+export type ProjectDocumentCreationPermission = 'creator_only' | 'all_members';
 
 export interface ProjectIndividualMember {
   id: string;
@@ -127,6 +128,7 @@ export interface Project {
   organization_id: string | null;
   team_id?: string | null; // compatibility
   association_type?: ProjectAssociationType;
+  document_creation_permission?: ProjectDocumentCreationPermission;
   team_assignment_set_id?: string | null;
   team_assignment_set_name?: string | null;
   name: string;

@@ -442,8 +442,87 @@ def run_tests():
     assert r.json()["status"] == "reviewed"
     print("✓ Project creator updated team submission status to 'reviewed'.")
 
+    # ==============================================================================
+    # 6. Test Document Creation Permission ('creator_only' vs 'all_members')
+    # ==============================================================================
+    print("\n--- 6. Document Creation Permissions: Creator Only vs All Members ---")
+
+    # 6.1 Create project with 'creator_only' document creation permission
+    r_co = requests.post(f"{BASE_URL}/projects", json={
+        "organization_id": org_id,
+        "name": f"Creator Only Project {uuid.uuid4().hex[:6]}",
+        "description": "Only project creator / org managers can create documents",
+        "association_type": "individual",
+        "document_creation_permission": "creator_only",
+    }, headers=headers_creator)
+    assert r_co.status_code == 201, f"Failed to create creator_only project: {r_co.text}"
+    proj_co = r_co.json()
+    proj_co_id = proj_co["id"]
+    assert proj_co.get("document_creation_permission") == "creator_only"
+    print(f"✓ Created project with creator_only permission: {proj_co['name']}")
+
+    # 6.2 Regular member attempts to create document in creator_only project -> 403 Forbidden
+    r_fail = requests.post(f"{BASE_URL}/documents", json={
+        "title": "Unauthorized Member Spec",
+        "template_id": template_id,
+        "project_id": proj_co_id,
+        "document_type": "personal",
+    }, headers=headers_participant)
+    assert r_fail.status_code == 403, f"Expected 403 Forbidden for non-creator in creator_only project, got {r_fail.status_code}: {r_fail.text}"
+    print("✓ Regular member blocked with 403 Forbidden when creating doc in 'creator_only' project.")
+
+    # 6.3 Project creator successfully creates document in creator_only project -> 201
+    r_ok = requests.post(f"{BASE_URL}/documents", json={
+        "title": "Creator Authored Spec",
+        "template_id": template_id,
+        "project_id": proj_co_id,
+        "document_type": "personal",
+    }, headers=headers_creator)
+    assert r_ok.status_code == 201, f"Project creator failed to create doc: {r_ok.text}"
+    print("✓ Project creator successfully created doc in 'creator_only' project.")
+
+    # 6.4 Create project with 'all_members' document creation permission
+    r_am = requests.post(f"{BASE_URL}/projects", json={
+        "organization_id": org_id,
+        "name": f"All Members Project {uuid.uuid4().hex[:6]}",
+        "description": "All organization members can author documents",
+        "association_type": "individual",
+        "document_creation_permission": "all_members",
+    }, headers=headers_creator)
+    assert r_am.status_code == 201
+    proj_am = r_am.json()
+    proj_am_id = proj_am["id"]
+    assert proj_am.get("document_creation_permission") == "all_members"
+    print(f"✓ Created project with all_members permission: {proj_am['name']}")
+
+    # 6.5 Regular member creates document in all_members project -> 201
+    r_member_doc = requests.post(f"{BASE_URL}/documents", json={
+        "title": "Member Authored Proposal",
+        "template_id": template_id,
+        "project_id": proj_am_id,
+        "document_type": "personal",
+        "is_submittable": True,
+    }, headers=headers_participant)
+    assert r_member_doc.status_code == 201, f"Regular member failed to create doc in all_members project: {r_member_doc.text}"
+    member_doc = r_member_doc.json()
+    member_doc_id = member_doc["id"]
+    assert member_doc.get("created_by") == reg_user["id"], "Member must be the document creator"
+    print(f"✓ Regular member created document as document creator: {member_doc['title']} (created_by: {member_doc['created_by']})")
+
+    # 6.6 Non-creator (Organizer) cannot change collaboration type on member's document -> 403
+    r_org_change = requests.put(f"{BASE_URL}/documents/{member_doc_id}", json={
+        "document_type": "project_shared",
+    }, headers=headers_creator)
+    assert r_org_change.status_code in [400, 403], f"Expected rejection on non-creator changing doc type, got: {r_org_change.status_code}"
+    print("✓ Non-creator blocked when attempting to change collaboration type on document.")
+
+    # 6.7 Member (as document creator) can query submissions roster
+    r_subm_roster = requests.get(f"{BASE_URL}/documents/{member_doc_id}/submissions", headers=headers_participant)
+    assert r_subm_roster.status_code == 200
+    print("✓ Document creator successfully accessed submissions review roster.")
+
     print("\n==================================================================")
-    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions)")
+    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions & Creation Permissions)")
     print("==================================================================")
     return 0
 

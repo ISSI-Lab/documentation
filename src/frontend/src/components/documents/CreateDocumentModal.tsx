@@ -108,6 +108,15 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const isTeamProject = selectedProject?.association_type === 'team';
   const isPersonalWorkspace = !projectId && !selectedOrgId;
 
+  const currentOrg = organizations.find((o) => o.id === selectedOrgId);
+  const isOrgManager = currentOrg?.user_role === 'owner' || currentOrg?.user_role === 'manager';
+  const isSelectedProjectCreatorOnly = selectedProject?.document_creation_permission === 'creator_only';
+  const canCreateInSelectedProject =
+    !selectedProject ||
+    !isSelectedProjectCreatorOnly ||
+    selectedProject.created_by === currentUser?.id ||
+    isOrgManager;
+
   // Filter projects based on selected organization
   const availableProjects = projects.filter((p) => {
     const pOrgId = p.organization_id || p.team_id;
@@ -179,6 +188,10 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
     }
     if (!templateId) {
       setError('Please select a template to base this document on.');
+      return;
+    }
+    if (selectedProject && !canCreateInSelectedProject) {
+      setError('Only the project creator and organization managers can create documents in this project.');
       return;
     }
 
@@ -296,14 +309,27 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   className="w-full px-2.5 py-1.5 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white rounded"
                 >
                   <option value="">(No Project / Standalone)</option>
-                  {availableProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.association_type ? `(${p.association_type === 'individual' ? 'Individual' : 'Team Formation'})` : ''}
-                    </option>
-                  ))}
+                  {availableProjects.map((p) => {
+                    const isCreatorOnly = p.document_creation_permission === 'creator_only';
+                    const canCreate = !isCreatorOnly || p.created_by === currentUser?.id || isOrgManager;
+                    return (
+                      <option key={p.id} value={p.id} disabled={!canCreate}>
+                        {p.name} {p.association_type ? `(${p.association_type === 'individual' ? 'Individual' : 'Team Formation'})` : ''} {!canCreate ? '(Locked: Creator Only)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
+
+            {selectedProject && !canCreateInSelectedProject && (
+              <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>
+                  This project allows document creation by <strong>Owner/Creator Only</strong>. You cannot create documents in this project.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Document Type & Collaboration (Single Unified Selector) */}
@@ -513,7 +539,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={creating}
+              disabled={creating || !canCreateInSelectedProject}
               className="inline-flex items-center px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm disabled:opacity-50 transition-colors cursor-pointer border border-blue-700 rounded"
             >
               <Sparkles className="w-4 h-4 mr-1.5" />

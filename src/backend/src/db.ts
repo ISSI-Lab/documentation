@@ -243,6 +243,7 @@ export async function initDatabase(): Promise<void> {
           organization_id VARCHAR(64) NULL,
           association_type ENUM('team', 'individual') NOT NULL DEFAULT 'team',
           team_assignment_set_id VARCHAR(64) NULL,
+          document_creation_permission ENUM('creator_only', 'all_members') NOT NULL DEFAULT 'all_members',
           name VARCHAR(255) NOT NULL,
           description TEXT,
           created_by VARCHAR(64) NOT NULL,
@@ -250,7 +251,8 @@ export async function initDatabase(): Promise<void> {
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_organization_id (organization_id),
           INDEX idx_association_type (association_type),
-          INDEX idx_team_assignment_set_id (team_assignment_set_id)
+          INDEX idx_team_assignment_set_id (team_assignment_set_id),
+          INDEX idx_doc_creation_perm (document_creation_permission)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -383,6 +385,7 @@ export async function initDatabase(): Promise<void> {
 
       await ensureColumnExists(conn, 'projects', 'association_type', "ENUM('team', 'individual') NOT NULL DEFAULT 'team'");
       await ensureColumnExists(conn, 'projects', 'team_assignment_set_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'projects', 'document_creation_permission', "ENUM('creator_only', 'all_members') NOT NULL DEFAULT 'all_members'");
       await ensureColumnExists(conn, 'organization_teams', 'set_id', 'VARCHAR(64) NULL');
 
       await ensureColumnExists(conn, 'templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");

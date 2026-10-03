@@ -291,6 +291,17 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         if (!isMember) {
           return res.status(403).json({ error: 'You are not a member of the organization for this project' });
         }
+
+        const creationPerm = proj.document_creation_permission || 'all_members';
+        if (creationPerm === 'creator_only') {
+          const isCreator = proj.created_by === user.id;
+          const isOrgManager = await isOrganizationManager(user.id, resolvedOrgId);
+          if (!isCreator && !isOrgManager) {
+            return res.status(403).json({
+              error: 'Only the project creator and organization managers can create documents in this project',
+            });
+          }
+        }
       } else if (proj.created_by !== user.id) {
         return res.status(403).json({ error: 'You do not have access to this personal project' });
       }
@@ -573,19 +584,16 @@ documentsRouter.get('/:id/export/markdown', optionalAuth, async (req: Authentica
 // Document Submissions & Creator Review Endpoints
 // ==============================================================================
 
-// Helper: Check if user is project creator, organization owner or manager
+// Helper: Check if user is document creator, organization owner or manager
 async function canReviewSubmissions(userId: string, doc: any, project: any): Promise<boolean> {
-  if (doc.created_by === userId) return true;
-  if (project) {
-    if (project.created_by === userId) return true;
-    const orgId = project.organization_id || project.team_id;
-    if (orgId) {
-      return isOrganizationManager(userId, orgId);
-    }
-  }
-  const docOrgId = doc.organization_id || doc.team_id;
-  if (docOrgId) {
-    return isOrganizationManager(userId, docOrgId);
+  // 1. Primary: Document creator can review all submissions
+  if (doc.created_by && doc.created_by === userId) return true;
+  // 2. Legacy fallback: If document has no recorded creator, check project creator
+  if (!doc.created_by && project && project.created_by === userId) return true;
+  // 3. Administrative oversight: Organization owner or manager
+  const orgId = doc.organization_id || doc.team_id || (project ? (project.organization_id || project.team_id) : null);
+  if (orgId) {
+    return isOrganizationManager(userId, orgId);
   }
   return false;
 }
