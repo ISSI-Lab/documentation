@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { marked } from 'marked';
 import {
+  ContainerChildElement,
   Document,
   DocumentSubmission,
   IterationFieldConfig,
@@ -29,6 +30,16 @@ import {
   User as UserModel,
 } from '../../types';
 import { api } from '../../api/client';
+import {
+  DEFAULT_CONTAINER_CHILDREN,
+  isIterativeElement,
+  getContainerChildren,
+  getElementIterationFields,
+  createEmptyContainerIteration,
+  createEmptyIteration,
+  getNormalizedContainerIterations,
+  getNormalizedIterations,
+} from '../../utils/iterationUtils';
 
 interface ParticipantSubmissionWorkspaceProps {
   document: Document;
@@ -68,7 +79,20 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       setError(null);
       const data = await api.getMySubmission(targetDocId);
       setSubmission(data);
-      setElementsData(data.elements_data || {});
+      const rawElements: Record<string, any> = { ...(data.elements_data || {}) };
+      if (template?.document_elements) {
+        for (const elem of template.document_elements) {
+          if (isIterativeElement(elem)) {
+            const children = getContainerChildren(elem);
+            if (rawElements[elem.id] === undefined || rawElements[elem.id] === null || rawElements[elem.id] === '') {
+              rawElements[elem.id] = getNormalizedContainerIterations(elem.default_value, children);
+            } else {
+              rawElements[elem.id] = getNormalizedContainerIterations(rawElements[elem.id], children);
+            }
+          }
+        }
+      }
+      setElementsData(rawElements);
       setComments(data.comments || []);
     } catch (err: any) {
       setError(err.message || 'Failed to initialize or load your submission');
@@ -137,37 +161,23 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     updateElementValue(elemId, updated);
   };
 
-  // Grouped Iteration Handlers (Iteration #1, #2... with fixed keys like Reason, Todo, Response)
-  const handleAddIteration = (elemId: string, configuredFields?: IterationFieldConfig[] | null) => {
+  // Iterative Container Handlers (Iteration #1, #2... with whole group of child elements)
+  const handleAddIteration = (elemId: string, childrenToUse?: ContainerChildElement[] | null) => {
+    const listToUse = childrenToUse && childrenToUse.length > 0
+      ? childrenToUse
+      : DEFAULT_CONTAINER_CHILDREN;
     const currentList: any[] = Array.isArray(elementsData[elemId])
-      ? [...elementsData[elemId]]
+      ? getNormalizedContainerIterations(elementsData[elemId], listToUse)
       : [];
     const nextNum = currentList.length + 1;
-    const fieldsToUse = configuredFields && configuredFields.length > 0
-      ? configuredFields
-      : [
-          { key: 'Reason', description: 'Reason' },
-          { key: 'Todo', description: 'Todo' },
-          { key: 'Response', description: 'Response' },
-        ];
-    const initialValues: Record<string, string> = {};
-    for (const f of fieldsToUse) {
-      initialValues[f.key] = f.default_value || '';
-    }
-    const newIteration: IterationGroupItem = {
-      id: `iter_${Date.now()}_${nextNum}`,
-      iteration_number: nextNum,
-      title: `Iteration #${nextNum}`,
-      values: initialValues,
-      fields: fieldsToUse.map((f) => ({ key: f.key, value: f.default_value || '' })),
-    };
+    const newIteration = createEmptyContainerIteration(nextNum, listToUse);
     updateElementValue(elemId, [...currentList, newIteration]);
   };
 
   const handleUpdateIterationValue = (
     elemId: string,
     iterId: string,
-    fieldKey: string,
+    keyOrId: string,
     value: string
   ) => {
     const currentList: any[] = Array.isArray(elementsData[elemId])
@@ -176,14 +186,14 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     const updated = currentList.map((item) => {
       if (item.id !== iterId) return item;
       const currentValues = { ...(item.values || {}) };
-      currentValues[fieldKey] = value;
+      currentValues[keyOrId] = value;
       let updatedFields = item.fields;
       if (Array.isArray(item.fields)) {
-        const found = item.fields.some((f: any) => f.key === fieldKey);
+        const found = item.fields.some((f: any) => f.key === keyOrId);
         if (found) {
-          updatedFields = item.fields.map((f: any) => (f.key === fieldKey ? { ...f, value } : f));
+          updatedFields = item.fields.map((f: any) => (f.key === keyOrId ? { ...f, value } : f));
         } else {
-          updatedFields = [...item.fields, { key: fieldKey, value }];
+          updatedFields = [...item.fields, { key: keyOrId, value }];
         }
       }
       return {
@@ -554,20 +564,11 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                             />
                           </div>
                         </div>
-                      ) : (elem.field_type === 'iteration_group' ||
-                        (elem.iteration_fields && elem.iteration_fields.length > 0)) ? (
+                      ) : isIterativeElement(elem) ? (
                         <div className="space-y-4 pt-1">
                           {(() => {
-                            const configuredFields =
-                              elem.iteration_fields && elem.iteration_fields.length > 0
-                                ? elem.iteration_fields
-                                : [
-                                    { key: 'Reason', description: 'Reason for this iteration' },
-                                    { key: 'Todo', description: 'Action items to do' },
-                                    { key: 'Response', description: 'Outcome or response' },
-                                  ];
-
-                            const iterations: any[] = Array.isArray(val) ? val : [];
+                            const containerChildren = getContainerChildren(elem);
+                            const iterations: IterationGroupItem[] = Array.isArray(val) ? val : [];
 
                             return (
                               <>
@@ -575,20 +576,49 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                                   <div>
                                     <span className="font-bold flex items-center gap-1.5 text-blue-950 mb-0.5">
                                       <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                                      Grouped Iterations • {configuredFields.length} Fixed Keys
+                                      Iterative Container • {containerChildren.length} Elements per Iteration Cycle
                                     </span>
-                                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                                      Predefined keys: {configuredFields.map((f) => (
-                                        <span
-                                          key={f.key}
-                                          className="inline-block bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-900 mx-0.5 border border-blue-200"
-                                        >
-                                          {f.key}
-                                        </span>
-                                      ))}. Fill in the values for each iteration below.
-                                    </p>
+                                    <div className="text-[11px] text-blue-800 leading-relaxed mt-1 flex flex-wrap items-center gap-1.5">
+                                      <span>Each iteration groups together:</span>
+                                      {containerChildren.map((child) => {
+                                        if (child.type === 'markdown_readonly') {
+                                          return (
+                                            <span
+                                              key={child.id}
+                                              className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded text-[10px] font-semibold text-slate-700 border border-slate-200"
+                                              title="Template View-Only Markdown"
+                                            >
+                                              <Eye className="w-3 h-3 text-slate-500" />
+                                              {child.label || 'Read-Only Markdown'}
+                                            </span>
+                                          );
+                                        }
+                                        if (child.type === 'markdown_text') {
+                                          return (
+                                            <span
+                                              key={child.id}
+                                              className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded text-[10px] font-semibold text-purple-700 border border-purple-200"
+                                              title="Writer Editable Markdown Block"
+                                            >
+                                              <FileText className="w-3 h-3 text-purple-500" />
+                                              {child.label || 'Markdown Text'}
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <span
+                                            key={child.id}
+                                            className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded text-[10px] font-mono font-bold text-blue-900 border border-blue-200"
+                                            title="Fixed Predefined Key"
+                                          >
+                                            <span className="text-blue-500 font-sans font-normal text-[9px] uppercase">Key:</span>
+                                            {child.key || child.label}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
-                                  <span className="text-[11px] font-bold bg-white text-blue-700 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0">
+                                  <span className="text-[11px] font-bold bg-white text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200 flex-shrink-0 shadow-2xs">
                                     {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
                                   </span>
                                 </div>
@@ -607,7 +637,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                                               Iteration #{iterNum}
                                             </span>
                                             <span className="text-xs font-semibold text-slate-700">
-                                              Group of {configuredFields.length} Items
+                                              Iterative Group of {containerChildren.length} Elements
                                             </span>
                                           </div>
 
@@ -623,25 +653,101 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                                           )}
                                         </div>
 
-                                        <div className="p-4 space-y-3.5 bg-white">
-                                          {configuredFields.map((f: any) => {
+                                        <div className="p-4 space-y-4 bg-white">
+                                          {containerChildren.map((child) => {
+                                            if (child.type === 'markdown_readonly') {
+                                              return (
+                                                <div
+                                                  key={child.id}
+                                                  className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-2"
+                                                >
+                                                  <div className="flex items-center justify-between text-xs text-slate-600 border-b border-slate-200 pb-1.5">
+                                                    <span className="font-semibold flex items-center gap-1.5 text-slate-800">
+                                                      <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                                      {child.label || 'Reference / Instructions'}
+                                                    </span>
+                                                    <span className="text-[10px] uppercase font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                                      Template Read-Only
+                                                    </span>
+                                                  </div>
+                                                  <div
+                                                    className="prose-custom text-xs text-slate-700 leading-relaxed"
+                                                    dangerouslySetInnerHTML={{
+                                                      __html: marked.parse(child.content || '_No template instructions provided._') as string,
+                                                    }}
+                                                  />
+                                                </div>
+                                              );
+                                            }
+
+                                            if (child.type === 'markdown_text') {
+                                              const textVal =
+                                                iterItem.values?.[child.id] !== undefined
+                                                  ? iterItem.values[child.id]
+                                                  : (iterItem.values?.[child.label || ''] !== undefined
+                                                    ? iterItem.values[child.label || '']
+                                                    : (iterItem[child.id] ?? ''));
+
+                                              return (
+                                                <div key={child.id} className="space-y-1.5">
+                                                  <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                      <FileText className="w-3.5 h-3.5 text-purple-600" />
+                                                      <span className="text-xs font-bold text-slate-800">
+                                                        {child.label || 'Markdown Text'}
+                                                      </span>
+                                                      {child.description && (
+                                                        <span className="text-[11px] text-slate-500 italic">
+                                                          • {child.description}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    <span className="text-[10px] text-purple-600 font-semibold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                                      Editable Markdown
+                                                    </span>
+                                                  </div>
+                                                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-1 focus-within:ring-blue-500">
+                                                    <textarea
+                                                      rows={4}
+                                                      disabled={isSubmitted}
+                                                      value={textVal}
+                                                      onChange={(e) =>
+                                                        handleUpdateIterationValue(
+                                                          elem.id,
+                                                          iterItem.id,
+                                                          child.id,
+                                                          e.target.value
+                                                        )
+                                                      }
+                                                      placeholder={child.placeholder || `Enter ${child.label || 'markdown text'}...`}
+                                                      className="w-full p-2.5 font-mono text-xs text-slate-800 outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
+                                                    />
+                                                  </div>
+                                                </div>
+                                              );
+                                            }
+
+                                            // key_value element
+                                            const keyName = child.key || child.label || child.id;
                                             const fieldVal =
-                                              iterItem.values?.[f.key] !== undefined
-                                                ? iterItem.values[f.key]
-                                                : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ??
-                                                   iterItem[f.key] ??
-                                                   '');
+                                              iterItem.values?.[keyName] !== undefined
+                                                ? iterItem.values[keyName]
+                                                : (iterItem.values?.[child.id] !== undefined
+                                                  ? iterItem.values[child.id]
+                                                  : (iterItem.fields?.find((x: any) => x.key === keyName)?.value ??
+                                                     iterItem[keyName] ??
+                                                     ''));
 
                                             return (
-                                              <div key={f.key} className="space-y-1">
+                                              <div key={child.id} className="space-y-1">
                                                 <div className="flex items-center justify-between gap-2">
                                                   <div className="flex items-center gap-1.5 flex-wrap">
                                                     <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 font-mono">
-                                                      {f.key}:
+                                                      {keyName}:
                                                     </span>
-                                                    {f.description && (
+                                                    {child.description && (
                                                       <span className="text-[11px] text-slate-500 italic">
-                                                        {f.description}
+                                                        {child.description}
                                                       </span>
                                                     )}
                                                   </div>
@@ -659,11 +765,11 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                                                       handleUpdateIterationValue(
                                                         elem.id,
                                                         iterItem.id,
-                                                        f.key,
+                                                        keyName,
                                                         e.target.value
                                                       )
                                                     }
-                                                    placeholder={f.placeholder || `Enter value for ${f.key}...`}
+                                                    placeholder={child.placeholder || `Enter value for ${keyName}...`}
                                                     className="w-full p-2.5 font-mono text-xs text-slate-800 outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
                                                   />
                                                 </div>
@@ -676,105 +782,23 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                                   })
                                 ) : (
                                   <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
-                                    No iterations recorded yet.
+                                    No iterations recorded yet. Click below to add Iteration #1 with the entire container group ({containerChildren.map((c) => c.key || c.label).join(', ')}).
                                   </div>
                                 )}
 
                                 {!isSubmitted && (
                                   <button
                                     type="button"
-                                    onClick={() => handleAddIteration(elem.id, configuredFields)}
+                                    onClick={() => handleAddIteration(elem.id, containerChildren)}
                                     className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:text-blue-800 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
                                   >
                                     <Plus className="w-4 h-4 text-blue-600" />
-                                    <span>+ Add Iteration (Iteration #{iterations.length + 1})</span>
+                                    <span>+ Add Iteration #{iterations.length + 1} (Whole Group: {containerChildren.map((c) => c.key || c.label).join(', ')})</span>
                                   </button>
                                 )}
                               </>
                             );
                           })()}
-                        </div>
-                      ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
-                        <div className="space-y-3 pt-1">
-                          {Array.isArray(val) && val.length > 0 ? (
-                            val.map((subItem: RepeatableSubItem, subIdx: number) => {
-                              const itemDesc = subItem.description || subItem.title || '';
-                              const itemVal = subItem.value !== undefined ? subItem.value : (subItem.content || '');
-
-                              return (
-                                <div
-                                  key={subItem.id || subIdx}
-                                  className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2.5"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="flex-1 flex items-center gap-2">
-                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
-                                        Description (Key):
-                                      </span>
-                                      <input
-                                        type="text"
-                                        disabled={isSubmitted}
-                                        value={itemDesc}
-                                        onChange={(e) =>
-                                          handleUpdateRepeatableSubItem(elem.id, subItem.id, {
-                                            description: e.target.value,
-                                            title: e.target.value,
-                                          })
-                                        }
-                                        placeholder={`Description Key (e.g. Item ${subIdx + 1})...`}
-                                        className="font-semibold text-xs text-slate-900 bg-white px-2 py-1 border border-slate-300 rounded-lg w-full max-w-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-slate-50"
-                                      />
-                                    </div>
-
-                                    {!isSubmitted && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveRepeatableSubItem(elem.id, subItem.id)}
-                                        title="Delete Editable Element"
-                                        className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-2 cursor-pointer"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                      Value (Editable Input)
-                                    </span>
-                                    <textarea
-                                      rows={3}
-                                      disabled={isSubmitted}
-                                      value={itemVal}
-                                      onChange={(e) =>
-                                        handleUpdateRepeatableSubItem(elem.id, subItem.id, {
-                                          value: e.target.value,
-                                          content: e.target.value,
-                                        })
-                                      }
-                                      placeholder="Enter editable value..."
-                                      className="w-full p-2.5 font-mono text-xs text-slate-800 bg-white border border-slate-200 rounded-lg outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
-                              No editable elements added yet.
-                            </div>
-                          )}
-
-                          {!isSubmitted && (
-                            <button
-                              type="button"
-                              onClick={() => handleAddRepeatableSubItem(elem.id)}
-                              className="w-full py-2 px-3 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-semibold text-xs flex items-center justify-center space-x-1 transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Add New Editable Element</span>
-                            </button>
-                          )}
                         </div>
                       ) : elem.field_type === 'markdown' ? (
                         <textarea

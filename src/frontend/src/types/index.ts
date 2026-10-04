@@ -149,17 +149,31 @@ export interface Project {
 }
 
 export type DocumentElementType =
-  | 'markdown'
+  | 'iteration_container'
+  | 'iteration_group'
   | 'pure_markdown'
   | 'interactive_field'
-  | 'iteration_group'
   | 'interactive_list'
   | 'repeatable_list'
+  | 'markdown'
   | 'short_text'
   | 'select'
   | 'callout'
   | 'code'
   | 'checklist';
+
+export type ContainerChildType = 'key_value' | 'markdown_text' | 'markdown_readonly';
+
+export interface ContainerChildElement {
+  id: string;
+  type: ContainerChildType;
+  key?: string; // For key_value: fixed key edited by template editor (viewed by writer)
+  label?: string; // For markdown_text / key_value: display title or heading
+  description?: string; // Guidance / instructions for document writer
+  placeholder?: string; // Placeholder hint
+  content?: string; // For markdown_readonly: pure markdown text view-only
+  default_value?: string; // Default starter value for markdown_text or key_value
+}
 
 export interface IterationFieldConfig {
   id?: string;
@@ -182,7 +196,7 @@ export interface IterationGroupItem {
   id: string;
   iteration_number?: number;
   title?: string;
-  values?: Record<string, string>;
+  values?: Record<string, any>;
   fields?: Array<{ key: string; value: string }>;
 }
 
@@ -201,6 +215,7 @@ export interface DocumentElementConfig {
   options?: string[] | null;
   view_markdown?: string | null;
   iteration_fields?: IterationFieldConfig[] | null;
+  container_children?: ContainerChildElement[] | null;
 }
 
 export type TemplateVisibility = 'private' | 'public';

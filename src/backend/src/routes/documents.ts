@@ -388,7 +388,61 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       if (elements_data && elements_data[elem.id] !== undefined) {
         finalElementsData[elem.id] = elements_data[elem.id];
       } else {
-        finalElementsData[elem.id] = elem.default_value || '';
+        const isIterative =
+          elem.field_type === 'iteration_container' ||
+          elem.field_type === 'iteration_group' ||
+          elem.field_type === 'interactive_list' ||
+          elem.field_type === 'repeatable_list' ||
+          Boolean(elem.container_children && elem.container_children.length > 0) ||
+          Boolean(elem.iteration_fields && elem.iteration_fields.length > 0);
+        if (isIterative) {
+          let containerChildren: any[] = [];
+          if (elem.container_children && elem.container_children.length > 0) {
+            containerChildren = elem.container_children;
+          } else if (elem.iteration_fields && elem.iteration_fields.length > 0) {
+            containerChildren = elem.iteration_fields.map((f: any, fIdx: number) => ({
+              id: f.id || `field_${fIdx + 1}`,
+              type: 'key_value',
+              key: f.key,
+              label: f.label || f.key,
+              description: f.description,
+              placeholder: f.placeholder,
+              default_value: f.default_value,
+            }));
+          } else {
+            containerChildren = [
+              { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+              { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+              { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+            ];
+          }
+
+          if (Array.isArray(elem.default_value) && elem.default_value.length > 0) {
+            finalElementsData[elem.id] = elem.default_value;
+          } else {
+            const vals: Record<string, any> = {};
+            for (const c of containerChildren) {
+              const k = c.key || c.id;
+              vals[k] = c.default_value || '';
+              if (c.id && c.id !== k) {
+                vals[c.id] = c.default_value || '';
+              }
+            }
+            finalElementsData[elem.id] = [
+              {
+                id: 'iter-1',
+                iteration_number: 1,
+                title: 'Iteration #1',
+                values: vals,
+                fields: containerChildren
+                  .filter((c: any) => c.type === 'key_value')
+                  .map((c: any) => ({ key: c.key || c.id, value: vals[c.key || c.id] || '' })),
+              },
+            ];
+          }
+        } else {
+          finalElementsData[elem.id] = elem.default_value || '';
+        }
       }
     }
 
@@ -1427,6 +1481,68 @@ documentsRouter.get('/:id/my-submission', requireAuth, async (req: Authenticated
       }
     } else if (typeof doc.elements_data === 'object' && doc.elements_data !== null) {
       prePopulatedData = { ...doc.elements_data };
+    }
+
+    if (template?.document_elements) {
+      for (const elem of template.document_elements) {
+        if (prePopulatedData[elem.id] === undefined || prePopulatedData[elem.id] === null || prePopulatedData[elem.id] === '') {
+          const isIterative =
+            elem.field_type === 'iteration_container' ||
+            elem.field_type === 'iteration_group' ||
+            elem.field_type === 'interactive_list' ||
+            elem.field_type === 'repeatable_list' ||
+            Boolean(elem.container_children && elem.container_children.length > 0) ||
+            Boolean(elem.iteration_fields && elem.iteration_fields.length > 0);
+          if (isIterative) {
+            let containerChildren: any[] = [];
+            if (elem.container_children && elem.container_children.length > 0) {
+              containerChildren = elem.container_children;
+            } else if (elem.iteration_fields && elem.iteration_fields.length > 0) {
+              containerChildren = elem.iteration_fields.map((f: any, fIdx: number) => ({
+                id: f.id || `field_${fIdx + 1}`,
+                type: 'key_value',
+                key: f.key,
+                label: f.label || f.key,
+                description: f.description,
+                placeholder: f.placeholder,
+                default_value: f.default_value,
+              }));
+            } else {
+              containerChildren = [
+                { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+                { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+                { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+              ];
+            }
+
+            if (Array.isArray(elem.default_value) && elem.default_value.length > 0) {
+              prePopulatedData[elem.id] = elem.default_value;
+            } else {
+              const vals: Record<string, any> = {};
+              for (const c of containerChildren) {
+                const k = c.key || c.id;
+                vals[k] = c.default_value || '';
+                if (c.id && c.id !== k) {
+                  vals[c.id] = c.default_value || '';
+                }
+              }
+              prePopulatedData[elem.id] = [
+                {
+                  id: 'iter-1',
+                  iteration_number: 1,
+                  title: 'Iteration #1',
+                  values: vals,
+                  fields: containerChildren
+                    .filter((c: any) => c.type === 'key_value')
+                    .map((c: any) => ({ key: c.key || c.id, value: vals[c.key || c.id] || '' })),
+                },
+              ];
+            }
+          } else {
+            prePopulatedData[elem.id] = elem.default_value || '';
+          }
+        }
+      }
     }
 
     if (docType === 'personal') {

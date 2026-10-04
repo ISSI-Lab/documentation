@@ -17,6 +17,6 @@ When switching from one workstation to another (or across team handoffs):
 - [`2026-09-11-document-authoring-platform-implementation.md`](2026-09-11-document-authoring-platform-implementation.md): Complete Document Templating, Configuration & Markdown Authoring platform implementation.
 - [`2026-09-11-cross-machine-development-guide.md`](2026-09-11-cross-machine-development-guide.md): Master setup guide and handoff for resuming development on any new machine.
 - [`2026-09-25-auth-teams-homepage-and-ui-layout-overhaul.md`](2026-09-25-auth-teams-homepage-and-ui-layout-overhaul.md): User authentication, open team creation, personal homepage, and UI layout overhaul.
-
-
-
+- [`2026-10-04-project-doc-and-org-deletion-guardrails.md`](2026-10-04-project-doc-and-org-deletion-guardrails.md): Project, document, and organization deletion guardrails and cascade cleanup.
+- [`2026-10-04-grouped-iterations-whole-list-addition.md`](2026-10-04-grouped-iterations-whole-list-addition.md): Grouped iteration elements and whole-list addition with predefined template keys.
+- [`2026-10-04-iterative-container-architecture.md`](2026-10-04-iterative-container-architecture.md): Iterative container architecture with heterogeneous child elements and whole-group addition.

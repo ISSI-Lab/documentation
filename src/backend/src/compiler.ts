@@ -1,4 +1,4 @@
-import { DocumentElementConfig, RepeatableSubItem, Template } from './models';
+import { ContainerChildElement, DocumentElementConfig, IterationFieldConfig, RepeatableSubItem, Template } from './models';
 
 function getHeadingPrefix(level: number): string {
   const safeLevel = Math.max(1, Math.min(level || 1, 5));
@@ -108,111 +108,113 @@ export function compileDocumentMarkdown(
         break;
       }
 
-      case 'iteration_group': {
-        // Grouped iteration: Iteration #1, #2, ... with fixed keys configured in template
-        const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
-        if (Array.isArray(val) && val.length > 0) {
-          val.forEach((iterItem: any, iterIdx: number) => {
-            const iterNum = iterItem.iteration_number || (iterIdx + 1);
-            const iterTitle = iterItem.title || `Iteration #${iterNum}`;
-            lines.push(`${subHeadingPrefix} ${iterTitle}`);
-            lines.push('');
-
-            const configuredFields = elem.iteration_fields && elem.iteration_fields.length > 0
-              ? elem.iteration_fields
-              : null;
-
-            if (configuredFields) {
-              for (const f of configuredFields) {
-                const itemVal = iterItem.values?.[f.key] !== undefined
-                  ? iterItem.values[f.key]
-                  : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ?? iterItem[f.key] ?? '');
-                const textVal = String(itemVal || '').trim();
-                if (textVal.includes('\n')) {
-                  lines.push(`- **${f.key}:**`);
-                  for (const subLine of textVal.split('\n')) {
-                    lines.push(`  ${subLine}`);
-                  }
-                } else {
-                  lines.push(`- **${f.key}:** ${textVal || '_No content provided._'}`);
-                }
-              }
-            } else if (iterItem.values && typeof iterItem.values === 'object') {
-              for (const [k, v] of Object.entries(iterItem.values)) {
-                const textVal = String(v || '').trim();
-                if (textVal.includes('\n')) {
-                  lines.push(`- **${k}:**`);
-                  for (const subLine of textVal.split('\n')) {
-                    lines.push(`  ${subLine}`);
-                  }
-                } else {
-                  lines.push(`- **${k}:** ${textVal || '_No content provided._'}`);
-                }
-              }
-            } else if (Array.isArray(iterItem.fields)) {
-              for (const f of iterItem.fields) {
-                const textVal = String(f.value || '').trim();
-                lines.push(`- **${f.key || 'Item'}:** ${textVal || '_No content provided._'}`);
-              }
-            }
-            lines.push('');
-          });
-        } else {
-          lines.push('_No iterations recorded._');
-          lines.push('');
-        }
-        break;
-      }
-
+      case 'iteration_container':
+      case 'iteration_group':
       case 'interactive_list':
       case 'repeatable_list': {
-        // If element has configured iteration_fields, format as grouped iterations
-        if (elem.iteration_fields && elem.iteration_fields.length > 0 && Array.isArray(val) && val.length > 0 && (val[0]?.values || val[0]?.fields)) {
-          const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
-          val.forEach((iterItem: any, iterIdx: number) => {
-            const iterNum = iterItem.iteration_number || (iterIdx + 1);
-            const iterTitle = iterItem.title || `Iteration #${iterNum}`;
-            lines.push(`${subHeadingPrefix} ${iterTitle}`);
-            lines.push('');
-            for (const f of elem.iteration_fields!) {
-              const itemVal = iterItem.values?.[f.key] !== undefined
-                ? iterItem.values[f.key]
-                : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ?? iterItem[f.key] ?? '');
-              const textVal = String(itemVal || '').trim();
-              if (textVal.includes('\n')) {
-                lines.push(`- **${f.key}:**`);
-                for (const subLine of textVal.split('\n')) {
-                  lines.push(`  ${subLine}`);
-                }
-              } else {
-                lines.push(`- **${f.key}:** ${textVal || '_No content provided._'}`);
-              }
-            }
-            lines.push('');
-          });
-          break;
+        const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
+        const childHeadingPrefix = getHeadingPrefix((elem.level || 1) + 2);
+
+        // Determine configured container children: supports key_value, markdown_text, markdown_readonly
+        let containerChildren: ContainerChildElement[] = [];
+        if (elem.container_children && Array.isArray(elem.container_children) && elem.container_children.length > 0) {
+          containerChildren = elem.container_children;
+        } else if (elem.iteration_fields && Array.isArray(elem.iteration_fields) && elem.iteration_fields.length > 0) {
+          containerChildren = elem.iteration_fields.map((f, fIdx) => ({
+            id: f.id || `child_${fIdx + 1}`,
+            type: 'key_value',
+            key: f.key,
+            label: f.label || f.key,
+            description: f.description,
+            placeholder: f.placeholder,
+            default_value: f.default_value,
+          }));
+        } else if (Array.isArray(val) && val.length > 0 && val[0]?.values && typeof val[0].values === 'object') {
+          containerChildren = Object.keys(val[0].values).map((k, kIdx) => ({
+            id: `child_${kIdx + 1}`,
+            type: 'key_value',
+            key: k,
+            label: k,
+            description: '',
+          }));
+        } else {
+          containerChildren = [
+            { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Reason for this iteration' },
+            { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Action items to do' },
+            { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Outcome or response' },
+          ];
         }
 
-        // Iterative array of editable elements (each element is description - value)
-        const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
         if (Array.isArray(val) && val.length > 0) {
-          for (const item of val as RepeatableSubItem[]) {
-            const itemKey = (item.description && item.description.trim()) ||
-                            (item.title && item.title.trim()) ||
-                            'Item';
-            const itemVal = item.value !== undefined && item.value !== null && String(item.value).trim() !== ''
-              ? String(item.value).trim()
-              : (item.content && item.content.trim() ? item.content.trim() : '_No details provided._');
-            lines.push(`${subHeadingPrefix} ${itemKey}`);
-            lines.push('');
-            lines.push(itemVal);
-            lines.push('');
+          // Check if grouped iterations
+          if (val[0]?.values !== undefined || val[0]?.iteration_number !== undefined || val[0]?.fields !== undefined) {
+            val.forEach((iterItem: any, iterIdx: number) => {
+              const iterNum = iterItem.iteration_number || (iterIdx + 1);
+              const iterTitle = iterItem.title || `Iteration #${iterNum}`;
+              lines.push(`${subHeadingPrefix} ${iterTitle}`);
+              lines.push('');
+
+              for (const child of containerChildren) {
+                if (child.type === 'markdown_readonly') {
+                  const content = child.content?.trim();
+                  if (content) {
+                    lines.push(content);
+                    lines.push('');
+                  }
+                } else if (child.type === 'markdown_text') {
+                  const itemVal = iterItem.values?.[child.id] !== undefined
+                    ? iterItem.values[child.id]
+                    : (iterItem.values?.[child.label || ''] !== undefined
+                      ? iterItem.values[child.label || '']
+                      : (iterItem[child.id] ?? child.default_value ?? ''));
+                  const textVal = String(itemVal || '').trim();
+                  if (child.label) {
+                    lines.push(`${childHeadingPrefix} ${child.label}`);
+                    lines.push('');
+                  }
+                  lines.push(textVal || '_No content provided._');
+                  lines.push('');
+                } else {
+                  // key_value item (fixed key edited by template editor, value filled by writer)
+                  const keyName = child.key || child.label || child.id || 'Item';
+                  const itemVal = iterItem.values?.[keyName] !== undefined
+                    ? iterItem.values[keyName]
+                    : (iterItem.values?.[child.id] !== undefined
+                      ? iterItem.values[child.id]
+                      : (iterItem.fields?.find((x: any) => x.key === keyName)?.value ?? iterItem[keyName] ?? child.default_value ?? ''));
+                  const textVal = String(itemVal || '').trim();
+                  if (textVal.includes('\n')) {
+                    lines.push(`- **${keyName}:**`);
+                    for (const subLine of textVal.split('\n')) {
+                      lines.push(`  ${subLine}`);
+                    }
+                  } else {
+                    lines.push(`- **${keyName}:** ${textVal || '_No content provided._'}`);
+                  }
+                }
+              }
+              lines.push('');
+            });
+          } else {
+            // Legacy sub items fallback
+            for (const item of val as RepeatableSubItem[]) {
+              const itemKey = (item.description && item.description.trim()) ||
+                              (item.title && item.title.trim()) ||
+                              'Item';
+              const itemVal = item.value !== undefined && item.value !== null && String(item.value).trim() !== ''
+                ? String(item.value).trim()
+                : (item.content && item.content.trim() ? item.content.trim() : '_No details provided._');
+              lines.push(`${subHeadingPrefix} ${itemKey}`);
+              lines.push('');
+              lines.push(itemVal);
+              lines.push('');
+            }
           }
         } else if (typeof val === 'string' && val.trim()) {
           lines.push(val.trim());
           lines.push('');
         } else {
-          lines.push('_No items added yet._');
+          lines.push('_No iterations recorded._');
           lines.push('');
         }
         break;

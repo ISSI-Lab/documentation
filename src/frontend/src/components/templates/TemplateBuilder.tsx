@@ -21,6 +21,8 @@ import {
   ListPlus,
 } from 'lucide-react';
 import {
+  ContainerChildElement,
+  ContainerChildType,
   DocumentElementConfig,
   DocumentElementType,
   IterationFieldConfig,
@@ -30,6 +32,7 @@ import {
   TemplateCreatePayload,
   TemplateVisibility,
 } from '../../types';
+import { getContainerChildren, DEFAULT_CONTAINER_CHILDREN } from '../../utils/iterationUtils';
 
 interface TemplateBuilderProps {
   initialTemplate?: Template | null;
@@ -133,12 +136,13 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   const handleAddElement = (fieldType: DocumentElementType = 'markdown', level = 1) => {
     const nextOrder = elements.length;
     const defaultLabels: Record<DocumentElementType, string> = {
-      markdown: `Section ${nextOrder + 1}: Details`,
+      iteration_container: `Section ${nextOrder + 1}: Iterative Container (Grouped Elements)`,
+      iteration_group: `Section ${nextOrder + 1}: Iterative Root Cause & Resolution (Grouped Iterations)`,
       pure_markdown: `Section ${nextOrder + 1}: Reference & Background (View Only)`,
       interactive_field: `Section ${nextOrder + 1}: Interactive Field`,
-      iteration_group: `Section ${nextOrder + 1}: Iterative Root Cause & Resolution (Grouped Iterations)`,
       interactive_list: `Section ${nextOrder + 1}: Iterative Editable List`,
       repeatable_list: `Section ${nextOrder + 1}: Repeatable Items List`,
+      markdown: `Section ${nextOrder + 1}: Details`,
       short_text: `Field ${nextOrder + 1}: Note`,
       select: `Selection ${nextOrder + 1}`,
       callout: `Notice ${nextOrder + 1}`,
@@ -147,9 +151,18 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     };
 
     const defaultContent: Record<DocumentElementType, any> = {
-      markdown: '### Section Heading\n- Item 1\n- Item 2',
-      pure_markdown: '### Reference & Context\nThis content is rendered as pure markdown for viewing only.',
-      interactive_field: '',
+      iteration_container: [
+        {
+          id: 'iter-1',
+          iteration_number: 1,
+          title: 'Iteration #1',
+          values: {
+            Reason: '',
+            Todo: '',
+            Response: '',
+          },
+        },
+      ],
       iteration_group: [
         {
           id: 'iter-1',
@@ -162,24 +175,33 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
           },
         },
       ],
+      pure_markdown: '### Reference & Context\nThis content is rendered as pure markdown for viewing only.',
+      interactive_field: '',
       interactive_list: [
         {
-          id: 'item-1',
-          description: 'Key 1 (Description)',
-          value: 'Editable value for item 1',
-          title: 'Key 1 (Description)',
-          content: 'Editable value for item 1',
+          id: 'iter-1',
+          iteration_number: 1,
+          title: 'Iteration #1',
+          values: {
+            Reason: '',
+            Todo: '',
+            Response: '',
+          },
         },
       ],
       repeatable_list: [
         {
-          id: 'item-1',
-          description: 'Option A: Managed Cloud Service',
-          value: '- Pros: Low maintenance\n- Cons: High cost',
-          title: 'Option A: Managed Cloud Service',
-          content: '- Pros: Low maintenance\n- Cons: High cost',
+          id: 'iter-1',
+          iteration_number: 1,
+          title: 'Iteration #1',
+          values: {
+            Reason: '',
+            Todo: '',
+            Response: '',
+          },
         },
       ],
+      markdown: '### Section Heading\n- Item 1\n- Item 2',
       short_text: '',
       select: 'Option 1',
       callout: 'Important note regarding this section.',
@@ -188,18 +210,25 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     };
 
     const defaultDescriptions: Record<DocumentElementType, string> = {
-      markdown: 'Guidance text for the author writing in this section.',
+      iteration_container: 'Iterative container: Contains child elements (key-value items, markdown text, markdown read-only) that are repeated together for each iteration.',
+      iteration_group: 'Grouped iterations: Each iteration contains predefined key items (Reason, Todo, Response) for the document writer to fill.',
       pure_markdown: 'Pure markdown text element strictly for viewing. Authors view rendered markdown without editing.',
       interactive_field: 'Key / Description for this interactive editing field.',
-      iteration_group: 'Grouped iterations: Each iteration contains predefined key items (Reason, Todo, Response) for the document writer to fill.',
-      interactive_list: 'Iterative array of editable elements. Each editable element is description (key) - value (editable).',
-      repeatable_list: 'Special item: Authors can click "+" to add new items while writing.',
+      interactive_list: 'Grouped iterations: Each iteration contains predefined key items (Reason, Todo, Response) for the document writer to fill.',
+      repeatable_list: 'Repeatable iteration cycles: Authors add whole list iterations while writing.',
+      markdown: 'Guidance text for the author writing in this section.',
       short_text: 'Short note guidance.',
       select: 'Select an option.',
       callout: 'Notice guidance.',
       code: 'Code block guidance.',
       checklist: 'Checklist task items.',
     };
+
+    const isIterative =
+      fieldType === 'iteration_container' ||
+      fieldType === 'iteration_group' ||
+      fieldType === 'interactive_list' ||
+      fieldType === 'repeatable_list';
 
     const newElem: DocumentElementConfig = {
       id: `elem_${Date.now().toString().slice(-4)}`,
@@ -213,14 +242,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       order: nextOrder,
       options: fieldType === 'select' ? ['Option 1', 'Option 2', 'Option 3'] : null,
       view_markdown: fieldType === 'pure_markdown' ? defaultContent[fieldType] : null,
-      iteration_fields:
-        fieldType === 'iteration_group'
-          ? [
-              { key: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
-              { key: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
-              { key: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
-            ]
-          : null,
+      container_children: isIterative ? [...DEFAULT_CONTAINER_CHILDREN] : null,
+      iteration_fields: isIterative
+        ? [
+            { key: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+            { key: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+            { key: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+          ]
+        : null,
     };
 
     const updated = [...elements, newElem];
@@ -234,21 +263,186 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     setElements(updated);
   };
 
-  const handleAddIterationField = (elementIndex: number) => {
+  // Iterative Container Child Handlers
+  const handleAddContainerChild = (elementIndex: number, type: ContainerChildType) => {
     const elem = elements[elementIndex];
-    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
-      ? [...elem.iteration_fields]
-      : [];
-    const nextIdx = currentFields.length + 1;
-    const newField: IterationFieldConfig = {
-      id: `field_${Date.now()}_${nextIdx}`,
-      key: `Key${nextIdx}`,
-      description: '',
-      placeholder: `Enter value for Key${nextIdx}...`,
-    };
+    const currentChildren: ContainerChildElement[] = getContainerChildren(elem);
+    const nextIdx = currentChildren.length + 1;
+    let newChild: ContainerChildElement;
+
+    if (type === 'key_value') {
+      newChild = {
+        id: `kv_${Date.now()}_${nextIdx}`,
+        type: 'key_value',
+        key: `ItemKey${nextIdx}`,
+        label: `ItemKey${nextIdx}`,
+        description: '',
+        placeholder: 'Enter value...',
+        default_value: '',
+      };
+    } else if (type === 'markdown_text') {
+      newChild = {
+        id: `md_${Date.now()}_${nextIdx}`,
+        type: 'markdown_text',
+        label: `Notes & Details ${nextIdx}`,
+        description: '',
+        placeholder: 'Write markdown notes...',
+        default_value: '',
+      };
+    } else {
+      newChild = {
+        id: `ro_${Date.now()}_${nextIdx}`,
+        type: 'markdown_readonly',
+        label: `Reference Guidelines ${nextIdx}`,
+        content: `> **Guidelines**: Enter view-only instructions or reference markdown here.`,
+      };
+    }
+
+    const updated = [...currentChildren, newChild];
     handleUpdateElement(elementIndex, {
-      iteration_fields: [...currentFields, newField],
+      container_children: updated,
+      iteration_fields: updated
+        .filter((c) => c.type === 'key_value')
+        .map((c) => ({
+          id: c.id,
+          key: c.key || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+        })),
     });
+  };
+
+  const handleUpdateContainerChild = (
+    elementIndex: number,
+    childIndex: number,
+    patch: Partial<ContainerChildElement>
+  ) => {
+    const elem = elements[elementIndex];
+    const currentChildren: ContainerChildElement[] = getContainerChildren(elem);
+    if (!currentChildren[childIndex]) return;
+    const updated = [...currentChildren];
+    updated[childIndex] = { ...updated[childIndex], ...patch };
+    handleUpdateElement(elementIndex, {
+      container_children: updated,
+      iteration_fields: updated
+        .filter((c) => c.type === 'key_value')
+        .map((c) => ({
+          id: c.id,
+          key: c.key || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+        })),
+    });
+  };
+
+  const handleRemoveContainerChild = (elementIndex: number, childIndex: number) => {
+    const elem = elements[elementIndex];
+    const currentChildren: ContainerChildElement[] = getContainerChildren(elem);
+    const updated = currentChildren.filter((_, i) => i !== childIndex);
+    handleUpdateElement(elementIndex, {
+      container_children: updated,
+      iteration_fields: updated
+        .filter((c) => c.type === 'key_value')
+        .map((c) => ({
+          id: c.id,
+          key: c.key || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+        })),
+    });
+  };
+
+  const handleMoveContainerChild = (
+    elementIndex: number,
+    childIndex: number,
+    direction: 'up' | 'down'
+  ) => {
+    const elem = elements[elementIndex];
+    const currentChildren = [...getContainerChildren(elem)];
+    if (
+      (direction === 'up' && childIndex === 0) ||
+      (direction === 'down' && childIndex === currentChildren.length - 1)
+    ) {
+      return;
+    }
+    const targetIndex = direction === 'up' ? childIndex - 1 : childIndex + 1;
+    const temp = currentChildren[childIndex];
+    currentChildren[childIndex] = currentChildren[targetIndex];
+    currentChildren[targetIndex] = temp;
+
+    handleUpdateElement(elementIndex, {
+      container_children: currentChildren,
+      iteration_fields: currentChildren
+        .filter((c) => c.type === 'key_value')
+        .map((c) => ({
+          id: c.id,
+          key: c.key || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+        })),
+    });
+  };
+
+  const handleSetContainerPreset = (
+    elementIndex: number,
+    presetType: 'standard' | 'four_step' | 'guided'
+  ) => {
+    let presetChildren: ContainerChildElement[] = [];
+    if (presetType === 'standard') {
+      presetChildren = [
+        { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+        { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+        { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+      ];
+    } else if (presetType === 'four_step') {
+      presetChildren = [
+        { id: 'obs', type: 'key_value', key: 'Observation', label: 'Observation', description: 'What did we observe?', placeholder: 'Observed behavior...' },
+        { id: 'hyp', type: 'key_value', key: 'Hypothesis', label: 'Hypothesis', description: 'Why did it occur?', placeholder: 'Hypothesis...' },
+        { id: 'act', type: 'key_value', key: 'Action', label: 'Action', description: 'What did we do?', placeholder: 'Steps taken...' },
+        { id: 'out', type: 'key_value', key: 'Outcome', label: 'Outcome', description: 'What was the result?', placeholder: 'Measured outcome...' },
+      ];
+    } else {
+      presetChildren = [
+        {
+          id: 'guide',
+          type: 'markdown_readonly',
+          label: 'Cycle Guidelines',
+          content: '> **Cycle Guidelines**: Identify root cause, formulate concrete action items, and measure outcome before moving to the next cycle.',
+        },
+        { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Root cause or problem description', placeholder: 'Enter reason...' },
+        { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Specific remediation steps', placeholder: 'Enter action items...' },
+        { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Observed outcome or metrics', placeholder: 'Enter response...' },
+        {
+          id: 'notes',
+          type: 'markdown_text',
+          label: 'Iteration Notes & Next Steps',
+          description: 'Freeform markdown documentation for this cycle',
+          placeholder: 'Add detailed logs, links, or notes...',
+          default_value: '',
+        },
+      ];
+    }
+
+    handleUpdateElement(elementIndex, {
+      container_children: presetChildren,
+      iteration_fields: presetChildren
+        .filter((c) => c.type === 'key_value')
+        .map((c) => ({
+          id: c.id,
+          key: c.key || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+        })),
+    });
+  };
+
+  const handleAddIterationField = (elementIndex: number) => {
+    handleAddContainerChild(elementIndex, 'key_value');
   };
 
   const handleUpdateIterationField = (
@@ -256,30 +450,29 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     fieldIndex: number,
     patch: Partial<IterationFieldConfig>
   ) => {
-    const elem = elements[elementIndex];
-    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
-      ? [...elem.iteration_fields]
-      : [];
-    if (!currentFields[fieldIndex]) return;
-    const updated = [...currentFields];
-    updated[fieldIndex] = { ...updated[fieldIndex], ...patch };
-    handleUpdateElement(elementIndex, { iteration_fields: updated });
+    handleUpdateContainerChild(elementIndex, fieldIndex, patch as any);
   };
 
   const handleRemoveIterationField = (elementIndex: number, fieldIndex: number) => {
-    const elem = elements[elementIndex];
-    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
-      ? [...elem.iteration_fields]
-      : [];
-    const updated = currentFields.filter((_, i) => i !== fieldIndex);
-    handleUpdateElement(elementIndex, { iteration_fields: updated });
+    handleRemoveContainerChild(elementIndex, fieldIndex);
   };
 
   const handleSetIterationPreset = (
     elementIndex: number,
     presetFields: IterationFieldConfig[]
   ) => {
-    handleUpdateElement(elementIndex, { iteration_fields: presetFields });
+    const children: ContainerChildElement[] = presetFields.map((f) => ({
+      id: f.id || f.key.toLowerCase(),
+      type: 'key_value',
+      key: f.key,
+      label: f.label || f.key,
+      description: f.description,
+      placeholder: f.placeholder,
+    }));
+    handleUpdateElement(elementIndex, {
+      container_children: children,
+      iteration_fields: presetFields,
+    });
   };
 
   const handleIndent = (index: number, delta: number) => {
@@ -794,24 +987,31 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                                   const newType = e.target.value as DocumentElementType;
                                   const patch: Partial<DocumentElementConfig> = { field_type: newType };
                                   if (
-                                    newType === 'iteration_group' &&
-                                    (!elem.iteration_fields || elem.iteration_fields.length === 0)
+                                    (newType === 'iteration_container' ||
+                                      newType === 'iteration_group' ||
+                                      newType === 'interactive_list' ||
+                                      newType === 'repeatable_list') &&
+                                    (!elem.container_children || elem.container_children.length === 0)
                                   ) {
-                                    patch.iteration_fields = [
-                                      { key: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
-                                      { key: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
-                                      { key: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
-                                    ];
+                                    patch.container_children = [...DEFAULT_CONTAINER_CHILDREN];
+                                    patch.iteration_fields = DEFAULT_CONTAINER_CHILDREN.map((c) => ({
+                                      id: c.id,
+                                      key: c.key || c.id,
+                                      label: c.label,
+                                      description: c.description,
+                                      placeholder: c.placeholder,
+                                    }));
                                   }
                                   handleUpdateElement(idx, patch);
                                 }}
                                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                               >
-                                <option value="iteration_group">🔄 Grouped Iteration (Predefined Keys per Iteration)</option>
+                                <option value="iteration_container">📦 Iterative Container (Grouped Elements)</option>
                                 <option value="pure_markdown">📖 Pure Markdown (View Only)</option>
                                 <option value="interactive_field">✏️ Interactive Element (Description & Input)</option>
-                                <option value="interactive_list">📋 Iterative Array (Description - Value List)</option>
-                                <option value="repeatable_list">⭐ Repeatable Dynamic List (+ Addable Items)</option>
+                                <option value="iteration_group">🔄 Grouped Iteration (Reason, Todo, Response)</option>
+                                <option value="interactive_list">📋 Iterative List (Whole List per Iteration)</option>
+                                <option value="repeatable_list">⭐ Repeatable Iteration List</option>
                                 <option value="markdown">Markdown Input Field (Rich Editor)</option>
                                 <option value="short_text">Short Text (Single line)</option>
                                 <option value="select">Select Dropdown</option>
@@ -915,146 +1115,280 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                                 Contains a description portion (the key) and an input (editing) part for the author's response.
                               </p>
                             </div>
-                          ) : (elem.field_type === 'iteration_group' || (elem.iteration_fields && elem.iteration_fields.length > 0)) ? (
+                          ) : (elem.field_type === 'iteration_container' ||
+                            elem.field_type === 'iteration_group' ||
+                            elem.field_type === 'interactive_list' ||
+                            elem.field_type === 'repeatable_list' ||
+                            (elem.container_children && elem.container_children.length > 0) ||
+                            (elem.iteration_fields && elem.iteration_fields.length > 0)) ? (
                             <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl space-y-3.5">
+                              {/* Header & Presets */}
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200 pb-2.5">
                                 <div>
                                   <span className="font-bold text-xs text-blue-950 flex items-center gap-1.5">
-                                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                                    Grouped Iteration Keys ({(elem.iteration_fields || []).length} List Items per Iteration)
+                                    <Layers className="w-4 h-4 text-blue-600" />
+                                    Iterative Container Elements ({getContainerChildren(elem).length} Child Elements per Iteration)
                                   </span>
                                   <p className="text-[11px] text-blue-800">
-                                    Specify the fixed keys for each iteration. Document writers cannot change these keys; they will fill in the values for each key when adding an iteration.
+                                    Child elements inside this container are repeated together as a unit when document writers click '+'. You can add key-value items (key fixed by template editor, value filled by writer), editable markdown text areas, or view-only markdown text.
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      handleSetIterationPreset(idx, [
-                                        { key: 'Reason', description: 'Root cause or motivation', placeholder: 'Enter reason...' },
-                                        { key: 'Todo', description: 'Action items to be executed', placeholder: 'Enter todo tasks...' },
-                                        { key: 'Response', description: 'Observed response or result', placeholder: 'Enter response...' },
-                                      ])
-                                    }
+                                    onClick={() => handleSetContainerPreset(idx, 'standard')}
                                     className="px-2 py-0.5 text-[10px] font-semibold bg-white text-blue-800 border border-blue-300 rounded hover:bg-blue-100 transition-colors"
                                   >
                                     Preset: Reason, Todo, Response
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      handleSetIterationPreset(idx, [
-                                        { key: 'Observation', description: 'What did we observe?', placeholder: 'Observed behavior...' },
-                                        { key: 'Hypothesis', description: 'Why did it occur?', placeholder: 'Hypothesis...' },
-                                        { key: 'Action', description: 'What did we do?', placeholder: 'Steps taken...' },
-                                        { key: 'Outcome', description: 'What was the result?', placeholder: 'Measured outcome...' },
-                                      ])
-                                    }
+                                    onClick={() => handleSetContainerPreset(idx, 'four_step')}
                                     className="px-2 py-0.5 text-[10px] font-semibold bg-white text-blue-800 border border-blue-300 rounded hover:bg-blue-100 transition-colors"
                                   >
                                     Preset: 4-Step Plan
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetContainerPreset(idx, 'guided')}
+                                    className="px-2 py-0.5 text-[10px] font-semibold bg-white text-blue-800 border border-blue-300 rounded hover:bg-blue-100 transition-colors"
+                                  >
+                                    Preset: Guided Cycle
+                                  </button>
                                 </div>
                               </div>
 
-                              {/* Configured Keys List */}
-                              <div className="space-y-2">
-                                {Array.isArray(elem.iteration_fields) && elem.iteration_fields.length > 0 ? (
-                                  elem.iteration_fields.map((f, fIdx) => (
-                                    <div
-                                      key={f.id || fIdx}
-                                      className="p-3 bg-white border border-blue-200 rounded-lg shadow-2xs space-y-2"
-                                    >
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 flex-1">
-                                          <span className="text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                                            #{fIdx + 1}
-                                          </span>
-                                          <div className="flex-1">
-                                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                                              Fixed Key (Label) *
-                                            </label>
-                                            <input
-                                              type="text"
-                                              value={f.key}
-                                              onChange={(e) =>
-                                                handleUpdateIterationField(idx, fIdx, { key: e.target.value })
-                                              }
-                                              placeholder="e.g. Reason, Todo, Response"
-                                              className="w-full px-2.5 py-1 text-xs font-bold text-slate-900 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
-                                            />
+                              {/* Container Child Elements List */}
+                              <div className="space-y-2.5">
+                                {(() => {
+                                  const children = getContainerChildren(elem);
+                                  return children.length > 0 ? (
+                                    children.map((child, cIdx) => (
+                                      <div
+                                        key={child.id || cIdx}
+                                        className="p-3 bg-white border border-blue-200 rounded-lg shadow-2xs space-y-2.5"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                              #{cIdx + 1}
+                                            </span>
+                                            {child.type === 'key_value' && (
+                                              <span className="text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded">
+                                                Key-Value Item (Key fixed by editor, value by writer)
+                                              </span>
+                                            )}
+                                            {child.type === 'markdown_text' && (
+                                              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded">
+                                                Markdown Text (Editable by Writer)
+                                              </span>
+                                            )}
+                                            {child.type === 'markdown_readonly' && (
+                                              <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                                                <Eye className="w-3 h-3 text-emerald-600" />
+                                                Markdown Read-Only (View Only)
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              disabled={cIdx === 0}
+                                              onClick={() => handleMoveContainerChild(idx, cIdx, 'up')}
+                                              title="Move Up"
+                                              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 rounded hover:bg-slate-100"
+                                            >
+                                              <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={cIdx === children.length - 1}
+                                              onClick={() => handleMoveContainerChild(idx, cIdx, 'down')}
+                                              title="Move Down"
+                                              className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 rounded hover:bg-slate-100"
+                                            >
+                                              <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={children.length <= 1}
+                                              onClick={() => handleRemoveContainerChild(idx, cIdx)}
+                                              title="Delete Child Element"
+                                              className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 disabled:opacity-30 transition-colors ml-1"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
                                           </div>
                                         </div>
 
-                                        <button
-                                          type="button"
-                                          disabled={elem.iteration_fields!.length <= 1}
-                                          onClick={() => handleRemoveIterationField(idx, fIdx)}
-                                          title="Delete Key"
-                                          className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 disabled:opacity-30 transition-colors"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
+                                        {child.type === 'key_value' && (
+                                          <div className="space-y-2">
+                                            <div>
+                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                                                Key Label (Fixed by template editor, seen by document writer) *
+                                              </label>
+                                              <input
+                                                type="text"
+                                                value={child.key || ''}
+                                                onChange={(e) =>
+                                                  handleUpdateContainerChild(idx, cIdx, { key: e.target.value, label: e.target.value })
+                                                }
+                                                placeholder="e.g. Reason, Todo, Response"
+                                                className="w-full px-2.5 py-1 text-xs font-bold text-slate-900 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                                              />
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              <div>
+                                                <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                                  Guidance / Description for Writer
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={child.description || ''}
+                                                  onChange={(e) =>
+                                                    handleUpdateContainerChild(idx, cIdx, { description: e.target.value })
+                                                  }
+                                                  placeholder="Instructions for document writer..."
+                                                  className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                                  Placeholder Hint
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={child.placeholder || ''}
+                                                  onChange={(e) =>
+                                                    handleUpdateContainerChild(idx, cIdx, { placeholder: e.target.value })
+                                                  }
+                                                  placeholder="e.g. Enter value..."
+                                                  className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
 
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                                        <div>
-                                          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
-                                            Guidance / Description for Writer
-                                          </label>
-                                          <input
-                                            type="text"
-                                            value={f.description || ''}
-                                            onChange={(e) =>
-                                              handleUpdateIterationField(idx, fIdx, { description: e.target.value })
-                                            }
-                                            placeholder="Instructions for document writer..."
-                                            className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
-                                            Placeholder Hint
-                                          </label>
-                                          <input
-                                            type="text"
-                                            value={f.placeholder || ''}
-                                            onChange={(e) =>
-                                              handleUpdateIterationField(idx, fIdx, { placeholder: e.target.value })
-                                            }
-                                            placeholder="e.g. Enter reason..."
-                                            className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                                          />
-                                        </div>
+                                        {child.type === 'markdown_text' && (
+                                          <div className="space-y-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              <div>
+                                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                                                  Field Title / Heading *
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={child.label || ''}
+                                                  onChange={(e) =>
+                                                    handleUpdateContainerChild(idx, cIdx, { label: e.target.value })
+                                                  }
+                                                  placeholder="e.g. Iteration Notes & Logs"
+                                                  className="w-full px-2.5 py-1 text-xs font-semibold text-slate-900 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                                  Guidance / Description for Writer
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={child.description || ''}
+                                                  onChange={(e) =>
+                                                    handleUpdateContainerChild(idx, cIdx, { description: e.target.value })
+                                                  }
+                                                  placeholder="Instructions for markdown notes..."
+                                                  className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                                Default Starter Markdown (Optional)
+                                              </label>
+                                              <textarea
+                                                rows={2}
+                                                value={child.default_value || ''}
+                                                onChange={(e) =>
+                                                  handleUpdateContainerChild(idx, cIdx, { default_value: e.target.value })
+                                                }
+                                                placeholder="Starter markdown content for this field..."
+                                                className="w-full font-mono text-xs p-2 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-slate-50/60"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {child.type === 'markdown_readonly' && (
+                                          <div className="space-y-2">
+                                            <div>
+                                              <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                                Guidance Title / Label (Optional)
+                                              </label>
+                                              <input
+                                                type="text"
+                                                value={child.label || ''}
+                                                onChange={(e) =>
+                                                  handleUpdateContainerChild(idx, cIdx, { label: e.target.value })
+                                                }
+                                                placeholder="e.g. Iteration Instructions"
+                                                className="w-full px-2.5 py-1 text-xs text-slate-800 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-0.5">
+                                                Pure Markdown Content (Rendered as view-only in each iteration) *
+                                              </label>
+                                              <textarea
+                                                rows={3}
+                                                value={child.content || ''}
+                                                onChange={(e) =>
+                                                  handleUpdateContainerChild(idx, cIdx, { content: e.target.value })
+                                                }
+                                                placeholder="Enter pure markdown text for viewing (instructions, checklists, reference)..."
+                                                className="w-full font-mono text-xs p-2 border border-emerald-200 rounded focus:ring-1 focus:ring-emerald-500 outline-none bg-emerald-50/30 text-slate-800"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-center py-3 bg-white rounded-lg border border-dashed border-blue-300 text-xs text-blue-700">
+                                      No elements in container yet. Add key-value items, markdown text, or markdown read-only below.
                                     </div>
-                                  ))
-                                ) : (
-                                  <div className="text-center py-3 bg-white rounded-lg border border-dashed border-blue-300 text-xs text-blue-700">
-                                    No keys configured yet. Click the button below to add your first key.
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddIterationField(idx)}
-                                  className="w-full py-2 px-3 rounded-lg border-2 border-dashed border-blue-300 bg-white hover:bg-blue-100/60 text-blue-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
-                                >
-                                  <Plus className="w-3.5 h-3.5 text-blue-600" />
-                                  <span>+ Add Key / Field to Iteration</span>
-                                </button>
+                                {/* Add Child Buttons */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddContainerChild(idx, 'key_value')}
+                                    className="py-2 px-3 rounded-lg border border-dashed border-blue-300 bg-white hover:bg-blue-100/60 text-blue-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>+ Add Key-Value Item</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddContainerChild(idx, 'markdown_text')}
+                                    className="py-2 px-3 rounded-lg border border-dashed border-indigo-300 bg-white hover:bg-indigo-100/60 text-indigo-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                                    <span>+ Add Markdown Text</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddContainerChild(idx, 'markdown_readonly')}
+                                    className="py-2 px-3 rounded-lg border border-dashed border-emerald-300 bg-white hover:bg-emerald-100/60 text-emerald-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>+ Add Markdown Read-Only</span>
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
-                            <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs text-emerald-900 space-y-1">
-                              <span className="font-semibold flex items-center gap-1">
-                                <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                                Iterative Array of Editable Elements (Description - Value)
-                              </span>
-                              <p className="text-emerald-700">
-                                When authors write on the document, this item presents a <strong>"+" button</strong> to add new editable elements on the fly (each element has a <strong>description (key)</strong> and an <strong>editable value</strong>).
-                              </p>
                             </div>
                           ) : (
                             <div>
@@ -1102,6 +1436,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => handleAddElement('iteration_container', 1)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-blue-900 bg-blue-100 hover:bg-blue-200 border border-blue-400 transition-colors shadow-xs"
+                >
+                  <Layers className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                  + Iterative Container (Grouped Elements)
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleAddElement('pure_markdown', 1)}
                   className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-blue-800 bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
                 >
@@ -1115,22 +1457,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
                   + Interactive Field
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddElement('iteration_group', 1)}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-blue-900 bg-blue-100 hover:bg-blue-200 border border-blue-400 transition-colors shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                  + Grouped Iteration (Reason, Todo, Response)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddElement('interactive_list', 1)}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
-                >
-                  <ListPlus className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                  + Iterative Array (Desc - Value)
                 </button>
                 <button
                   type="button"
@@ -1238,24 +1564,21 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                         </div>
                         <div className="h-4 bg-white rounded border border-purple-200" />
                       </div>
-                    ) : elem.field_type === 'iteration_group' ||
+                    ) : elem.field_type === 'iteration_container' ||
+                      elem.field_type === 'iteration_group' ||
+                      elem.field_type === 'interactive_list' ||
+                      elem.field_type === 'repeatable_list' ||
+                      (elem.container_children && elem.container_children.length > 0) ||
                       (elem.iteration_fields && elem.iteration_fields.length > 0) ? (
                       <div className="mt-1 pt-1 border-t border-dashed border-slate-200 text-[11px] text-blue-700 bg-blue-50/50 p-1.5 rounded space-y-1">
                         <div className="flex items-center justify-between font-semibold text-blue-900 text-[10px]">
-                          <span>🔄 Grouped Iteration</span>
-                          <span>{(elem.iteration_fields || []).length} Keys</span>
+                          <span>📦 Iterative Container</span>
+                          <span>{getContainerChildren(elem).length} Children</span>
                         </div>
                         <div className="text-[10px] text-blue-800 font-mono truncate">
-                          {(elem.iteration_fields || []).map((f) => f.key).join(' • ') ||
+                          {getContainerChildren(elem).map((c) => c.key || c.label || c.id).join(' • ') ||
                             'Reason • Todo • Response'}
                         </div>
-                      </div>
-                    ) : elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list' ? (
-                      <div className="mt-1 pt-1 border-t border-dashed border-slate-200 flex items-center justify-between text-[11px] text-emerald-700 bg-emerald-50/50 p-1 rounded">
-                        <span>Iterative Array: Description - Value</span>
-                        <span className="font-bold flex items-center gap-0.5 text-emerald-800">
-                          <Plus className="w-3 h-3" /> Add Item
-                        </span>
                       </div>
                     ) : (
                       <div className="h-5 bg-slate-100/60 rounded border border-slate-200/50 flex items-center px-2 text-[10px] text-slate-400">

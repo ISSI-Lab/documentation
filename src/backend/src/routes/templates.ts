@@ -133,6 +133,22 @@ templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
 function sanitizeDocumentElements(rawElements: any): DocumentElementConfig[] {
   if (!Array.isArray(rawElements)) return [];
   return rawElements.map((elem: any, idx: number) => {
+    let cleanContainerChildren: any = null;
+    if (Array.isArray(elem.container_children)) {
+      cleanContainerChildren = elem.container_children
+        .filter((c: any) => c && (c.key || c.label || c.content || c.type))
+        .map((c: any, cIdx: number) => ({
+          id: c.id || `child_${cIdx + 1}`,
+          type: c.type || 'key_value',
+          key: c.key ? String(c.key).trim() : undefined,
+          label: c.label ? String(c.label).trim() : (c.key ? String(c.key).trim() : undefined),
+          description: c.description ? String(c.description).trim() : undefined,
+          placeholder: c.placeholder ? String(c.placeholder).trim() : undefined,
+          content: c.content !== undefined ? String(c.content) : undefined,
+          default_value: c.default_value !== undefined ? String(c.default_value) : undefined,
+        }));
+    }
+
     let cleanIterationFields: any = null;
     if (Array.isArray(elem.iteration_fields)) {
       cleanIterationFields = elem.iteration_fields
@@ -145,43 +161,125 @@ function sanitizeDocumentElements(rawElements: any): DocumentElementConfig[] {
           placeholder: f.placeholder ? String(f.placeholder).trim() : undefined,
           default_value: f.default_value !== undefined ? String(f.default_value) : undefined,
         }));
+    } else if (cleanContainerChildren && cleanContainerChildren.length > 0) {
+      cleanIterationFields = cleanContainerChildren
+        .filter((c: any) => c.type === 'key_value')
+        .map((c: any) => ({
+          id: c.id,
+          key: c.key || c.label || c.id,
+          label: c.label,
+          description: c.description,
+          placeholder: c.placeholder,
+          default_value: c.default_value,
+        }));
+    }
+
+    if (!cleanContainerChildren && cleanIterationFields && cleanIterationFields.length > 0) {
+      cleanContainerChildren = cleanIterationFields.map((f: any) => ({
+        id: f.id,
+        type: 'key_value',
+        key: f.key,
+        label: f.label || f.key,
+        description: f.description,
+        placeholder: f.placeholder,
+        default_value: f.default_value,
+      }));
     }
 
     let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
-    if (Array.isArray(defaultValue)) {
-      if (elem.field_type === 'iteration_group' || cleanIterationFields) {
-        defaultValue = defaultValue.map((iterItem: any, iterIdx: number) => {
-          const iterId = iterItem.id || `iter_${iterIdx + 1}`;
-          const iterNum = iterItem.iteration_number || (iterIdx + 1);
-          const iterTitle = iterItem.title || `Iteration #${iterNum}`;
-          const values: Record<string, string> = { ...(iterItem.values || {}) };
-          if (Array.isArray(iterItem.fields)) {
-            for (const f of iterItem.fields) {
-              if (f && f.key && values[f.key] === undefined) {
-                values[f.key] = String(f.value || '');
+    const isIterative =
+      elem.field_type === 'iteration_container' ||
+      elem.field_type === 'iteration_group' ||
+      elem.field_type === 'interactive_list' ||
+      elem.field_type === 'repeatable_list' ||
+      Boolean(cleanContainerChildren && cleanContainerChildren.length > 0) ||
+      Boolean(cleanIterationFields && cleanIterationFields.length > 0);
+
+    if (isIterative && (!cleanContainerChildren || cleanContainerChildren.length === 0)) {
+      cleanContainerChildren = [
+        { id: 'reason', type: 'key_value', key: 'Reason', label: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+        { id: 'todo', type: 'key_value', key: 'Todo', label: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+        { id: 'response', type: 'key_value', key: 'Response', label: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+      ];
+      cleanIterationFields = cleanContainerChildren.map((c: any) => ({
+        id: c.id,
+        key: c.key,
+        label: c.label,
+        description: c.description,
+        placeholder: c.placeholder,
+      }));
+    }
+
+    if (isIterative) {
+      if (Array.isArray(defaultValue) && defaultValue.length > 0) {
+        if (defaultValue[0]?.values !== undefined || defaultValue[0]?.iteration_number !== undefined) {
+          defaultValue = defaultValue.map((iterItem: any, iterIdx: number) => {
+            const iterNum = iterItem.iteration_number || (iterIdx + 1);
+            const iterTitle = iterItem.title || `Iteration #${iterNum}`;
+            const values: Record<string, string> = { ...(iterItem.values || {}) };
+            for (const c of cleanContainerChildren || []) {
+              const k = c.key || c.id;
+              if (values[k] === undefined) {
+                values[k] = c.default_value || '';
               }
             }
+            return {
+              id: iterItem.id || `iter_${iterIdx + 1}`,
+              iteration_number: iterNum,
+              title: iterTitle,
+              values,
+            };
+          });
+        } else {
+          const values: Record<string, string> = {};
+          for (const item of defaultValue) {
+            const k = item.description || item.title || item.key;
+            if (k) {
+              values[String(k).trim()] = String(item.value !== undefined ? item.value : (item.content || ''));
+            }
           }
-          return {
-            id: iterId,
-            iteration_number: iterNum,
-            title: iterTitle,
-            values,
-          };
-        });
+          for (const c of cleanContainerChildren || []) {
+            const k = c.key || c.id;
+            if (values[k] === undefined) {
+              values[k] = c.default_value || '';
+            }
+          }
+          defaultValue = [
+            {
+              id: 'iter_1',
+              iteration_number: 1,
+              title: 'Iteration #1',
+              values,
+            },
+          ];
+        }
       } else {
-        defaultValue = defaultValue.map((item: any, itemIdx: number) => {
-          const desc = item.description || item.title || `Item ${itemIdx + 1}`;
-          const val = item.value !== undefined ? item.value : (item.content || '');
-          return {
-            id: item.id || `item_${itemIdx + 1}`,
-            description: desc,
-            value: val,
-            title: desc,
-            content: val,
-          };
-        });
+        const values: Record<string, string> = {};
+        for (const c of cleanContainerChildren || []) {
+          const k = c.key || c.id;
+          values[k] = c.default_value || '';
+        }
+        defaultValue = [
+          {
+            id: 'iter_1',
+            iteration_number: 1,
+            title: 'Iteration #1',
+            values,
+          },
+        ];
       }
+    } else if (Array.isArray(defaultValue)) {
+      defaultValue = defaultValue.map((item: any, itemIdx: number) => {
+        const desc = item.description || item.title || `Item ${itemIdx + 1}`;
+        const val = item.value !== undefined ? item.value : (item.content || '');
+        return {
+          id: item.id || `item_${itemIdx + 1}`,
+          description: desc,
+          value: val,
+          title: desc,
+          content: val,
+        };
+      });
     }
 
     return {
@@ -197,6 +295,7 @@ function sanitizeDocumentElements(rawElements: any): DocumentElementConfig[] {
       options: Array.isArray(elem.options) ? elem.options : null,
       view_markdown: elem.view_markdown || elem.view_only_markdown || null,
       iteration_fields: cleanIterationFields,
+      container_children: cleanContainerChildren,
     };
   });
 }

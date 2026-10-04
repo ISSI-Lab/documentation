@@ -7,17 +7,35 @@ from pydantic import BaseModel, Field
 
 
 class DocumentElementType(str, Enum):
-    MARKDOWN = "markdown"
+    ITERATION_CONTAINER = "iteration_container"
+    ITERATION_GROUP = "iteration_group"
     PURE_MARKDOWN = "pure_markdown"
     INTERACTIVE_FIELD = "interactive_field"
-    ITERATION_GROUP = "iteration_group"
     INTERACTIVE_LIST = "interactive_list"
     REPEATABLE_LIST = "repeatable_list"
+    MARKDOWN = "markdown"
     SHORT_TEXT = "short_text"
     SELECT = "select"
     CALLOUT = "callout"
     CODE = "code"
     CHECKLIST = "checklist"
+
+
+class ContainerChildType(str, Enum):
+    KEY_VALUE = "key_value"
+    MARKDOWN_TEXT = "markdown_text"
+    MARKDOWN_READONLY = "markdown_readonly"
+
+
+class ContainerChildElement(BaseModel):
+    id: str = Field(..., description="Unique slug for the child element")
+    type: ContainerChildType = Field(default=ContainerChildType.KEY_VALUE, description="Child element type")
+    key: Optional[str] = Field(default=None, description="Fixed key name for key_value item")
+    label: Optional[str] = Field(default=None, description="Display label or title")
+    description: Optional[str] = Field(default=None, description="Guidance or instructions for writer")
+    placeholder: Optional[str] = Field(default=None, description="Placeholder hint")
+    content: Optional[str] = Field(default=None, description="Pure markdown content for markdown_readonly")
+    default_value: Optional[str] = Field(default=None, description="Default value for markdown_text or key_value")
 
 
 class IterationFieldConfig(BaseModel):
@@ -41,6 +59,7 @@ class DocumentElementConfig(BaseModel):
     options: Optional[List[str]] = Field(default=None, description="Choices for select dropdowns")
     view_markdown: Optional[str] = Field(default=None, description="Pure markdown text part strictly for viewing")
     iteration_fields: Optional[List[IterationFieldConfig]] = Field(default=None, description="Configured list of keys for iteration groups")
+    container_children: Optional[List[ContainerChildElement]] = Field(default=None, description="Child elements inside iterative container")
 
 
 class TemplateBase(BaseModel):
