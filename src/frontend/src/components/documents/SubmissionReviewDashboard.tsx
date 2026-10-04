@@ -29,6 +29,7 @@ interface SubmissionReviewDashboardProps {
 export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps> = ({
   document,
   currentUser,
+  onRefreshDocument,
 }) => {
   const [submissions, setSubmissions] = useState<DocumentSubmission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +97,9 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
       const updated = await api.updateSubmissionStatus(document.id, selectedSubmission.id, newStatus);
       setSelectedSubmission(updated);
       setSubmissions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      if (onRefreshDocument) {
+        await onRefreshDocument();
+      }
     } catch (err: any) {
       alert(err.message || 'Failed to update submission status');
     } finally {

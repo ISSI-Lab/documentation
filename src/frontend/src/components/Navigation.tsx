@@ -15,6 +15,7 @@ import {
   Check,
   Plus,
   Lock,
+  Send,
 } from 'lucide-react';
 import { Organization, User } from '../types';
 
@@ -78,6 +79,8 @@ export const Navigation: React.FC<NavigationProps> = ({
       case 'edit_document':
       case 'view_document':
         return 'Documents';
+      case 'submissions':
+        return 'Submissions Hub';
       case 'templates':
       case 'create_template':
       case 'edit_template':
@@ -340,6 +343,27 @@ export const Navigation: React.FC<NavigationProps> = ({
                       <div className="text-[10px] text-slate-400">View and create organization documentation</div>
                     </div>
                   </button>
+
+                  {currentUser && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onNavigate('submissions');
+                        setIsMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center space-x-3 px-4 py-2.5 text-xs font-medium text-left transition-colors cursor-pointer ${
+                        currentView === 'submissions'
+                          ? 'bg-blue-50 text-blue-700 font-bold border-l-4 border-blue-600'
+                          : 'hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <Send className="w-4 h-4 text-blue-600" />
+                      <div>
+                        <div className="font-semibold">Submissions Hub</div>
+                        <div className="text-[10px] text-slate-400">Review all participant and team deliverables</div>
+                      </div>
+                    </button>
+                  )}
 
                   <button
                     type="button"

@@ -54,6 +54,7 @@ function formatDocumentRow(row: any): Document {
     document_type: row.document_type === 'personal' ? 'personal' : 'project_shared',
     is_submittable: Boolean(row.is_submittable),
     copied_from_id: row.copied_from_id || null,
+    master_creator_id: row.master_creator_id || null,
     status: row.status,
     author: row.author || 'Anonymous',
     created_by: row.created_by || null,
@@ -162,8 +163,9 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
         u.username as creator_username,
         p.association_type as project_association_type,
         ot.name as assigned_team_name,
-        (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count,
-        (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count
+        (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
+        (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count,
+        (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN projects p ON d.project_id = p.id
@@ -181,15 +183,27 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
       // Document isolation and visibility scoping:
       // 1. Master documents (copied_from_id IS NULL):
-      //    - If project_shared: visible to all project/org members.
-      //    - If personal: visible if user is creator OR if is_submittable = 1.
+      //    - If project_shared: visible to all project/org members UNLESS this member's team already copied it.
+      //    - If personal: visible if user is creator OR (if is_submittable = 1 AND user hasn't copied it yet).
+      //    - Once a submittable master document is copied, the original one is hidden for that participant/team.
       // 2. Personal copies (copied_from_id IS NOT NULL AND assigned_team_id IS NULL):
       //    - Strictly private to their creator.
       // 3. Team copies (copied_from_id IS NOT NULL AND assigned_team_id IS NOT NULL):
       //    - Visible only to members of that assigned team, or the copy creator.
       conditions.push(
         `(
-          (d.copied_from_id IS NULL AND (d.document_type != 'personal' OR d.created_by = ? OR d.is_submittable = 1))
+          (
+            d.copied_from_id IS NULL AND (
+              (d.document_type != 'personal' OR d.created_by = ? OR d.is_submittable = 1)
+              AND NOT (
+                d.is_submittable = 1 AND d.created_by != ? AND (
+                  (d.document_type = 'personal' AND EXISTS (SELECT 1 FROM documents WHERE copied_from_id = d.id AND created_by = ?))
+                  OR
+                  (d.document_type != 'personal' AND EXISTS (SELECT 1 FROM documents WHERE copied_from_id = d.id AND assigned_team_id IN (SELECT team_id FROM organization_team_members WHERE user_id = ?)))
+                )
+              )
+            )
+          )
           OR
           (d.copied_from_id IS NOT NULL AND d.assigned_team_id IS NULL AND d.created_by = ?)
           OR
@@ -198,7 +212,7 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
           ))
         )`
       );
-      params.push(userId, userId, userId, userId);
+      params.push(userId, userId, userId, userId, userId, userId, userId);
     } else {
       conditions.push('1 = 0');
     }
@@ -278,8 +292,9 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
-         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count,
-         (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count
+         (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
+         (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count,
+         (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
@@ -692,7 +707,8 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
-         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+         (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
+         (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
@@ -825,7 +841,8 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
            u.username as creator_username,
            p.association_type as project_association_type,
            ot.name as assigned_team_name,
-           (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+           (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
+           (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
          FROM documents d
          LEFT JOIN users u ON d.created_by = u.id
          LEFT JOIN projects p ON d.project_id = p.id
@@ -942,7 +959,8 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
            u.username as creator_username,
            p.association_type as project_association_type,
            NULL as assigned_team_name,
-           0 as submissions_count
+           0 as submissions_count,
+           (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
          FROM documents d
          LEFT JOIN users u ON d.created_by = u.id
          LEFT JOIN projects p ON d.project_id = p.id
@@ -1011,7 +1029,8 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
-         0 as submissions_count
+         0 as submissions_count,
+         (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
@@ -1087,7 +1106,8 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
-         0 as submissions_count
+         0 as submissions_count,
+         (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
@@ -1110,6 +1130,13 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
 async function canReviewSubmissions(userId: string, doc: any, project: any): Promise<boolean> {
   // 1. Primary: Document creator can review all submissions
   if (doc.created_by && doc.created_by === userId) return true;
+  // If this doc is a copy, check if user is the creator of the master document
+  if (doc.copied_from_id) {
+    try {
+      const [mRows] = await pool.query<any[]>('SELECT created_by, organization_id, project_id FROM documents WHERE id = ?', [doc.copied_from_id]);
+      if (mRows && mRows.length > 0 && mRows[0].created_by === userId) return true;
+    } catch {}
+  }
   // 2. Legacy fallback: If document has no recorded creator, check project creator
   if (!doc.created_by && project && project.created_by === userId) return true;
   // 3. Administrative oversight: Organization owner or manager
@@ -1195,8 +1222,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
           `SELECT DISTINCT ds.user_id, u.name, u.username, u.email
            FROM document_submissions ds
            JOIN users u ON ds.user_id = u.id
-           WHERE ds.document_id = ? AND ds.user_id IS NOT NULL`,
-          [docId]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.user_id IS NOT NULL`,
+          [docId, docId]
         );
         for (const row of existingSubmUsers) {
           if (!usersMap.has(row.user_id)) {
@@ -1214,8 +1241,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
              (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
            FROM document_submissions ds
            LEFT JOIN users u ON ds.user_id = u.id
-           WHERE ds.document_id = ?`,
-          [docId]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+          [docId, docId]
         );
         const submsByUserId = new Map<string, any>();
         for (const s of submissions) {
@@ -1271,8 +1298,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
           `SELECT DISTINCT ds.team_id, ot.name as team_name
            FROM document_submissions ds
            JOIN organization_teams ot ON ds.team_id = ot.id
-           WHERE ds.document_id = ? AND ds.team_id IS NOT NULL`,
-          [docId]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.team_id IS NOT NULL`,
+          [docId, docId]
         );
         for (const row of existingSubmTeams) {
           if (!teamsMap.has(row.team_id)) {
@@ -1285,8 +1312,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
              (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
            FROM document_submissions ds
            LEFT JOIN organization_teams ot ON ds.team_id = ot.id
-           WHERE ds.document_id = ?`,
-          [docId]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+          [docId, docId]
         );
         const submsByTeamId = new Map<string, any>();
         for (const s of submissions) {
@@ -1328,8 +1355,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
              (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
            FROM document_submissions ds
            LEFT JOIN users u ON ds.user_id = u.id
-           WHERE ds.document_id = ? AND ds.user_id = ?`,
-          [docId, userId]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.user_id = ?`,
+          [docId, docId, userId]
         );
         return res.json(rows.map((r) => formatSubmissionRow(r)));
       } else {
@@ -1351,8 +1378,8 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
              (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
            FROM document_submissions ds
            LEFT JOIN organization_teams ot ON ds.team_id = ot.id
-           WHERE ds.document_id = ? AND ds.team_id IN (?)`,
-          [docId, teamIds]
+           WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.team_id IN (?)`,
+          [docId, docId, teamIds]
         );
         return res.json(rows.map((r) => formatSubmissionRow(r)));
       }
@@ -1408,8 +1435,8 @@ documentsRouter.get('/:id/my-submission', requireAuth, async (req: Authenticated
         `SELECT ds.*, u.name as user_name, u.username, u.email as user_email
          FROM document_submissions ds
          LEFT JOIN users u ON ds.user_id = u.id
-         WHERE ds.document_id = ? AND ds.user_id = ?`,
-        [docId, user.id]
+         WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.user_id = ?`,
+        [docId, docId, user.id]
       );
 
       if (existing && existing.length > 0) {
@@ -1503,8 +1530,8 @@ documentsRouter.get('/:id/my-submission', requireAuth, async (req: Authenticated
         `SELECT ds.*, ot.name as team_name
          FROM document_submissions ds
          LEFT JOIN organization_teams ot ON ds.team_id = ot.id
-         WHERE ds.document_id = ? AND ds.team_id = ?`,
-        [docId, targetTeamId]
+         WHERE (ds.document_id = ? OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?)) AND ds.team_id = ?`,
+        [docId, docId, targetTeamId]
       );
 
       if (existing && existing.length > 0) {
@@ -1568,8 +1595,8 @@ documentsRouter.get('/:id/submissions/:submissionId', requireAuth, async (req: A
        FROM document_submissions ds
        LEFT JOIN users u ON ds.user_id = u.id
        LEFT JOIN organization_teams ot ON ds.team_id = ot.id
-       WHERE ds.id = ? AND ds.document_id = ?`,
-      [submissionId, docId]
+       WHERE ds.id = ? AND (ds.document_id = ? OR ds.document_id IN (SELECT copied_from_id FROM documents WHERE id = ?) OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+      [submissionId, docId, docId, docId]
     );
 
     if (!rows || rows.length === 0) {
@@ -1599,8 +1626,11 @@ documentsRouter.put('/:id/submissions/:submissionId', requireAuth, async (req: A
     const { elements_data } = req.body;
 
     const [existing] = await pool.query<any[]>(
-      'SELECT ds.*, d.template_id, d.title as doc_title FROM document_submissions ds JOIN documents d ON ds.document_id = d.id WHERE ds.id = ? AND ds.document_id = ?',
-      [submissionId, docId]
+      `SELECT ds.*, d.template_id, d.title as doc_title
+       FROM document_submissions ds
+       JOIN documents d ON ds.document_id = d.id
+       WHERE ds.id = ? AND (ds.document_id = ? OR ds.document_id IN (SELECT copied_from_id FROM documents WHERE id = ?) OR ds.document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+      [submissionId, docId, docId, docId]
     );
 
     if (!existing || existing.length === 0) {
@@ -1701,8 +1731,9 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
     const { id: docId, submissionId } = req.params;
 
     const [existing] = await pool.query<any[]>(
-      'SELECT * FROM document_submissions WHERE id = ? AND document_id = ?',
-      [submissionId, docId]
+      `SELECT * FROM document_submissions
+       WHERE id = ? AND (document_id = ? OR document_id IN (SELECT copied_from_id FROM documents WHERE id = ?) OR document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+      [submissionId, docId, docId, docId]
     );
     if (!existing || existing.length === 0) {
       return res.status(404).json({ error: 'Submission not found' });
@@ -1757,6 +1788,21 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
       [submissionId]
     );
 
+    // Also synchronize status to document copy in documents table (only copy documents)
+    if (subm.submission_type === 'personal') {
+      await pool.query(
+        `UPDATE documents SET status = 'submitted', updated_at = NOW()
+         WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+        [subm.document_id, subm.user_id, docId]
+      );
+    } else {
+      await pool.query(
+        `UPDATE documents SET status = 'submitted', updated_at = NOW()
+         WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+        [subm.document_id, subm.team_id, docId]
+      );
+    }
+
     const [updated] = await pool.query<any[]>(
       `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
          (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
@@ -1783,8 +1829,9 @@ documentsRouter.post('/:id/submissions/:submissionId/unsubmit', requireAuth, asy
     const { id: docId, submissionId } = req.params;
 
     const [existing] = await pool.query<any[]>(
-      'SELECT * FROM document_submissions WHERE id = ? AND document_id = ?',
-      [submissionId, docId]
+      `SELECT * FROM document_submissions
+       WHERE id = ? AND (document_id = ? OR document_id IN (SELECT copied_from_id FROM documents WHERE id = ?) OR document_id IN (SELECT id FROM documents WHERE copied_from_id = ?))`,
+      [submissionId, docId, docId, docId]
     );
     if (!existing || existing.length === 0) {
       return res.status(404).json({ error: 'Submission not found' });
@@ -1839,6 +1886,21 @@ documentsRouter.post('/:id/submissions/:submissionId/unsubmit', requireAuth, asy
       [submissionId]
     );
 
+    // Also revert document copy in documents table (only copy documents)
+    if (subm.submission_type === 'personal') {
+      await pool.query(
+        `UPDATE documents SET status = 'draft', updated_at = NOW()
+         WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+        [subm.document_id, subm.user_id, docId]
+      );
+    } else {
+      await pool.query(
+        `UPDATE documents SET status = 'draft', updated_at = NOW()
+         WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+        [subm.document_id, subm.team_id, docId]
+      );
+    }
+
     const [updated] = await pool.query<any[]>(
       `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,
          (SELECT COUNT(*) FROM submission_comments WHERE submission_id = ds.id) as comments_count
@@ -1890,6 +1952,25 @@ documentsRouter.put('/:id/submissions/:submissionId/status', requireAuth, async 
       'UPDATE document_submissions SET status = ?, updated_at = NOW() WHERE id = ?',
       [status, submissionId]
     );
+
+    const [submExisting] = await pool.query<any[]>('SELECT * FROM document_submissions WHERE id = ?', [submissionId]);
+    if (submExisting && submExisting.length > 0) {
+      const subm = submExisting[0];
+      const targetDocStatus = status === 'reviewed' ? 'approved' : status;
+      if (subm.submission_type === 'personal') {
+        await pool.query(
+          `UPDATE documents SET status = ?, updated_at = NOW()
+           WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [targetDocStatus, subm.document_id, subm.user_id, docId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE documents SET status = ?, updated_at = NOW()
+           WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [targetDocStatus, subm.document_id, subm.team_id, docId]
+        );
+      }
+    }
 
     const [updated] = await pool.query<any[]>(
       `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,

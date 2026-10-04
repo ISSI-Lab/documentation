@@ -30,6 +30,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   document,
   template,
   currentUser,
+  onRefreshDocument,
 }) => {
   const [submission, setSubmission] = useState<DocumentSubmission | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,6 +113,9 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       const res = await api.submitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
       setViewTab('preview');
+      if (onRefreshDocument) {
+        await onRefreshDocument();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to submit document');
     } finally {
@@ -128,6 +132,9 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       const res = await api.unsubmitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
       setViewTab('edit');
+      if (onRefreshDocument) {
+        await onRefreshDocument();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to unsubmit document');
     } finally {

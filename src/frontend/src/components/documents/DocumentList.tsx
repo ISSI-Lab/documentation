@@ -38,6 +38,8 @@ interface DocumentListProps {
   onViewDocument: (docId: string) => void;
   onDeleteDocument: (doc: Document) => void;
   onExportMarkdown: (docId: string) => void;
+  onOpenSubmissions?: (docId?: string) => void;
+  onViewDocumentWithTab?: (docId: string, tab: 'overview' | 'submissions' | 'my_submission') => void;
 }
 
 export const DocumentList: React.FC<DocumentListProps> = ({
@@ -56,6 +58,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onViewDocument,
   onDeleteDocument,
   onExportMarkdown,
+  onOpenSubmissions,
+  onViewDocumentWithTab,
 }) => {
   const organizations = propOrganizations || propTeams || [];
   const initialOrgId = activeOrganizationId || activeTeamId || null;
@@ -169,6 +173,26 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   const filtered = documents
     .filter((doc) => {
       const docOrgId = doc.organization_id || doc.team_id || null;
+
+      // 0. Once a submittable master document is copied, hide original from participant/team
+      if (
+        doc.is_submittable &&
+        !doc.copied_from_id &&
+        currentUser?.id &&
+        doc.created_by !== currentUser.id
+      ) {
+        if (doc.document_type === 'personal') {
+          const hasUserCopy = documents.some(
+            (d) => d.copied_from_id === doc.id && d.created_by === currentUser.id
+          );
+          if (hasUserCopy) return false;
+        } else {
+          const hasTeamCopy = documents.some(
+            (d) => d.copied_from_id === doc.id && Boolean(d.assigned_team_id)
+          );
+          if (hasTeamCopy) return false;
+        }
+      }
 
       // 1. Scope category filter
       if (selectedCategory === 'personal') {
@@ -721,6 +745,54 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     <Eye className="w-3.5 h-3.5 mr-1" />
                     Preview
                   </button>
+
+                  {/* Participant Submission Button for working copies */}
+                  {Boolean(doc.copied_from_id && doc.is_submittable) && (
+                    <button
+                      onClick={() => {
+                        if (onViewDocumentWithTab) {
+                          onViewDocumentWithTab(doc.id, 'my_submission');
+                        } else {
+                          onViewDocument(doc.id);
+                        }
+                      }}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                      title="View Submission Workspace"
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                      {doc.assigned_team_id ? 'Team Submission' : 'My Submission'}
+                    </button>
+                  )}
+
+                  {/* Creator Review Submissions Button for master documents */}
+                  {Boolean(
+                    !doc.copied_from_id &&
+                    doc.is_submittable &&
+                    ((doc.created_by && currentUser?.id && doc.created_by === currentUser.id) || !doc.created_by)
+                  ) && (
+                    <button
+                      onClick={() => {
+                        if (onOpenSubmissions) {
+                          onOpenSubmissions(doc.id);
+                        } else if (onViewDocumentWithTab) {
+                          onViewDocumentWithTab(doc.id, 'submissions');
+                        } else {
+                          onViewDocument(doc.id);
+                        }
+                      }}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+                      title="Review Submissions Roster"
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                      Review Submissions
+                      {doc.submissions_count !== undefined && doc.submissions_count > 0 ? (
+                        <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-200 text-indigo-800">
+                          {doc.submissions_count}
+                        </span>
+                      ) : null}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       if (activeCopyDoc) {

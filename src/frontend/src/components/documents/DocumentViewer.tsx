@@ -29,6 +29,7 @@ interface DocumentViewerProps {
   onBack: () => void;
   onExportMarkdown: (docId: string) => void;
   onDeleteDocument?: (doc: Document) => void;
+  onRefreshDocument?: () => Promise<void>;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -40,10 +41,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onBack,
   onExportMarkdown,
   onDeleteDocument,
+  onRefreshDocument,
 }) => {
   const isMasterDeliverable = !document.copied_from_id;
   const isDocCreator = Boolean(
-    isMasterDeliverable && (!document.created_by || (currentUser && currentUser.id === document.created_by))
+    (isMasterDeliverable && (!document.created_by || (currentUser && currentUser.id === document.created_by))) ||
+    (!isMasterDeliverable && document.master_creator_id && currentUser && currentUser.id === document.master_creator_id)
   );
 
   const [copied, setCopied] = useState(false);
@@ -262,7 +265,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
       <main className="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex-1">
         {/* Tab: Submissions & Creator Review */}
         {document.is_submittable && activeTab === 'submissions' && (
-          <SubmissionReviewDashboard document={document} currentUser={currentUser} />
+          <SubmissionReviewDashboard
+            document={document}
+            currentUser={currentUser}
+            onRefreshDocument={onRefreshDocument}
+          />
         )}
 
         {/* Tab: Participant Submission Workspace */}
@@ -271,6 +278,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
             document={document}
             template={template}
             currentUser={currentUser}
+            onRefreshDocument={onRefreshDocument}
           />
         )}
 

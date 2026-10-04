@@ -579,6 +579,50 @@ export const api = {
     );
   },
 
+  // Global Submissions Hub API
+  async listAllSubmissions(params?: {
+    role?: 'creator' | 'participant' | 'all';
+    project_id?: string;
+    document_id?: string;
+    status?: string;
+    organization_id?: string;
+    search?: string;
+  }): Promise<DocumentSubmission[]> {
+    const query = new URLSearchParams();
+    if (params?.role) query.set('role', params.role);
+    if (params?.project_id) query.set('project_id', params.project_id);
+    if (params?.document_id) query.set('document_id', params.document_id);
+    if (params?.status) query.set('status', params.status);
+    if (params?.organization_id) query.set('organization_id', params.organization_id);
+    if (params?.search) query.set('search', params.search);
+    const qs = query.toString();
+    return request<DocumentSubmission[]>(`/submissions${qs ? `?${qs}` : ''}`);
+  },
+
+  async getGlobalSubmission(submissionId: string): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(`/submissions/${encodeURIComponent(submissionId)}`);
+  },
+
+  async updateGlobalSubmissionStatus(
+    submissionId: string,
+    status: 'draft' | 'submitted' | 'reviewed'
+  ): Promise<DocumentSubmission> {
+    return request<DocumentSubmission>(`/submissions/${encodeURIComponent(submissionId)}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  async addGlobalSubmissionComment(
+    submissionId: string,
+    payload: { content: string }
+  ): Promise<SubmissionComment> {
+    return request<SubmissionComment>(`/submissions/${encodeURIComponent(submissionId)}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Organization Teams
   async listOrganizationTeams(orgId: string): Promise<OrganizationTeam[]> {
     return request<OrganizationTeam[]>(`/organizations/${encodeURIComponent(orgId)}/teams`);

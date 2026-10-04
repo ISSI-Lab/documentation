@@ -232,6 +232,11 @@ export interface DocumentSubmission {
   updated_at: string;
   comments_count?: number;
   comments?: SubmissionComment[];
+  document_title?: string;
+  document_type?: DocumentType;
+  project_name?: string;
+  template_title?: string;
+  document_creator_id?: string;
 }
 
 export interface Document {
@@ -248,6 +253,7 @@ export interface Document {
   document_type: DocumentType;
   is_submittable: boolean;
   copied_from_id?: string | null;
+  master_creator_id?: string | null;
   status: DocumentStatus;
   author: string;
   created_by: string | null;

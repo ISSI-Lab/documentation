@@ -7,6 +7,7 @@ import { organizationsRouter, teamsRouter } from './routes/organizations';
 import { projectsRouter } from './routes/projects';
 import { templatesRouter } from './routes/templates';
 import { documentsRouter } from './routes/documents';
+import { submissionsRouter } from './routes/submissions';
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use('/api/v1/teams', teamsRouter); // compatibility alias
 app.use('/api/v1/projects', projectsRouter);
 app.use('/api/v1/templates', templatesRouter);
 app.use('/api/v1/documents', documentsRouter);
+app.use('/api/v1/submissions', submissionsRouter);
 
 // Root fallback
 app.get('/', (req: Request, res: Response) => {

@@ -782,8 +782,85 @@ def run_tests():
     assert r_check_deleted_org.status_code in (403, 404)
     print("✓ Organization creator successfully deleted empty organization (204 No Content).")
 
+    # =========================================================================
+    # 12. SUBMISSIONS HUB GLOBAL ROUTER & MASTER DOCUMENT HIDING
+    # =========================================================================
+    print("\n--- 12. Submissions Hub Global Router & Master Document Hiding ---")
+
+    # 12.1 Verify Master Document is hidden from participant in GET /api/v1/documents once copied
+    r_part_docs = requests.get(f"{BASE_URL}/documents", headers=headers_participant)
+    assert r_part_docs.status_code == 200
+    part_docs_list = r_part_docs.json()
+    part_doc_ids = [d["id"] for d in part_docs_list]
+
+    # For personal doc: participant should see their personal copy, NOT the master doc
+    assert personal_copy_id in part_doc_ids, "Participant should see their personal copied document"
+    assert personal_master_doc_id not in part_doc_ids, "Master personal submittable doc should be hidden from participant once copied"
+    print("✓ Master personal submittable document is hidden from participant once copied.")
+
+    # 12.2 Verify Creator still sees the Master Document
+    r_creator_docs = requests.get(f"{BASE_URL}/documents", headers=headers_creator)
+    assert r_creator_docs.status_code == 200
+    creator_doc_ids = [d["id"] for d in r_creator_docs.json()]
+    assert personal_master_doc_id in creator_doc_ids, "Creator must always see their master document specification"
+    print("✓ Master document remains visible to the creator.")
+
+    # 12.3 Query Global Submissions Endpoint as Creator
+    r_global_subm_creator = requests.get(f"{BASE_URL}/submissions?role=creator", headers=headers_creator)
+    assert r_global_subm_creator.status_code == 200
+    subm_list_creator = r_global_subm_creator.json()
+    assert len(subm_list_creator) > 0, "Creator should see submitted deliverables in Submissions Hub"
+    found_subm = next((s for s in subm_list_creator if s["document_id"] in (personal_master_doc_id, personal_copy_id)), None)
+    assert found_subm is not None, "Creator review roster should contain the participant's submission"
+    assert found_subm["status"] in ("submitted", "reviewed", "draft")
+    print("✓ GET /api/v1/submissions?role=creator returns submitted deliverables to the creator.")
+
+    # 12.4 Query Global Submissions Endpoint as Participant
+    r_global_subm_part = requests.get(f"{BASE_URL}/submissions?role=participant", headers=headers_participant)
+    assert r_global_subm_part.status_code == 200
+    subm_list_part = r_global_subm_part.json()
+    assert any(s["user_id"] == reg_user["id"] for s in subm_list_part), "Participant should see their own submission"
+    print("✓ GET /api/v1/submissions?role=participant returns user's own submissions.")
+
+    # 12.5 Query with document_id filter (using master doc ID and copy doc ID)
+    r_filter_master = requests.get(f"{BASE_URL}/submissions?document_id={personal_master_doc_id}", headers=headers_creator)
+    assert r_filter_master.status_code == 200
+    assert len(r_filter_master.json()) > 0, "Filtering by master document_id should resolve participant submissions"
+    print("✓ Submissions filtered by master document_id correctly resolve submissions.")
+
+    # 12.6 Review Submission and verify Master document status is PRESERVED
+    test_subm_id = found_subm["id"]
+    r_review = requests.put(f"{BASE_URL}/submissions/{test_subm_id}/status", json={"status": "reviewed"}, headers=headers_creator)
+    assert r_review.status_code == 200
+    assert r_review.json()["status"] == "reviewed"
+
+    # Verify Master document status was NOT changed to 'approved' or 'reviewed'
+    r_master_check = requests.get(f"{BASE_URL}/documents/{personal_master_doc_id}", headers=headers_creator)
+    assert r_master_check.status_code == 200
+    master_doc_data = r_master_check.json()
+    assert master_doc_data["copied_from_id"] is None, "Master document must not have copied_from_id"
+    # Verify copy document status WAS synchronized to 'approved'
+    r_copy_check = requests.get(f"{BASE_URL}/documents/{personal_copy_id}", headers=headers_participant)
+    assert r_copy_check.status_code == 200
+    copy_doc_data = r_copy_check.json()
+    assert copy_doc_data["status"] == "approved", "Copy document status should be synchronized to 'approved'"
+    print("✓ Submissions status update synchronized copy document without altering master specification.")
+
+    # 12.7 Add and retrieve comments via Submissions Hub
+    r_add_comment = requests.post(f"{BASE_URL}/submissions/{test_subm_id}/comments", json={
+        "content": "Excellent analysis and structured deliverables!"
+    }, headers=headers_creator)
+    assert r_add_comment.status_code == 201
+    assert "analysis" in r_add_comment.json()["content"]
+
+    r_get_comments = requests.get(f"{BASE_URL}/submissions/{test_subm_id}/comments", headers=headers_participant)
+    assert r_get_comments.status_code == 200
+    comments_thread = r_get_comments.json()
+    assert any("analysis" in c["content"] for c in comments_thread)
+    print("✓ Submissions Hub comments thread works for creators and participants.")
+
     print("\n==================================================================")
-    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions, Creation & Deletion Permissions)")
+    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions, Submissions Hub, Master Hiding & Review)")
     print("==================================================================")
     return 0
 

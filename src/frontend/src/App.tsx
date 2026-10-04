@@ -13,6 +13,7 @@ import { OrganizationManagement } from './components/organizations/OrganizationM
 import { CreateOrganizationPage } from './components/organizations/CreateOrganizationPage';
 import { ProjectManagement } from './components/projects/ProjectManagement';
 import { TeamManagement } from './components/teams/TeamManagement';
+import { CreatorSubmissionsPage } from './components/submissions/CreatorSubmissionsPage';
 import { AlertTriangle, Check } from 'lucide-react';
 import { DeleteDocumentModal } from './components/documents/DeleteDocumentModal';
 import { api, getStoredToken } from './api/client';
@@ -30,6 +31,7 @@ import {
 type ViewMode =
   | 'home'
   | 'documents'
+  | 'submissions'
   | 'templates'
   | 'projects'
   | 'organizations'
@@ -42,6 +44,7 @@ type ViewMode =
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('templates');
+  const [submissionsInitialDocId, setSubmissionsInitialDocId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
@@ -566,8 +569,34 @@ export const App: React.FC = () => {
               setDocViewerInitialTab('overview');
               setCurrentView('view_document');
             }}
+            onViewDocumentWithTab={(id, tab) => {
+              setActiveDocId(id);
+              setDocViewerInitialTab(tab);
+              setCurrentView('view_document');
+            }}
+            onOpenSubmissions={(docId) => {
+              setSubmissionsInitialDocId(docId || null);
+              setCurrentView('submissions');
+            }}
             onDeleteDocument={handleRequestDeleteDocument}
             onExportMarkdown={handleExportMarkdown}
+          />
+        )}
+
+        {currentView === 'submissions' && currentUser && (
+          <CreatorSubmissionsPage
+            currentUser={currentUser}
+            organizations={organizations}
+            projects={allProjects}
+            documents={documents}
+            initialDocumentId={submissionsInitialDocId}
+            onNavigateToDocuments={() => setCurrentView('documents')}
+            onViewDocument={(id) => {
+              setActiveDocId(id);
+              setDocViewerInitialTab('submissions');
+              setCurrentView('view_document');
+            }}
+            showToast={showToast}
           />
         )}
 
@@ -769,6 +798,7 @@ export const App: React.FC = () => {
             }}
             onExportMarkdown={handleExportMarkdown}
             onDeleteDocument={handleRequestDeleteDocument}
+            onRefreshDocument={loadDocuments}
           />
         )}
       </div>
