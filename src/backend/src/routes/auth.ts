@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
-import { pool, loadDefaultConfig } from '../db';
+import { pool, loadDefaultConfig, ensureUserPersonalOrganization } from '../db';
 import {
   AuthenticatedRequest,
   comparePassword,
@@ -86,6 +86,9 @@ authRouter.post('/register', async (req: AuthenticatedRequest, res: Response) =>
     const [rows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [id]);
     const user = formatUserRow(rows[0]);
 
+    // Ensure personal private workspace is created for the new user
+    await ensureUserPersonalOrganization(id, cleanUsername, cleanName);
+
     // Generate 30-second verification token
     const vToken = await createVerificationToken(id);
     await sendVerificationEmail(cleanEmail, vToken.token, VERIFICATION_EXPIRY_SECONDS);
@@ -161,6 +164,9 @@ authRouter.post('/verify', async (req: AuthenticatedRequest, res: Response) => {
 
     // Mark user as verified
     await pool.query('UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE id = ?', [targetUser.id]);
+
+    // Ensure personal private workspace exists
+    await ensureUserPersonalOrganization(targetUser.id, targetUser.username, targetUser.name);
 
     const [updatedRows] = await pool.query<any[]>('SELECT * FROM users WHERE id = ?', [targetUser.id]);
     const verifiedUser = formatUserRow(updatedRows[0]);
@@ -260,6 +266,9 @@ authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     const user = formatUserRow(userRow);
     const token = generateToken(user);
 
+    // Ensure personal private workspace exists on login (covers first-time login)
+    await ensureUserPersonalOrganization(userRow.id, userRow.username, userRow.name);
+
     res.json({
       message: 'Login successful',
       user,
@@ -281,7 +290,11 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     const user = formatUserRow(userRows[0]);
 
-    // Fetch user's organizations
+    // Ensure personal private workspace is created
+    await ensureUserPersonalOrganization(userId, user.username, user.name);
+
+    // Fetch user's organizations (prioritize user's personal private workspace first)
+    const personalOrgName = `${user.username}_workspace`;
     const [orgRows] = await pool.query<any[]>(
       `SELECT o.*, 
         CASE WHEN o.created_by = ? THEN 'owner' ELSE om.role END as user_role,
@@ -289,8 +302,8 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
        FROM organizations o
        JOIN organization_members om ON o.id = om.organization_id
        WHERE om.user_id = ?
-       ORDER BY o.created_at ASC`,
-      [userId, userId]
+       ORDER BY (o.name = ?) DESC, o.created_at ASC`,
+      [userId, userId, personalOrgName]
     );
 
     const organizations = orgRows.map((row) => ({

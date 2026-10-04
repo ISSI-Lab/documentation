@@ -177,12 +177,21 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 
     if (scope === 'personal' || targetOrgId === 'personal' || targetOrgId === 'null') {
       if (userId) {
-        conditions.push('d.organization_id IS NULL AND d.created_by = ?');
-        params.push(userId);
+        conditions.push(
+          `((d.organization_id IS NULL AND d.created_by = ?) OR d.organization_id = (SELECT id FROM organizations WHERE name = ? AND created_by = ? LIMIT 1))`
+        );
+        params.push(userId, `${req.user?.username}_workspace`, userId);
       }
     } else if (targetOrgId && typeof targetOrgId === 'string') {
-      conditions.push('d.organization_id = ?');
-      params.push(targetOrgId);
+      if (userId && req.user?.username) {
+        conditions.push(
+          `((d.organization_id = ?) OR (d.organization_id IS NULL AND d.created_by = ? AND ? = (SELECT id FROM organizations WHERE name = ? AND created_by = ? LIMIT 1)))`
+        );
+        params.push(targetOrgId, userId, targetOrgId, `${req.user.username}_workspace`, userId);
+      } else {
+        conditions.push('d.organization_id = ?');
+        params.push(targetOrgId);
+      }
     }
 
     if (project_id && typeof project_id === 'string') {
@@ -342,13 +351,13 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     const cleanTags = Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
     const status = 'draft';
 
-    // In projects with individual association, only personal documents are allowed
+    // Standalone documents (no project) or projects with individual association are strictly personal documents
     if (project_id && projAssociationType === 'individual') {
       if (document_type === 'project_shared') {
         return res.status(400).json({ error: 'Projects with individual assignments only support personal documents' });
       }
     }
-    const docType: DocumentType = (project_id && projAssociationType === 'individual')
+    const docType: DocumentType = (!project_id || (project_id && projAssociationType === 'individual'))
       ? 'personal'
       : (document_type === 'personal' ? 'personal' : 'project_shared');
     const isSubm = Boolean(is_submittable);

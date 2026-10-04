@@ -326,6 +326,7 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOrgs.map((org) => {
             const isSelected = org.id === activeOrganizationId;
+            const isPersonalWs = org.name === `${currentUser?.username}_workspace`;
             const isOwner = Boolean(
               org.is_creator ||
               (org.created_by && currentUser?.id && org.created_by === currentUser.id) ||
@@ -346,28 +347,30 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                   {/* Top card header */}
                   <div className="flex items-start justify-between gap-3 mb-2.5">
                     <div className="flex items-center gap-2">
-                      <div className={`p-2 rounded-xl ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
-                        <Building2 className="w-5 h-5" />
+                      <div className={`p-2 rounded-xl ${isSelected ? 'bg-indigo-600 text-white' : isPersonalWs ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                        {isPersonalWs ? <Lock className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
                       </div>
                       <div>
                         <h3 className="text-base font-bold text-slate-900 line-clamp-1">{org.name}</h3>
                         <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                          <span>{org.members_count || 1} members</span>
+                          <span>{isPersonalWs ? 'Personal Workspace' : `${org.members_count || 1} members`}</span>
                         </div>
                       </div>
                     </div>
 
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                        isOwner
+                        isPersonalWs
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : isOwner
                           ? 'bg-purple-100 text-purple-800'
                           : isManager
                           ? 'bg-indigo-100 text-indigo-800'
                           : 'bg-slate-100 text-slate-700'
                       }`}
                     >
-                      {isOwner ? <Crown className="w-2.5 h-2.5 text-purple-600" /> : isManager ? <Shield className="w-2.5 h-2.5 text-indigo-600" /> : <Users className="w-2.5 h-2.5 text-slate-500" />}
-                      {isOwner ? 'Creator' : isManager ? 'Manager' : 'Member'}
+                      {isPersonalWs ? <Lock className="w-2.5 h-2.5 text-emerald-600" /> : isOwner ? <Crown className="w-2.5 h-2.5 text-purple-600" /> : isManager ? <Shield className="w-2.5 h-2.5 text-indigo-600" /> : <Users className="w-2.5 h-2.5 text-slate-500" />}
+                      {isPersonalWs ? 'Personal' : isOwner ? 'Creator' : isManager ? 'Manager' : 'Member'}
                     </span>
                   </div>
 
@@ -375,45 +378,65 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                     {org.description || 'No organization description provided.'}
                   </p>
 
-                  {/* Join Token Box */}
-                  <div className="bg-slate-900 text-white rounded-xl p-3 mb-4 shadow-2xs">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
-                      <span className="flex items-center gap-1">
-                        <KeyRound className="w-3 h-3" />
-                        <span>Join Token</span>
-                      </span>
-                      {isOwner && (
+                  {/* Join Token Box / Personal Workspace Banner */}
+                  {isPersonalWs ? (
+                    <div className="bg-slate-900 text-white rounded-xl p-3 mb-4 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                        <span className="flex items-center gap-1">
+                          <Lock className="w-3 h-3 text-emerald-400" />
+                          <span>Private Personal Org</span>
+                        </span>
+                        <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.2 rounded font-semibold">
+                          Confidential
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-medium mt-1">
+                        Private workspace exclusively for your standalone personal documents and private projects.
+                      </p>
+                      <p className="text-[9px] text-slate-400 mt-1">
+                        Closed to external members. No token sharing required.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-900 text-white rounded-xl p-3 mb-4 shadow-2xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1">
+                        <span className="flex items-center gap-1">
+                          <KeyRound className="w-3 h-3" />
+                          <span>Join Token</span>
+                        </span>
+                        {isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => handleRegenerateToken(org)}
+                            title="Regenerate join token"
+                            className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-bold text-emerald-300 tracking-wider">
+                          {org.join_code || '••••••••'}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => handleRegenerateToken(org)}
-                          title="Regenerate join token"
-                          className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                          onClick={() => handleCopyJoinToken(org)}
+                          className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Copy join token"
                         >
-                          <RefreshCw className="w-3 h-3" />
+                          {copiedTokenId === org.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
                         </button>
-                      )}
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-1">
+                        Share with colleagues to invite them to this organization
+                      </p>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-bold text-emerald-300 tracking-wider">
-                        {org.join_code || '••••••••'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyJoinToken(org)}
-                        className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title="Copy join token"
-                      >
-                        {copiedTokenId === org.id ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                    <p className="text-[9px] text-slate-400 mt-1">
-                      Share with colleagues to invite them to this organization
-                    </p>
-                  </div>
+                  )}
                 </div>
 
                 {/* Card Actions */}
@@ -435,14 +458,21 @@ export const OrganizationManagement: React.FC<OrganizationManagementProps> = ({
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenMembersModal(org)}
-                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span>Members ({org.members_count || 1})</span>
-                    </button>
+                    {isPersonalWs ? (
+                      <span className="text-xs text-slate-400 flex items-center gap-1 font-medium">
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Private</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMembersModal(org)}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Members ({org.members_count || 1})</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Quick links to Projects and Teams */}

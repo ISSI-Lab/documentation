@@ -31,6 +31,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Dedicated Project Page & Staffing Migration | AI Agent | Completed | Migrated project assignments and staffing from Team Formation to dedicated Project Page (`ProjectManagement.tsx`) with in-situ organization switching (Creator vs Member), project CRUD, team set cloning, and staffing modals |
 | Dedicated Create Organization Page & Pure Org List | AI Agent | Completed | Built dedicated `CreateOrganizationPage.tsx` view for creating organizations, streamlined `OrganizationManagement.tsx` into a pure organization list with prominent join tokens and member rosters, and linked navbar selection switcher |
 | Project & Document Creator Tile Metadata | AI Agent | Completed | Exposed creator metadata (creator name & username) via SQL JOINs across project and document APIs, and rendered creator attribution badges on project tiles and document tiles across Project Management, Document List, Document Viewer, and Personal Homepage |
+| Personal Private Organization & Standalone Docs | AI Agent | Completed | Auto-provisioned `{username}_workspace` for demo users, existing database users, and on first login/registration; enabled standalone personal document authoring (`project_id = null`) and private project containers within personal workspaces; protected private workspaces from outside joins |
 
 ---
 
@@ -72,6 +73,14 @@ This file tracks the current sprint state, active workstreams, and recent change
   2. Exposed `creator_name` and `creator_username` in frontend `Project` and `Document` interfaces.
   3. Rendered prominent project creator attribution badges on project tiles in `ProjectManagement.tsx` and in the "Your Projects" grid in `PersonalHomepage.tsx`.
   4. Rendered clear document creator badges on document tiles in `DocumentList.tsx`, in the "Recent Documents" list in `PersonalHomepage.tsx`, and in `DocumentViewer.tsx`.
+  5. Enforced strict Creator-Only Document Creation locks on the Documents page (`DocumentList.tsx`): when viewing a `creator_only` project as a non-creator, the header "New Document" button and empty-state "Create Document" button are disabled and locked (`Lock` icon + "Creator Only"), an informational banner is rendered explaining creator exclusivity, and parent `App.tsx` and modal initialization guard against opening or preselecting creator-only projects.
+- Personal Private Organization (`{username}_workspace`), Standalone Personal Documents, and Private Projects:
+  1. Automated Provisioning: Created `ensureUserPersonalOrganization` in `src/backend/src/db.ts` to guarantee that every user has a personal private organization named `{username}_workspace` with the user as creator and owner.
+  2. Lifecycle Integration: Seeded personal workspaces for all demo users (`config/default-config.json`) and existing database users in `seedConfigData`, and hooked auto-creation into `POST /register`, `POST /login` (first-time login), `POST /verify`, and `GET /me`.
+  3. Standalone Personal Documents: Documents created without a project container (`project_id = null`) are permitted in `{username}_workspace` (and across the platform) and strictly treated as `'personal'` documents (`docType = 'personal'`).
+  4. Private Project Containers: Under their personal workspace, the user is the organization creator and can create private projects as containers to organize documents.
+  5. Access Controls & Join Protection: Personal private workspaces are protected in `POST /organizations/join` from outside users joining (`403 Forbidden`).
+  6. Visual Distinction: Top navbar switcher, Organization Management, Personal Homepage, and Document Creation modal display a dedicated "Personal Workspace" badge with lock icon, confidential status, and clean standalone document authoring options.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

@@ -73,15 +73,25 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       }
       setSelectedOrgId(targetOrgId);
 
-      const targetProjId = initialSelectedProjectId || null;
+      let targetProjId = initialSelectedProjectId || null;
+      if (targetProjId) {
+        const p = projects.find((proj) => proj.id === targetProjId);
+        const isCreatorOnly = p?.document_creation_permission === 'creator_only';
+        const isProjCreator = Boolean(p?.created_by && currentUser?.id && p.created_by === currentUser.id);
+        const pOrg = organizations.find((o) => o.id === (p?.organization_id || p?.team_id));
+        const isOrgCreator = Boolean(pOrg?.is_creator || (pOrg?.created_by && currentUser?.id && pOrg.created_by === currentUser.id) || pOrg?.user_role === 'owner');
+        if (isCreatorOnly && !isProjCreator && !isOrgCreator) {
+          targetProjId = null;
+        }
+      }
       setProjectId(targetProjId);
 
       const targetProj = projects.find((proj) => proj.id === targetProjId);
       const isIndiv = targetProj?.association_type === 'individual';
-      const isPersonalWs = !targetProj && !targetOrgId;
+      const isStandalone = !targetProj;
 
-      // Force personal if individual project or personal workspace
-      setDocumentType(isIndiv || isPersonalWs ? 'personal' : 'project_shared');
+      // Force personal if individual project or standalone personal document
+      setDocumentType(isIndiv || isStandalone ? 'personal' : 'project_shared');
       setIsSubmittable(false);
       setTitle('');
       setTagsInput('');
@@ -106,9 +116,13 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const selectedProject = projects.find((p) => p.id === projectId);
   const isIndividualProject = selectedProject?.association_type === 'individual';
   const isTeamProject = selectedProject?.association_type === 'team';
-  const isPersonalWorkspace = !projectId && !selectedOrgId;
+  const isStandaloneDoc = !projectId;
 
   const currentOrg = organizations.find((o) => o.id === selectedOrgId);
+  const isPersonalOrg = Boolean(
+    currentOrg &&
+    (currentOrg.name === `${currentUser?.username}_workspace` || (!selectedOrgId && !projectId))
+  );
   const isOrgCreator = Boolean(
     currentOrg?.is_creator ||
     (currentOrg?.created_by && currentUser?.id && currentOrg.created_by === currentUser.id) ||
@@ -145,12 +159,12 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
     }
   });
 
-  // Strict constraint: individual projects and personal workspaces MUST be personal documents
+  // Strict constraint: individual projects and standalone documents (no project) MUST be personal documents
   useEffect(() => {
-    if ((isIndividualProject || isPersonalWorkspace) && documentType !== 'personal') {
+    if ((isIndividualProject || isStandaloneDoc) && documentType !== 'personal') {
       setDocumentType('personal');
     }
-  }, [isIndividualProject, isPersonalWorkspace, documentType]);
+  }, [isIndividualProject, isStandaloneDoc, documentType]);
 
   // If current templateId is not in availableTemplates, auto-select first available
   useEffect(() => {
@@ -315,7 +329,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   onChange={(e) => handleProjectChange(e.target.value ? e.target.value : null)}
                   className="w-full px-2.5 py-1.5 border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white rounded"
                 >
-                  <option value="">(No Project / Standalone)</option>
+                  <option value="">(No Project / Standalone Personal Document)</option>
                   {availableProjects.map((p) => {
                     const isCreatorOnly = p.document_creation_permission === 'creator_only';
                     const isProjCreator = Boolean(p.created_by && currentUser?.id && p.created_by === currentUser.id);
@@ -356,9 +370,9 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                   Team Formation: Choose Personal or Shared
                 </span>
               )}
-              {isPersonalWorkspace && (
-                <span className="text-[10px] bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
-                  Personal Workspace: Personal Only
+              {isStandaloneDoc && (
+                <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
+                  <UserIcon className="w-3 h-3 text-purple-600" /> Standalone: Personal Only
                 </span>
               )}
             </div>
@@ -388,6 +402,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     ? 'Individual deliverable authored per person (Required for individual project).'
                     : isTeamProject
                     ? 'Individual deliverable authored separately by each team member.'
+                    : isStandaloneDoc
+                    ? 'Personal document authored by you with no project container required.'
                     : 'Individual personal document authored by you.'}
                 </p>
               </div>
@@ -395,12 +411,12 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
               {/* Project Shared Document Option */}
               <div
                 onClick={() => {
-                  if (!isIndividualProject && !isPersonalWorkspace) {
+                  if (!isIndividualProject && !isStandaloneDoc) {
                     setDocumentType('project_shared');
                   }
                 }}
                 className={`p-3 border transition-all ${
-                  isIndividualProject || isPersonalWorkspace
+                  isIndividualProject || isStandaloneDoc
                     ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
                     : documentType === 'project_shared'
                     ? 'bg-blue-50/70 border-blue-600 ring-1 ring-blue-600 shadow-sm cursor-pointer'
@@ -415,7 +431,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
                       Unavailable
                     </span>
-                  ) : isPersonalWorkspace ? (
+                  ) : isStandaloneDoc ? (
                     <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 font-semibold rounded">
                       Unavailable
                     </span>
@@ -428,8 +444,8 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 <p className="text-[11px] text-slate-500 leading-tight">
                   {isIndividualProject
                     ? 'Unavailable: This project is assigned by individuals. Documents under it only allow Personal Documents.'
-                    : isPersonalWorkspace
-                    ? 'Unavailable: Shared editing requires an organization or team project.'
+                    : isStandaloneDoc
+                    ? 'Unavailable: Standalone personal documents have no project container. Select a project to enable shared editing.'
                     : isTeamProject
                     ? 'Shared deliverable authored together by assigned squad/team.'
                     : 'Shared editing among team & project members.'}

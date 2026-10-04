@@ -88,7 +88,8 @@ export const App: React.FC = () => {
       const userOrgs = data.organizations || data.teams || [];
       setOrganizations(userOrgs);
       if (userOrgs.length > 0 && !activeOrganizationId) {
-        setActiveOrganizationId(userOrgs[0].id);
+        const personalOrg = userOrgs.find((o: Organization) => o.name === `${data.user.username}_workspace`);
+        setActiveOrganizationId(personalOrg ? personalOrg.id : userOrgs[0].id);
       }
       setCurrentView('home');
       await loadAllProjects();
@@ -105,7 +106,8 @@ export const App: React.FC = () => {
       const list = await api.listOrganizations();
       setOrganizations(list);
       if (list.length > 0 && (!activeOrganizationId || !list.some((o) => o.id === activeOrganizationId))) {
-        setActiveOrganizationId(list[0].id);
+        const personalOrg = list.find((o) => o.name === `${currentUser.username}_workspace`);
+        setActiveOrganizationId(personalOrg ? personalOrg.id : list[0].id);
       }
       await loadAllProjects();
     } catch (err: any) {
@@ -383,9 +385,22 @@ export const App: React.FC = () => {
             activeTeamId={activeOrganizationId}
             activeProjectId={activeProjectId}
             loading={loadingDocs}
-            onOpenCreateModal={() => {
+            onOpenCreateModal={(pId) => {
+              const targetPId = pId !== undefined ? pId : activeProjectId;
+              if (targetPId) {
+                const targetProj = allProjects.find((p) => p.id === targetPId);
+                if (targetProj?.document_creation_permission === 'creator_only') {
+                  const targetOrg = organizations.find((o) => o.id === (targetProj.organization_id || targetProj.team_id));
+                  const isProjCreator = Boolean(targetProj.created_by && currentUser?.id && targetProj.created_by === currentUser.id);
+                  const isOrgCreator = Boolean(targetOrg?.is_creator || (targetOrg?.created_by && currentUser?.id && targetOrg.created_by === currentUser.id) || targetOrg?.user_role === 'owner');
+                  if (!isProjCreator && !isOrgCreator) {
+                    showToast('Only the project creator can create documents in this project.', 'error');
+                    return;
+                  }
+                }
+              }
               setModalInitialTemplateId(null);
-              setModalInitialProjectId(activeProjectId);
+              setModalInitialProjectId(targetPId);
               setIsCreateModalOpen(true);
             }}
             onEditDocument={(id) => {

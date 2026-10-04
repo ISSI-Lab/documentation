@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 
 dotenv.config();
@@ -471,6 +472,74 @@ export function loadDefaultConfig(): any {
   };
 }
 
+export async function ensureUserPersonalOrganization(
+  userId: string,
+  username: string,
+  name?: string,
+  conn?: mysql.PoolConnection | mysql.Pool
+): Promise<string> {
+  const runner = conn || pool;
+  const orgName = `${username}_workspace`;
+
+  // Check if personal organization already exists for this user
+  const [existing] = await runner.query<any[]>(
+    'SELECT id FROM organizations WHERE name = ? AND created_by = ? LIMIT 1',
+    [orgName, userId]
+  );
+
+  let orgId: string;
+  if (existing && existing.length > 0) {
+    orgId = existing[0].id;
+  } else {
+    orgId = `ws-${crypto.randomBytes(4).toString('hex')}`;
+    const randomCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const joinCode = `WS-${randomCode}`;
+    const description = `Personal private workspace for ${name || username}`;
+
+    await runner.query(
+      `INSERT INTO organizations (id, name, description, join_code, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+      [orgId, orgName, description, joinCode, userId]
+    );
+  }
+
+  // Ensure member record exists as owner
+  await runner.query(
+    `INSERT INTO organization_members (organization_id, user_id, role, joined_at)
+     VALUES (?, ?, 'owner', NOW())
+     ON DUPLICATE KEY UPDATE role = 'owner'`,
+    [orgId, userId]
+  );
+
+  // Retroactively associate standalone personal documents (where organization_id IS NULL and project_id IS NULL)
+  // to the user's personal private workspace
+  try {
+    await runner.query(
+      `UPDATE documents
+       SET organization_id = ?
+       WHERE created_by = ? AND organization_id IS NULL AND project_id IS NULL`,
+      [orgId, userId]
+    );
+  } catch {
+    // Non-fatal
+  }
+
+  // Retroactively associate unassigned personal projects to the user's personal private workspace
+  try {
+    await runner.query(
+      `UPDATE projects
+       SET organization_id = ?
+       WHERE created_by = ? AND organization_id IS NULL`,
+      [orgId, userId]
+    );
+  } catch {
+    // Non-fatal
+  }
+
+  return orgId;
+}
+
 export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void> {
   const runner = conn || (await pool.getConnection());
   try {
@@ -489,6 +558,9 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
              is_verified = TRUE`,
           [u.id, u.username, u.email, passwordHash, u.name, u.user_type || 'regular']
         );
+
+        // Ensure personal private organization for demo user
+        await ensureUserPersonalOrganization(u.id, u.username, u.name, runner);
       }
     }
 
@@ -638,6 +710,18 @@ export async function seedConfigData(conn?: mysql.PoolConnection): Promise<void>
           );
         }
       }
+    }
+
+    // Retroactively ensure personal private organizations for all existing users in database
+    try {
+      const [allDbUsers] = await runner.query<any[]>('SELECT id, username, name FROM users');
+      if (Array.isArray(allDbUsers)) {
+        for (const dbUser of allDbUsers) {
+          await ensureUserPersonalOrganization(dbUser.id, dbUser.username, dbUser.name, runner);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Database] Notice checking existing users for personal workspaces:', err.message);
     }
 
     console.log('[Database] Demo users, default organization, teams, assignment sets, and project verified and seeded.');

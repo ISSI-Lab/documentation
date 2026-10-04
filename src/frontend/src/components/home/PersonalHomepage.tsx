@@ -77,7 +77,15 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   const publicTemplates = templates.filter((t) => t.visibility === 'public');
   const recentDocuments = documents.slice(0, 5);
 
-  const getRoleBadge = (role?: string, isCreator?: boolean) => {
+  const getRoleBadge = (role?: string, isCreator?: boolean, isPersonal?: boolean) => {
+    if (isPersonal) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <Lock className="w-3 h-3 text-emerald-600" />
+          Personal Workspace
+        </span>
+      );
+    }
     if (isCreator || role === 'owner') {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
@@ -285,7 +293,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="text-base font-bold text-slate-900 line-clamp-1">{org.name}</h3>
-                          {getRoleBadge(org.user_role, isCreator)}
+                          {getRoleBadge(org.user_role, isCreator, org.name === `${currentUser?.username}_workspace`)}
                         </div>
                         <p className="text-xs text-slate-500 line-clamp-2 min-h-[32px]">
                           {org.description || 'No organization description provided.'}

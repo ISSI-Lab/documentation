@@ -31,7 +31,7 @@ interface DocumentListProps {
   activeTeamId?: string | null; // compatibility alias
   activeProjectId: string | null;
   loading: boolean;
-  onOpenCreateModal: () => void;
+  onOpenCreateModal: (projectId?: string | null) => void;
   onEditDocument: (docId: string) => void;
   onViewDocument: (docId: string) => void;
   onDeleteDocument: (docId: string) => void;
@@ -81,7 +81,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     }
   }, [activeProjectId]);
 
-  const personalCount = documents.filter((d) => !d.organization_id && !d.team_id).length;
+  const personalOrgId = organizations.find((o) => o.name === `${currentUser?.username}_workspace`)?.id || null;
+  const isPersonalDoc = (doc: Document) => {
+    const docOrg = doc.organization_id || doc.team_id || null;
+    return (
+      docOrg === null ||
+      (personalOrgId !== null && docOrg === personalOrgId) ||
+      (doc.document_type === 'personal' && doc.created_by === currentUser?.id)
+    );
+  };
+
+  const personalCount = documents.filter(isPersonalDoc).length;
   const orgCount = documents.filter((d) => Boolean(d.organization_id || d.team_id)).length;
 
   const getOrganizationName = (orgId: string | null) => {
@@ -99,7 +109,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   // Projects available based on current scope & organization
   const filteredProjectOptions = projects.filter((p) => {
     const pOrgId = p.organization_id || p.team_id;
-    if (selectedCategory === 'personal') return !pOrgId;
+    if (selectedCategory === 'personal') {
+      return !pOrgId || (personalOrgId && pOrgId === personalOrgId);
+    }
     if (selectedCategory === 'organizations') {
       if (selectedOrgId !== 'all') return pOrgId === selectedOrgId;
       return Boolean(pOrgId);
@@ -110,6 +122,47 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     return true;
   });
 
+  // Selected project for current view context
+  const currentSelectedProject = selectedProjectId !== 'all'
+    ? projects.find((p) => p.id === selectedProjectId) || null
+    : null;
+
+  const isSelectedProjectCreatorOnly = currentSelectedProject?.document_creation_permission === 'creator_only';
+
+  const isCurrentProjectCreator = Boolean(
+    currentSelectedProject?.created_by &&
+    currentUser?.id &&
+    currentSelectedProject.created_by === currentUser.id
+  );
+
+  const currentProjectOrgId = currentSelectedProject?.organization_id || currentSelectedProject?.team_id || null;
+  const currentProjectOrg = organizations.find((o) => o.id === currentProjectOrgId);
+
+  const isCurrentProjectOrgCreator = Boolean(
+    currentProjectOrg?.is_creator ||
+    (currentProjectOrg?.created_by && currentUser?.id && currentProjectOrg.created_by === currentUser.id) ||
+    currentProjectOrg?.user_role === 'owner'
+  );
+
+  const isCreatorInCurrentProject = isCurrentProjectCreator || isCurrentProjectOrgCreator;
+
+  // Can the current user create a document in the currently selected project context?
+  const canCreateInCurrentContext = !currentSelectedProject || !isSelectedProjectCreatorOnly || isCreatorInCurrentProject;
+
+  const currentProjectCreatorDisplayName =
+    currentSelectedProject?.creator_name ||
+    currentSelectedProject?.creator_username ||
+    currentProjectOrg?.creator_name ||
+    currentProjectOrg?.creator_username ||
+    'the Project Creator';
+
+  const handleOpenCreateModal = () => {
+    if (!canCreateInCurrentContext) {
+      return;
+    }
+    onOpenCreateModal(currentSelectedProject?.id || null);
+  };
+
   // Filter documents
   const filtered = documents
     .filter((doc) => {
@@ -117,12 +170,29 @@ export const DocumentList: React.FC<DocumentListProps> = ({
 
       // 1. Scope category filter
       if (selectedCategory === 'personal') {
-        if (docOrgId !== null) return false;
+        if (!isPersonalDoc(doc)) return false;
       } else if (selectedCategory === 'organizations') {
-        if (!docOrgId) return false;
-        if (selectedOrgId !== 'all' && docOrgId !== selectedOrgId) return false;
+        if (selectedOrgId !== 'all') {
+          if (docOrgId !== selectedOrgId) {
+            if (personalOrgId && selectedOrgId === personalOrgId && docOrgId === null && doc.created_by === currentUser?.id) {
+              // allowed
+            } else {
+              return false;
+            }
+          }
+        } else if (!docOrgId) {
+          return false;
+        }
       } else if (selectedCategory === 'recent') {
-        if (selectedOrgId !== 'all' && docOrgId !== selectedOrgId) return false;
+        if (selectedOrgId !== 'all') {
+          if (docOrgId !== selectedOrgId) {
+            if (personalOrgId && selectedOrgId === personalOrgId && docOrgId === null && doc.created_by === currentUser?.id) {
+              // allowed
+            } else {
+              return false;
+            }
+          }
+        }
       }
 
       // 2. Project filter
@@ -183,14 +253,26 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           </p>
         </div>
         <div className="mt-4 sm:mt-0">
-          <button
-            type="button"
-            onClick={onOpenCreateModal}
-            className="inline-flex items-center px-4 py-2 border border-blue-700 text-xs font-semibold shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4 mr-1.5" />
-            New Document
-          </button>
+          {canCreateInCurrentContext ? (
+            <button
+              type="button"
+              onClick={handleOpenCreateModal}
+              className="inline-flex items-center px-4 py-2 border border-blue-700 text-xs font-semibold shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4 mr-1.5" />
+              New Document
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              title={`This project is restricted to Creator Only documents. Only the project creator (${currentProjectCreatorDisplayName}) can create documents.`}
+              className="inline-flex items-center px-4 py-2 border border-slate-300 text-xs font-semibold text-slate-400 bg-slate-100 cursor-not-allowed opacity-80 shadow-none"
+            >
+              <Lock className="w-4 h-4 mr-1.5 text-slate-400" />
+              Creator Only (Locked)
+            </button>
+          )}
         </div>
       </div>
 
@@ -368,6 +450,17 @@ export const DocumentList: React.FC<DocumentListProps> = ({
         )}
       </div>
 
+      {/* Creator Only Warning Banner if non-creator is viewing creator_only project */}
+      {currentSelectedProject && !canCreateInCurrentContext && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+          <Lock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-900">
+            <span className="font-bold block text-sm mb-0.5">Creator Only Project</span>
+            Document creation in <strong>{currentSelectedProject.name}</strong> is restricted to the project creator ({currentProjectCreatorDisplayName}). As a member, you have view-only access to this project's documents.
+          </div>
+        </div>
+      )}
+
       {/* Document Grid / Cards */}
       {loading ? (
         <div className="space-y-4">
@@ -380,7 +473,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
           <FileText className="mx-auto h-12 w-12 text-slate-300" />
           <h3 className="mt-3 text-lg font-bold text-slate-900">No documents found</h3>
           <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
-            {search || selectedTemplateId !== 'all' || selectedStatus !== 'all' || selectedProjectId !== 'all'
+            {!canCreateInCurrentContext
+              ? `This project is restricted to Creator Only document creation. Only the project creator (${currentProjectCreatorDisplayName}) can create documents in this project.`
+              : search || selectedTemplateId !== 'all' || selectedStatus !== 'all' || selectedProjectId !== 'all'
               ? 'Try changing your search keywords or filter criteria.'
               : selectedCategory === 'personal'
               ? 'You have not created any personal documents yet.'
@@ -389,13 +484,25 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               : 'Create your first document to get started.'}
           </p>
           <div className="mt-6">
-            <button
-              onClick={onOpenCreateModal}
-              className="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm border border-blue-700 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Create Document
-            </button>
+            {canCreateInCurrentContext ? (
+              <button
+                onClick={handleOpenCreateModal}
+                className="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm border border-blue-700 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4 mr-1.5" />
+                Create Document
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title={`This project is restricted to Creator Only documents. Only the project creator (${currentProjectCreatorDisplayName}) can create documents.`}
+                className="inline-flex items-center px-4 py-2 text-xs font-semibold text-slate-400 bg-slate-100 border border-slate-300 cursor-not-allowed opacity-80"
+              >
+                <Lock className="w-4 h-4 mr-1.5 text-slate-400" />
+                Creator Only (Creation Disabled)
+              </button>
+            )}
           </div>
         </div>
       ) : (

@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
-import { pool } from '../db';
+import { pool, ensureUserPersonalOrganization } from '../db';
 import {
   AuthenticatedRequest,
   isOrganizationCreator,
@@ -45,6 +45,9 @@ function formatOrganizationRow(row: any, currentUserId?: string): Organization {
 organizationsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
+    await ensureUserPersonalOrganization(userId, req.user!.username, (req.user as any)?.name);
+
+    const personalOrgName = `${req.user!.username}_workspace`;
     const [rows] = await pool.query<any[]>(
       `SELECT o.*, 
         CASE WHEN o.created_by = ? THEN 'owner' ELSE om.role END as user_role,
@@ -55,8 +58,8 @@ organizationsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res:
        JOIN organization_members om ON o.id = om.organization_id
        LEFT JOIN users cu ON o.created_by = cu.id
        WHERE om.user_id = ?
-       ORDER BY o.created_at ASC`,
-      [userId, userId]
+       ORDER BY (o.name = ?) DESC, o.created_at ASC`,
+      [userId, userId, personalOrgName]
     );
 
     res.json(rows.map((r) => formatOrganizationRow(r, userId)));
@@ -143,6 +146,11 @@ organizationsRouter.post('/join', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const org = orgRows[0];
+
+    // Personal private workspaces cannot be joined by other users
+    if (org.name.endsWith('_workspace') && org.created_by !== userId) {
+      return res.status(403).json({ error: 'Personal private workspaces cannot be joined by other users' });
+    }
 
     // Check if already a member
     const [memberRows] = await pool.query<any[]>(

@@ -162,11 +162,16 @@ projectsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Resp
     const params: any[] = [userId, userId];
 
     if (orgId === 'personal' || orgId === 'null') {
-      sql += ' AND p.organization_id IS NULL AND p.created_by = ?';
-      params.push(userId);
+      sql += ' AND ((p.organization_id IS NULL AND p.created_by = ?) OR p.organization_id = (SELECT id FROM organizations WHERE name = ? AND created_by = ? LIMIT 1))';
+      params.push(userId, `${req.user?.username}_workspace`, userId);
     } else if (orgId && typeof orgId === 'string') {
-      sql += ' AND p.organization_id = ?';
-      params.push(orgId);
+      if (userId && req.user?.username) {
+        sql += ` AND ((p.organization_id = ?) OR (p.organization_id IS NULL AND p.created_by = ? AND ? = (SELECT id FROM organizations WHERE name = ? AND created_by = ? LIMIT 1)))`;
+        params.push(orgId, userId, orgId, `${req.user.username}_workspace`, userId);
+      } else {
+        sql += ' AND p.organization_id = ?';
+        params.push(orgId);
+      }
     }
 
     sql += ' ORDER BY p.created_at ASC';

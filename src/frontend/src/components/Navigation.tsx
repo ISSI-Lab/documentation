@@ -14,6 +14,7 @@ import {
   Crown,
   Check,
   Plus,
+  Lock,
 } from 'lucide-react';
 import { Organization, User } from '../types';
 
@@ -137,17 +138,29 @@ export const Navigation: React.FC<NavigationProps> = ({
                   {activeOrg && (
                     <span
                       className={`hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                        isCreatorOfActiveOrg
+                        activeOrg.name === `${currentUser?.username}_workspace`
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : isCreatorOfActiveOrg
                           ? 'bg-purple-100 text-purple-800 border border-purple-200'
                           : 'bg-slate-100 text-slate-600 border border-slate-200'
                       }`}
                     >
-                      {isCreatorOfActiveOrg ? (
-                        <Crown className="w-2.5 h-2.5 text-purple-600" />
+                      {activeOrg.name === `${currentUser?.username}_workspace` ? (
+                        <>
+                          <Lock className="w-2.5 h-2.5 text-emerald-600" />
+                          Personal
+                        </>
+                      ) : isCreatorOfActiveOrg ? (
+                        <>
+                          <Crown className="w-2.5 h-2.5 text-purple-600" />
+                          Creator
+                        </>
                       ) : (
-                        <Users className="w-2.5 h-2.5 text-slate-500" />
+                        <>
+                          <Users className="w-2.5 h-2.5 text-slate-500" />
+                          Member
+                        </>
                       )}
-                      {isCreatorOfActiveOrg ? 'Creator' : 'Member'}
                     </span>
                   )}
                   <ChevronDown
@@ -170,6 +183,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                       ) : (
                         organizations.map((org) => {
                           const isSelected = org.id === activeOrganizationId;
+                          const isPersonalWs = org.name === `${currentUser?.username}_workspace`;
                           const isOrgCreator = Boolean(
                             org.is_creator ||
                             (org.created_by && currentUser?.id && org.created_by === currentUser.id) ||
@@ -198,7 +212,9 @@ export const Navigation: React.FC<NavigationProps> = ({
                                 <div className="truncate">
                                   <div className="truncate font-medium">{org.name}</div>
                                   <div className="text-[10px] text-slate-400">
-                                    {isOrgCreator
+                                    {isPersonalWs
+                                      ? 'Personal Private Workspace'
+                                      : isOrgCreator
                                       ? 'Organization Creator'
                                       : `Member (${org.members_count || 1} members)`}
                                   </div>
@@ -207,17 +223,21 @@ export const Navigation: React.FC<NavigationProps> = ({
                               <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${
-                                    isOrgCreator
-                                      ? 'bg-purple-100 text-purple-800'
-                                      : 'bg-slate-100 text-slate-600'
+                                    isPersonalWs
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      : isOrgCreator
+                                      ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
                                   }`}
                                 >
-                                  {isOrgCreator ? (
+                                  {isPersonalWs ? (
+                                    <Lock className="w-2.5 h-2.5 text-emerald-600" />
+                                  ) : isOrgCreator ? (
                                     <Crown className="w-2.5 h-2.5 text-purple-600" />
                                   ) : (
                                     <Users className="w-2.5 h-2.5 text-slate-500" />
                                   )}
-                                  {isOrgCreator ? 'Creator' : 'Member'}
+                                  {isPersonalWs ? 'Personal' : isOrgCreator ? 'Creator' : 'Member'}
                                 </span>
                                 {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
                               </div>
