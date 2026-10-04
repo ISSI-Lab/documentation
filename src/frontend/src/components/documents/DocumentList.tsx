@@ -36,7 +36,7 @@ interface DocumentListProps {
   onOpenCreateModal: (projectId?: string | null) => void;
   onEditDocument: (docId: string) => void;
   onViewDocument: (docId: string) => void;
-  onDeleteDocument: (docId: string) => void;
+  onDeleteDocument: (doc: Document) => void;
   onExportMarkdown: (docId: string) => void;
 }
 
@@ -738,9 +738,9 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                         ? (teamCopyDoc ? 'Edit Team Copy' : 'Start Team Copy')
                         : 'Edit')}
                   </button>
-                  {(!isPersonal || doc.created_by === currentUser?.id) && !isSubmittableMaster && (
+                  {Boolean((doc.created_by && currentUser?.id && doc.created_by === currentUser.id) || (!doc.created_by && currentUser?.id)) && (
                     <button
-                      onClick={() => onDeleteDocument(doc.id)}
+                      onClick={() => onDeleteDocument(doc)}
                       title="Delete document"
                       className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer border border-transparent hover:border-red-200"
                     >

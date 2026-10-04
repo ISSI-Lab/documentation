@@ -279,9 +279,19 @@ export const api = {
     );
   },
 
+  async deleteOrganization(id: string): Promise<void> {
+    await request<void>(`/organizations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
   // Backwards compatibility aliases for Team
   listTeams(): Promise<Team[]> {
     return this.listOrganizations();
+  },
+
+  deleteTeam(id: string): Promise<void> {
+    return this.deleteOrganization(id);
   },
 
   createTeam(payload: { name: string; description?: string }): Promise<Team> {

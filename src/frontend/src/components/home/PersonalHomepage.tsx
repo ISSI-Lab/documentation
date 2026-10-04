@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   User as UserIcon,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { Document, Organization, Project, Team, Template, User } from '../../types';
 
@@ -41,6 +42,8 @@ interface PersonalHomepageProps {
   onEditDocument?: (docId: string) => void;
   onSelectOrganization?: (organizationId: string) => void;
   onSelectTeam?: (teamId: string) => void; // compatibility alias
+  onDeleteProject?: (projectId: string, projectCreatedBy?: string) => void;
+  onDeleteOrganization?: (org: Organization) => void;
 }
 
 export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
@@ -64,6 +67,8 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   onViewDocument,
   onSelectOrganization,
   onSelectTeam,
+  onDeleteProject,
+  onDeleteOrganization,
 }) => {
   const organizations = propOrganizations || propTeams || [];
   const handleNavOrgs = onNavigateToOrganizations || onNavigateToTeams || (() => {});
@@ -293,7 +298,18 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h3 className="text-base font-bold text-slate-900 line-clamp-1">{org.name}</h3>
-                          {getRoleBadge(org.user_role, isCreator, org.name === `${currentUser?.username}_workspace`)}
+                          <div className="flex items-center gap-1.5">
+                            {getRoleBadge(org.user_role, isCreator, org.name === `${currentUser?.username}_workspace`)}
+                            {onDeleteOrganization && (
+                              <button
+                                onClick={() => onDeleteOrganization(org)}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title={org.name === `${currentUser?.username}_workspace` ? 'Personal workspace cannot be deleted' : 'Delete organization'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className="text-xs text-slate-500 line-clamp-2 min-h-[32px]">
                           {org.description || 'No organization description provided.'}
@@ -308,6 +324,11 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           <span className="flex items-center gap-1">
                             <FolderKanban className="w-3.5 h-3.5 text-blue-500" />
                             {orgProjects.length} projects
+                          </span>
+                          <span>&bull;</span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            {documents.filter((d) => d.organization_id === org.id).length} docs
                           </span>
                         </div>
                       </div>
@@ -404,6 +425,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                     project.document_creation_permission !== 'creator_only' ||
                     isProjCreator ||
                     isOrgOwner;
+                  const canManageProj = isProjCreator || isOrgOwner;
                   return (
                     <div
                       key={project.id}
@@ -414,10 +436,25 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
                             {parentOrg?.name || 'Organization Project'}
                           </span>
-                          <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <FileText className="w-3 h-3 text-blue-500" />
-                            {project.documents_count || 0} docs
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <FileText className="w-3 h-3 text-blue-500" />
+                              {project.documents_count || 0} docs
+                            </span>
+                            {canManageProj && onDeleteProject && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteProject(project.id, project.created_by);
+                                }}
+                                className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 mt-1">{project.name}</h4>
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">

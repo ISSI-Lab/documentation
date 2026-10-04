@@ -36,6 +36,8 @@ function formatOrganizationRow(row: any, currentUserId?: string): Organization {
     is_creator: isCreator,
     user_role: row.user_role,
     members_count: Number(row.members_count || 0),
+    projects_count: Number(row.projects_count || 0),
+    documents_count: Number(row.documents_count || 0),
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
@@ -52,6 +54,8 @@ organizationsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res:
       `SELECT o.*, 
         CASE WHEN o.created_by = ? THEN 'owner' ELSE om.role END as user_role,
         (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) as members_count,
+        (SELECT COUNT(*) FROM projects WHERE organization_id = o.id) as projects_count,
+        (SELECT COUNT(*) FROM documents WHERE organization_id = o.id OR project_id IN (SELECT id FROM projects WHERE organization_id = o.id)) as documents_count,
         cu.name as creator_name,
         cu.username as creator_username
        FROM organizations o
@@ -206,7 +210,9 @@ organizationsRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, r
     }
 
     const [orgRows] = await pool.query<any[]>(
-      `SELECT o.*, cu.name as creator_name, cu.username as creator_username
+      `SELECT o.*, cu.name as creator_name, cu.username as creator_username,
+        (SELECT COUNT(*) FROM projects WHERE organization_id = o.id) as projects_count,
+        (SELECT COUNT(*) FROM documents WHERE organization_id = o.id OR project_id IN (SELECT id FROM projects WHERE organization_id = o.id)) as documents_count
        FROM organizations o
        LEFT JOIN users cu ON o.created_by = cu.id
        WHERE o.id = ?`,
@@ -327,6 +333,112 @@ organizationsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, r
     res.json(formatOrganizationRow(updatedRows[0], userId));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update organization', detail: err.message });
+  }
+});
+
+// DELETE /api/v1/organizations/:id - Delete an organization (only organization creator, cannot delete personal workspace, cannot delete if it has projects or documents)
+organizationsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const orgId = req.params.id;
+
+    const [orgRows] = await pool.query<any[]>(
+      `SELECT o.*,
+        (SELECT COUNT(*) FROM projects WHERE organization_id = o.id) as projects_count,
+        (SELECT COUNT(*) FROM documents WHERE organization_id = o.id OR project_id IN (SELECT id FROM projects WHERE organization_id = o.id)) as documents_count
+       FROM organizations o
+       WHERE o.id = ?`,
+      [orgId]
+    );
+
+    if (!orgRows || orgRows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const org = orgRows[0];
+    const username = req.user?.username;
+    const isPersonalWs = (username && org.name === `${username}_workspace`) || org.name.endsWith('_workspace');
+
+    if (isPersonalWs) {
+      return res.status(400).json({ error: 'The personal private workspace cannot be deleted.' });
+    }
+
+    if (org.created_by !== userId) {
+      return res.status(403).json({ error: 'Only the organization creator can delete this organization.' });
+    }
+
+    const projectsCount = Number(org.projects_count || 0);
+    const documentsCount = Number(org.documents_count || 0);
+
+    if (projectsCount > 0 && documentsCount > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete organization: please remove all projects and documents first.',
+      });
+    }
+    if (projectsCount > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete organization: please remove all projects first.',
+      });
+    }
+    if (documentsCount > 0) {
+      return res.status(400).json({
+        error: 'Cannot delete organization: please remove all documents first.',
+      });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Delete project team assignments for teams in this org
+      await conn.query(
+        `DELETE pta FROM project_team_assignments pta
+         JOIN organization_teams ot ON pta.team_id = ot.id
+         WHERE ot.organization_id = ?`,
+        [orgId]
+      );
+
+      // Delete team assignment set items for sets in this org
+      await conn.query(
+        `DELETE tasi FROM team_assignment_set_items tasi
+         JOIN team_assignment_sets tas ON tasi.set_id = tas.id
+         WHERE tas.organization_id = ?`,
+        [orgId]
+      );
+
+      // Delete team members for teams in this org
+      await conn.query(
+        `DELETE otm FROM organization_team_members otm
+         JOIN organization_teams ot ON otm.team_id = ot.id
+         WHERE ot.organization_id = ?`,
+        [orgId]
+      );
+
+      // Delete teams
+      await conn.query('DELETE FROM organization_teams WHERE organization_id = ?', [orgId]);
+
+      // Delete team assignment sets
+      await conn.query('DELETE FROM team_assignment_sets WHERE organization_id = ?', [orgId]);
+
+      // Delete organization members
+      await conn.query('DELETE FROM organization_members WHERE organization_id = ?', [orgId]);
+
+      // Delete templates belonging to this org
+      await conn.query('DELETE FROM templates WHERE organization_id = ?', [orgId]);
+
+      // Delete organization
+      await conn.query('DELETE FROM organizations WHERE id = ?', [orgId]);
+
+      await conn.commit();
+      res.status(204).send();
+    } catch (txErr) {
+      await conn.rollback();
+      throw txErr;
+    } finally {
+      conn.release();
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete organization', detail: err.message });
   }
 });
 

@@ -668,8 +668,122 @@ def run_tests():
     assert r_subm_roster.status_code == 200
     print("✓ Document creator successfully accessed submissions review roster.")
 
+    # ==============================================================================
+    # 7. Test Project & Document Deletion Rules
+    # ==============================================================================
+    print("\n--- 7. Project & Document Deletion Rules ---")
+
+    # 7.1 Submittable document with copies created CANNOT be deleted
+    # shared_doc_id has copies created (Team Alpha copy, Team Beta copy)
+    r_del_subm_fail = requests.delete(f"{BASE_URL}/documents/{shared_doc_id}", headers=headers_creator)
+    assert r_del_subm_fail.status_code == 400, f"Expected 400 Bad Request when deleting submittable doc with copies, got {r_del_subm_fail.status_code}: {r_del_subm_fail.text}"
+    assert "copies have already been created" in r_del_subm_fail.text
+    print("✓ Submittable document with copies created blocked from deletion (400 Bad Request with copies message).")
+
+    # 7.2 Submittable document with NO copies created CAN be deleted by doc creator
+    # member_doc_id is a submittable doc created by participant with 0 copies
+    r_del_subm_ok = requests.delete(f"{BASE_URL}/documents/{member_doc_id}", headers=headers_participant)
+    assert r_del_subm_ok.status_code == 204, f"Expected 204 when creator deletes submittable doc with 0 copies, got {r_del_subm_ok.status_code}: {r_del_subm_ok.text}"
+    r_check_subm = requests.get(f"{BASE_URL}/documents/{member_doc_id}", headers=headers_participant)
+    assert r_check_subm.status_code == 404, "Document should be deleted"
+    print("✓ Submittable document with NO copies created successfully deleted by document creator (204 No Content).")
+
+    # 7.3 Non-submittable document CAN be deleted by doc creator
+    r_nonsubm = requests.post(f"{BASE_URL}/documents", json={
+        "title": "Non-Submittable Doc To Delete",
+        "template_id": template_id,
+        "project_id": proj_am_id,
+        "document_type": "personal",
+        "is_submittable": False,
+    }, headers=headers_participant)
+    assert r_nonsubm.status_code == 201
+    nonsubm_id = r_nonsubm.json()["id"]
+
+    # Non-creator attempts to delete -> 403 Forbidden
+    r_del_unauth = requests.delete(f"{BASE_URL}/documents/{nonsubm_id}", headers=headers_creator)
+    assert r_del_unauth.status_code == 403, f"Expected 403 Forbidden for non-creator deleting doc, got {r_del_unauth.status_code}"
+    print("✓ Non-creator blocked from deleting document (403 Forbidden).")
+
+    # Creator deletes non-submittable document -> 204 No Content
+    r_del_nonsubm = requests.delete(f"{BASE_URL}/documents/{nonsubm_id}", headers=headers_participant)
+    assert r_del_nonsubm.status_code == 204, f"Expected 204 when creator deletes non-submittable doc, got {r_del_nonsubm.status_code}"
+    print("✓ Non-submittable document successfully deleted by document creator (204 No Content).")
+
+    # 7.4 Project creator CAN delete a project
+    r_new_proj = requests.post(f"{BASE_URL}/projects", json={
+        "organization_id": org_id,
+        "name": f"Project To Delete {uuid.uuid4().hex[:6]}",
+        "description": "To be deleted by project creator",
+        "association_type": "individual",
+    }, headers=headers_creator)
+    assert r_new_proj.status_code == 201
+    del_proj_id = r_new_proj.json()["id"]
+
+    # Non-creator member cannot delete it -> 403 Forbidden
+    r_del_proj_unauth = requests.delete(f"{BASE_URL}/projects/{del_proj_id}", headers=headers_participant)
+    assert r_del_proj_unauth.status_code == 403
+    print("✓ Non-creator blocked from deleting project (403 Forbidden).")
+
+    # Project creator deletes project -> 204 No Content
+    r_del_proj_ok = requests.delete(f"{BASE_URL}/projects/{del_proj_id}", headers=headers_creator)
+    assert r_del_proj_ok.status_code == 204, f"Expected 204 when project creator deletes project, got {r_del_proj_ok.status_code}"
+    r_check_proj = requests.get(f"{BASE_URL}/projects/{del_proj_id}", headers=headers_creator)
+    assert r_check_proj.status_code == 404, "Project should be deleted"
+    print("✓ Project creator successfully deleted project (204 No Content).")
+
+    # 7.5 Organization Deletion Guardrails
+    # Case A: Personal private organization cannot be deleted
+    r_me = requests.get(f"{BASE_URL}/auth/me", headers=headers_creator)
+    user_orgs = r_me.json().get("organizations", [])
+    personal_org = next((o for o in user_orgs if o["name"].endswith("_workspace")), None)
+    if personal_org:
+        r_del_personal = requests.delete(f"{BASE_URL}/organizations/{personal_org['id']}", headers=headers_creator)
+        assert r_del_personal.status_code == 400
+        assert "personal private workspace cannot be deleted" in r_del_personal.text.lower()
+        print("✓ Personal private workspace blocked from deletion (400 Bad Request).")
+
+    # Case B: Organization with projects/documents cannot be deleted
+    r_del_org_busy = requests.delete(f"{BASE_URL}/organizations/{org_id}", headers=headers_creator)
+    assert r_del_org_busy.status_code == 400
+    assert "cannot delete organization" in r_del_org_busy.text.lower()
+    print("✓ Organization with projects/documents blocked from deletion (400 Bad Request).")
+
+    # Case C: Create a new empty organization
+    r_create_empty_org = requests.post(f"{BASE_URL}/organizations", json={
+        "name": f"Empty Org {uuid.uuid4().hex[:6]}",
+        "description": "To be tested for deletion",
+    }, headers=headers_creator)
+    assert r_create_empty_org.status_code == 201
+    empty_org_data = r_create_empty_org.json()
+    empty_org_id = empty_org_data["id"]
+
+    # When created, a starter project is inserted. Deleting org while starter project exists fails:
+    r_del_with_starter = requests.delete(f"{BASE_URL}/organizations/{empty_org_id}", headers=headers_creator)
+    assert r_del_with_starter.status_code == 400
+    assert "please remove all projects" in r_del_with_starter.text.lower()
+    print("✓ Organization with starter project blocked from deletion (400 Bad Request).")
+
+    # Now delete that starter project:
+    r_empty_org_detail = requests.get(f"{BASE_URL}/organizations/{empty_org_id}", headers=headers_creator)
+    starter_projects = r_empty_org_detail.json().get("organization", {}).get("projects", [])
+    for sp in starter_projects:
+        requests.delete(f"{BASE_URL}/projects/{sp['id']}", headers=headers_creator)
+
+    # Case D: Non-creator cannot delete empty organization -> 403 Forbidden
+    r_del_org_unauth = requests.delete(f"{BASE_URL}/organizations/{empty_org_id}", headers=headers_participant)
+    assert r_del_org_unauth.status_code == 403
+    assert "only the organization creator" in r_del_org_unauth.text.lower()
+    print("✓ Non-creator blocked from deleting organization (403 Forbidden).")
+
+    # Case E: Organization creator can delete empty organization (0 projects, 0 docs, not personal) -> 204 No Content
+    r_del_org_ok = requests.delete(f"{BASE_URL}/organizations/{empty_org_id}", headers=headers_creator)
+    assert r_del_org_ok.status_code == 204
+    r_check_deleted_org = requests.get(f"{BASE_URL}/organizations/{empty_org_id}", headers=headers_creator)
+    assert r_check_deleted_org.status_code in (403, 404)
+    print("✓ Organization creator successfully deleted empty organization (204 No Content).")
+
     print("\n==================================================================")
-    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions & Creation Permissions)")
+    print("ALL TESTS PASSED SUCCESSFULLY! (Personal & Team Shared Submissions, Creation & Deletion Permissions)")
     print("==================================================================")
     return 0
 

@@ -13,6 +13,7 @@ import {
   Users,
   Send,
   MessageSquare,
+  Trash2,
 } from 'lucide-react';
 import { marked } from 'marked';
 import { Document, Template, User as UserModel } from '../../types';
@@ -27,6 +28,7 @@ interface DocumentViewerProps {
   onSwitchToEdit: () => void;
   onBack: () => void;
   onExportMarkdown: (docId: string) => void;
+  onDeleteDocument?: (doc: Document) => void;
 }
 
 export const DocumentViewer: React.FC<DocumentViewerProps> = ({
@@ -37,6 +39,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onSwitchToEdit,
   onBack,
   onExportMarkdown,
+  onDeleteDocument,
 }) => {
   const isMasterDeliverable = !document.copied_from_id;
   const isDocCreator = Boolean(
@@ -170,10 +173,22 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               </>
             )}
 
+            {isDocCreator && onDeleteDocument && (
+              <button
+                type="button"
+                onClick={() => onDeleteDocument(document)}
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
+                title="Delete Document"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1 text-red-600" />
+                <span>Delete</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onSwitchToEdit}
-              className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
+              className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5 mr-1" />
               {document.document_type === 'personal' && document.is_submittable && !isDocCreator

@@ -352,16 +352,34 @@ projectsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res
     if (currentOrgId) {
       const isCreator = await isOrganizationCreator(userId, currentOrgId);
       if (!isCreator && current.created_by !== userId) {
-        return res.status(403).json({ error: 'Only the organization creator can delete organization projects' });
+        return res.status(403).json({ error: 'Only the project creator or organization creator can delete this project' });
       }
     } else if (current.created_by !== userId) {
       return res.status(403).json({ error: 'You do not have permission to delete this personal project' });
     }
 
-    // Unlink documents and delete assignments
+    // Cascade delete submissions, comments, copied documents, documents, and assignments
+    const [projDocs] = await pool.query<any[]>('SELECT id FROM documents WHERE project_id = ?', [projectId]);
+    const docIds = projDocs.map((d: any) => d.id);
+    if (docIds.length > 0) {
+      const placeholders = docIds.map(() => '?').join(',');
+      await pool.query(
+        `DELETE FROM submission_comments WHERE submission_id IN (SELECT id FROM document_submissions WHERE document_id IN (${placeholders}))`,
+        docIds
+      );
+      await pool.query(
+        `DELETE FROM document_submissions WHERE document_id IN (${placeholders})`,
+        docIds
+      );
+      await pool.query(
+        `DELETE FROM documents WHERE copied_from_id IN (${placeholders})`,
+        docIds
+      );
+    }
+
+    await pool.query('DELETE FROM documents WHERE project_id = ?', [projectId]);
     await pool.query('DELETE FROM project_team_assignments WHERE project_id = ?', [projectId]);
     await pool.query('DELETE FROM project_individual_members WHERE project_id = ?', [projectId]);
-    await pool.query('DELETE FROM documents WHERE project_id = ?', [projectId]);
     await pool.query('DELETE FROM projects WHERE id = ?', [projectId]);
 
     res.status(204).send();

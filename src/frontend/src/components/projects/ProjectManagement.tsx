@@ -203,8 +203,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   const handleEditProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrgId || !targetProjectForEdit || !editProjectName.trim()) return;
-    if (!isUserOrgCreator) {
-      showToast('Only the Organization Creator can edit projects in this organization.', 'error');
+    const isProjCreator = Boolean(
+      targetProjectForEdit.created_by && currentUser?.id && targetProjectForEdit.created_by === currentUser.id
+    );
+    if (!isUserOrgCreator && !isProjCreator) {
+      showToast('Only the Project Creator or Organization Creator can edit projects in this organization.', 'error');
       return;
     }
 
@@ -227,10 +230,11 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
   };
 
   // Delete Project
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = async (projectId: string, projectCreatedBy?: string | null) => {
     if (!selectedOrgId) return;
-    if (!isUserOrgCreator) {
-      showToast('Only the Organization Creator can delete projects.', 'error');
+    const isProjCreator = Boolean(projectCreatedBy && currentUser?.id && projectCreatedBy === currentUser.id);
+    if (!isUserOrgCreator && !isProjCreator) {
+      showToast('Only the Project Creator or Organization Creator can delete this project.', 'error');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this project? All associated documentation scopes will be removed.')) return;
@@ -499,7 +503,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                     {/* Project Title and Doc Creation Permission */}
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-bold text-slate-900 text-lg line-clamp-1">{proj.name}</h3>
-                      {isUserOrgCreator && (
+                      {(isUserOrgCreator || (proj.created_by && currentUser?.id && proj.created_by === currentUser.id)) && (
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => {
@@ -515,7 +519,7 @@ export const ProjectManagement: React.FC<ProjectManagementProps> = ({
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDeleteProject(proj.id)}
+                            onClick={() => handleDeleteProject(proj.id, proj.created_by)}
                             className="p-1 text-red-400 hover:text-red-600 rounded cursor-pointer"
                             title="Delete Project"
                           >

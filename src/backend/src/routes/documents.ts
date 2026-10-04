@@ -64,6 +64,7 @@ function formatDocumentRow(row: any): Document {
     elements_data: elementsData,
     compiled_markdown: row.compiled_markdown || '',
     submissions_count: Number(row.submissions_count || 0),
+    copies_count: Number(row.copies_count || 0),
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
@@ -161,7 +162,8 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
         u.username as creator_username,
         p.association_type as project_association_type,
         ot.name as assigned_team_name,
-        (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+        (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count,
+        (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN projects p ON d.project_id = p.id
@@ -276,7 +278,8 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
-         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count,
+         (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
@@ -724,15 +727,6 @@ documentsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
     const isDocCreator = !doc.created_by || user.id === doc.created_by;
     const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
 
-    // Master submittable document deletion protection
-    if (doc.is_submittable && !doc.copied_from_id && !isDocCreator && !isMgr) {
-      return res.status(403).json({ error: 'Only the creator can delete the master submittable document' });
-    }
-
-    if (doc.document_type === 'personal' && !isDocCreator && !isMgr) {
-      return res.status(403).json({ error: 'Only the creator can delete their personal document' });
-    }
-
     if (doc.copied_from_id && doc.assigned_team_id) {
       const [membership] = await pool.query<any[]>(
         'SELECT 1 FROM organization_team_members WHERE team_id = ? AND user_id = ?',
@@ -741,6 +735,23 @@ documentsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
       const isTeamMember = membership && membership.length > 0;
       if (!isTeamMember && !isDocCreator && !isMgr) {
         return res.status(403).json({ error: 'You do not belong to the team assigned to this document copy' });
+      }
+    } else if (!isDocCreator && !isMgr) {
+      return res.status(403).json({ error: 'Only the document creator can delete this document' });
+    }
+
+    // Condition (1): If this is a submittable doc (enable submission), check if copies have been created
+    if (Boolean(doc.is_submittable)) {
+      const [copyRows] = await pool.query<any[]>(
+        'SELECT COUNT(*) as count FROM documents WHERE copied_from_id = ?',
+        [doc.id]
+      );
+      const copiesCount = Number(copyRows[0]?.count || 0);
+      if (copiesCount > 0) {
+        return res.status(400).json({
+          error: 'This document cannot be deleted because copies have already been created.',
+          copies_count: copiesCount,
+        });
       }
     }
 

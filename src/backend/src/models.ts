@@ -53,6 +53,8 @@ export interface Organization {
   members?: OrganizationMember[];
   user_role?: OrganizationRole;
   members_count?: number;
+  projects_count?: number;
+  documents_count?: number;
   projects?: Project[];
 }
 export type Team = Organization;
@@ -256,6 +258,7 @@ export interface Document {
   elements_data: Record<string, any>;
   compiled_markdown: string;
   submissions_count?: number;
+  copies_count?: number;
   created_at: string;
   updated_at: string;
 }

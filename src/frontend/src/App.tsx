@@ -13,6 +13,8 @@ import { OrganizationManagement } from './components/organizations/OrganizationM
 import { CreateOrganizationPage } from './components/organizations/CreateOrganizationPage';
 import { ProjectManagement } from './components/projects/ProjectManagement';
 import { TeamManagement } from './components/teams/TeamManagement';
+import { AlertTriangle, Check } from 'lucide-react';
+import { DeleteDocumentModal } from './components/documents/DeleteDocumentModal';
 import { api, getStoredToken } from './api/client';
 import {
   Document,
@@ -263,18 +265,139 @@ export const App: React.FC = () => {
     showToast('Document saved successfully');
   };
 
-  const handleDeleteDocument = async (docId: string) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
+  // Document Deletion confirmation modal state
+  const [documentPendingDelete, setDocumentPendingDelete] = useState<Document | null>(null);
+
+  const handleRequestDeleteDocument = (doc: Document) => {
+    const isDocCreator = Boolean(
+      (doc.created_by && currentUser?.id && doc.created_by === currentUser.id) ||
+      (!doc.created_by && currentUser?.id)
+    );
+    if (!isDocCreator) {
+      showToast('Only the document creator can delete this document.', 'error');
+      return;
+    }
+
+    // Condition (1): If this is a submittable doc (enable submission)
+    if (doc.is_submittable) {
+      const copiesCount =
+        doc.copies_count !== undefined
+          ? doc.copies_count
+          : documents.filter((d) => d.copied_from_id === doc.id).length;
+
+      // If copies created, cannot delete -> show snackbar message
+      if (copiesCount > 0) {
+        showToast('This document cannot be deleted because copies have already been created.', 'error');
+        return;
+      }
+    }
+
+    // Condition (1) with 0 copies OR Condition (2) non-submittable doc:
+    // Show warning popup to ask creator to confirm deletion!
+    setDocumentPendingDelete(doc);
+  };
+
+  const handleConfirmDeleteDocument = async (doc: Document) => {
     try {
-      await api.deleteDocument(docId);
-      showToast('Document deleted');
-      setDocuments((prev) => prev.filter((d) => d.id !== docId));
-      if (activeDocId === docId) {
+      await api.deleteDocument(doc.id);
+      showToast('Document deleted successfully');
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      setDocumentPendingDelete(null);
+      if (activeDocId === doc.id) {
         setCurrentView('documents');
         setActiveDocId(null);
       }
+      await loadAllProjects();
     } catch (err: any) {
       showToast(err.message || 'Failed to delete document', 'error');
+      setDocumentPendingDelete(null);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string, projectCreatedBy?: string | null) => {
+    const isProjCreator = Boolean(projectCreatedBy && currentUser?.id && projectCreatedBy === currentUser.id);
+    const targetProj = allProjects.find((p) => p.id === projectId);
+    const targetOrg = targetProj ? organizations.find((o) => o.id === (targetProj.organization_id || targetProj.team_id)) : null;
+    const isOrgCreator = Boolean(
+      targetOrg?.is_creator ||
+      (targetOrg?.created_by && currentUser?.id && targetOrg.created_by === currentUser.id) ||
+      targetOrg?.user_role === 'owner'
+    );
+
+    if (!isProjCreator && !isOrgCreator) {
+      showToast('Only the Project Creator or Organization Creator can delete this project.', 'error');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this project? All associated documentation scopes will be removed.')) return;
+
+    try {
+      await api.deleteProject(projectId);
+      showToast('Project deleted successfully');
+      await loadAllProjects();
+      await loadDocuments();
+      if (activeProjectId === projectId) {
+        setActiveProjectId(null);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete project', 'error');
+    }
+  };
+
+  const handleDeleteOrganization = async (org: Organization) => {
+    const isPersonalWs = (currentUser?.username && org.name === `${currentUser.username}_workspace`) || org.name.endsWith('_workspace');
+    if (isPersonalWs) {
+      showToast('The personal private workspace cannot be deleted.', 'error');
+      return;
+    }
+
+    const isCreator = Boolean(
+      org.is_creator ||
+      (org.created_by && currentUser?.id && org.created_by === currentUser.id) ||
+      org.user_role === 'owner'
+    );
+    if (!isCreator) {
+      showToast('Only the organization creator can delete this organization.', 'error');
+      return;
+    }
+
+    const orgProjects = allProjects.filter((p) => (p.organization_id || p.team_id) === org.id);
+    const orgDocs = documents.filter((d) => d.organization_id === org.id || orgProjects.some((p) => p.id === d.project_id));
+    const projectsCount = org.projects_count !== undefined ? org.projects_count : orgProjects.length;
+    const documentsCount = org.documents_count !== undefined ? org.documents_count : orgDocs.length;
+
+    if (projectsCount > 0 && documentsCount > 0) {
+      showToast('Cannot delete organization: please remove all projects and documents first.', 'error');
+      return;
+    }
+    if (projectsCount > 0) {
+      showToast('Cannot delete organization: please remove all projects first.', 'error');
+      return;
+    }
+    if (documentsCount > 0) {
+      showToast('Cannot delete organization: please remove all documents first.', 'error');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete organization "${org.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteOrganization(org.id);
+      showToast(`Organization "${org.name}" deleted successfully`);
+      const updatedList = organizations.filter((o) => o.id !== org.id);
+      setOrganizations(updatedList);
+      if (activeOrganizationId === org.id) {
+        const personalOrg = updatedList.find((o) => o.name === `${currentUser?.username}_workspace`);
+        setActiveOrganizationId(personalOrg ? personalOrg.id : (updatedList[0]?.id || null));
+        setActiveProjectId(null);
+      }
+      await loadOrganizations();
+      await loadAllProjects();
+      await loadDocuments();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete organization', 'error');
     }
   };
 
@@ -315,15 +438,25 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-      {/* Toast Banner */}
+      {/* Toast / Snackbar Banner */}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 animate-bounce">
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="snackbar-message"
+          className="fixed bottom-5 right-5 z-50 animate-bounce"
+        >
           <div
-            className={`px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold text-white ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold text-white ${
               toast.type === 'error' ? 'bg-red-600' : 'bg-slate-900'
             }`}
           >
-            {toast.message}
+            {toast.type === 'error' ? (
+              <AlertTriangle className="w-4 h-4 text-white flex-shrink-0" />
+            ) : (
+              <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            )}
+            <span>{toast.message}</span>
           </div>
         </div>
       )}
@@ -392,6 +525,8 @@ export const App: React.FC = () => {
               setActiveOrganizationId(orgId);
               setActiveProjectId(null);
             }}
+            onDeleteProject={handleDeleteProject}
+            onDeleteOrganization={handleDeleteOrganization}
           />
         )}
 
@@ -431,7 +566,7 @@ export const App: React.FC = () => {
               setDocViewerInitialTab('overview');
               setCurrentView('view_document');
             }}
-            onDeleteDocument={handleDeleteDocument}
+            onDeleteDocument={handleRequestDeleteDocument}
             onExportMarkdown={handleExportMarkdown}
           />
         )}
@@ -500,6 +635,7 @@ export const App: React.FC = () => {
               setActiveProjectId(projId);
               setCurrentView('documents');
             }}
+            onDeleteOrganization={handleDeleteOrganization}
             showToast={showToast}
           />
         )}
@@ -632,9 +768,18 @@ export const App: React.FC = () => {
               loadDocuments();
             }}
             onExportMarkdown={handleExportMarkdown}
+            onDeleteDocument={handleRequestDeleteDocument}
           />
         )}
       </div>
+
+      {/* Modal: Confirm Delete Document (Warning Popup) */}
+      <DeleteDocumentModal
+        isOpen={Boolean(documentPendingDelete)}
+        document={documentPendingDelete}
+        onClose={() => setDocumentPendingDelete(null)}
+        onConfirm={handleConfirmDeleteDocument}
+      />
 
       {/* Modal: Create Document */}
       <CreateDocumentModal
