@@ -133,6 +133,9 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     const nextOrder = elements.length;
     const defaultLabels: Record<DocumentElementType, string> = {
       markdown: `Section ${nextOrder + 1}: Details`,
+      pure_markdown: `Section ${nextOrder + 1}: Reference & Background (View Only)`,
+      interactive_field: `Section ${nextOrder + 1}: Interactive Field`,
+      interactive_list: `Section ${nextOrder + 1}: Iterative Editable List`,
       repeatable_list: `Section ${nextOrder + 1}: Repeatable Items List`,
       short_text: `Field ${nextOrder + 1}: Note`,
       select: `Selection ${nextOrder + 1}`,
@@ -143,11 +146,24 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
 
     const defaultContent: Record<DocumentElementType, any> = {
       markdown: '### Section Heading\n- Item 1\n- Item 2',
+      pure_markdown: '### Reference & Context\nThis content is rendered as pure markdown for viewing only.',
+      interactive_field: '',
+      interactive_list: [
+        {
+          id: 'item-1',
+          description: 'Key 1 (Description)',
+          value: 'Editable value for item 1',
+          title: 'Key 1 (Description)',
+          content: 'Editable value for item 1',
+        },
+      ],
       repeatable_list: [
         {
           id: 'item-1',
-          title: 'Item 1',
-          content: 'Details for item 1...',
+          description: 'Option A: Managed Cloud Service',
+          value: '- Pros: Low maintenance\n- Cons: High cost',
+          title: 'Option A: Managed Cloud Service',
+          content: '- Pros: Low maintenance\n- Cons: High cost',
         },
       ],
       short_text: '',
@@ -157,20 +173,31 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       checklist: '- [ ] Task 1\n- [ ] Task 2',
     };
 
+    const defaultDescriptions: Record<DocumentElementType, string> = {
+      markdown: 'Guidance text for the author writing in this section.',
+      pure_markdown: 'Pure markdown text element strictly for viewing. Authors view rendered markdown without editing.',
+      interactive_field: 'Key / Description for this interactive editing field.',
+      interactive_list: 'Iterative array of editable elements. Each editable element is description (key) - value (editable).',
+      repeatable_list: 'Special item: Authors can click "+" to add new items while writing.',
+      short_text: 'Short note guidance.',
+      select: 'Select an option.',
+      callout: 'Notice guidance.',
+      code: 'Code block guidance.',
+      checklist: 'Checklist task items.',
+    };
+
     const newElem: DocumentElementConfig = {
       id: `elem_${Date.now().toString().slice(-4)}`,
       label: defaultLabels[fieldType],
-      description:
-        fieldType === 'repeatable_list'
-          ? 'Special item: Authors can click "+" to add new items while writing.'
-          : 'Guidance text for the author writing in this section.',
+      description: defaultDescriptions[fieldType] || 'Guidance text for the author.',
       field_type: fieldType,
       level: Math.max(1, Math.min(level, 3)),
-      placeholder: 'Enter text here...',
+      placeholder: fieldType === 'interactive_field' ? 'Enter editable value...' : 'Enter text here...',
       default_value: defaultContent[fieldType],
       required: false,
       order: nextOrder,
       options: fieldType === 'select' ? ['Option 1', 'Option 2', 'Option 3'] : null,
+      view_markdown: fieldType === 'pure_markdown' ? defaultContent[fieldType] : null,
     };
 
     const updated = [...elements, newElem];
@@ -699,10 +726,11 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                                 }
                                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                               >
+                                <option value="pure_markdown">📖 Pure Markdown (View Only)</option>
+                                <option value="interactive_field">✏️ Interactive Element (Description & Input)</option>
+                                <option value="interactive_list">📋 Iterative Array (Description - Value List)</option>
+                                <option value="repeatable_list">⭐ Repeatable Dynamic List (+ Addable Items)</option>
                                 <option value="markdown">Markdown Input Field (Rich Editor)</option>
-                                <option value="repeatable_list">
-                                  ⭐ Repeatable Dynamic List (+ Addable Items)
-                                </option>
                                 <option value="short_text">Short Text (Single line)</option>
                                 <option value="select">Select Dropdown</option>
                                 <option value="callout">Callout Alert Box</option>
@@ -760,7 +788,62 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                             />
                           </div>
 
-                          {elem.field_type !== 'repeatable_list' ? (
+                          {/* PURE MARKDOWN TEXT PART: Only for viewing */}
+                          <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                                <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                Pure Markdown Text Part (Only for viewing)
+                              </label>
+                              <span className="text-[10px] text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200 font-semibold">
+                                Read-Only in Document
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-blue-700">
+                              Rendered directly as pure markdown for viewing. Authors cannot edit this part during document writing.
+                            </p>
+                            <textarea
+                              rows={3}
+                              value={elem.view_markdown || ''}
+                              onChange={(e) =>
+                                handleUpdateElement(idx, { view_markdown: e.target.value })
+                              }
+                              placeholder="Enter pure markdown text for viewing (instructions, context, guidelines, reference)..."
+                              className="w-full font-mono text-xs px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-800"
+                            />
+                          </div>
+
+                          {elem.field_type === 'pure_markdown' ? (
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 space-y-1">
+                              <span className="font-semibold flex items-center gap-1 text-slate-900">
+                                <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                Pure Markdown Text Element (Only for viewing)
+                              </span>
+                              <p className="text-slate-600">
+                                This element contains pure markdown text strictly for viewing. Authors view rendered markdown without an editing input.
+                              </p>
+                            </div>
+                          ) : elem.field_type === 'interactive_field' ? (
+                            <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-lg text-xs text-purple-900 space-y-1">
+                              <span className="font-semibold flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                                Interactive Element (Description & Input Part)
+                              </span>
+                              <p className="text-purple-700">
+                                Contains a description portion (the key) and an input (editing) part for the author's response.
+                              </p>
+                            </div>
+                          ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
+                            <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs text-emerald-900 space-y-1">
+                              <span className="font-semibold flex items-center gap-1">
+                                <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                                Iterative Array of Editable Elements (Description - Value)
+                              </span>
+                              <p className="text-emerald-700">
+                                When authors write on the document, this item presents a <strong>"+" button</strong> to add new editable elements on the fly (each element has a <strong>description (key)</strong> and an <strong>editable value</strong>).
+                              </p>
+                            </div>
+                          ) : (
                             <div>
                               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                 Default Starter Content / Boilerplate Markdown
@@ -774,16 +857,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                                 placeholder="Pre-populated markdown content..."
                                 className="w-full font-mono text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50/60"
                               />
-                            </div>
-                          ) : (
-                            <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs text-emerald-900 space-y-1">
-                              <span className="font-semibold flex items-center gap-1">
-                                <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                                Special Repeatable Document Item
-                              </span>
-                              <p className="text-emerald-700">
-                                When authors write on the document, this item presents a <strong>"+" button</strong> to add new entries on the fly (each entry has an item title and its own markdown content area).
-                              </p>
                             </div>
                           )}
 
@@ -816,6 +889,30 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => handleAddElement('pure_markdown', 1)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-blue-800 bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                  + Pure Markdown (View Only)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddElement('interactive_field', 1)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-purple-800 bg-purple-100 hover:bg-purple-200 border border-purple-300 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                  + Interactive Field
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddElement('interactive_list', 1)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
+                >
+                  <ListPlus className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  + Iterative Array (Desc - Value)
+                </button>
+                <button
+                  type="button"
                   onClick={() => handleAddElement('markdown', 1)}
                   className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
                 >
@@ -829,14 +926,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" />
                   + Subsection (L2)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddElement('repeatable_list', 1)}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-xs"
-                >
-                  <ListPlus className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                  + Repeatable Item List (+)
                 </button>
                 <button
                   type="button"
@@ -905,9 +994,32 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                       </p>
                     )}
 
-                    {elem.field_type === 'repeatable_list' ? (
+                    {elem.view_markdown && (
+                      <div className="text-[10px] bg-blue-50/70 border border-blue-200 text-blue-800 p-1 rounded flex items-center gap-1">
+                        <Eye className="w-2.5 h-2.5 text-blue-600" />
+                        <span>Pure markdown (view only)</span>
+                      </div>
+                    )}
+
+                    {elem.field_type === 'pure_markdown' ? (
+                      <div className="mt-1 pt-1 border-t border-slate-100 flex items-center justify-between text-[11px] text-blue-700 bg-blue-50/60 p-1.5 rounded">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Eye className="w-3 h-3 text-blue-600" /> View-only Markdown
+                        </span>
+                        <span className="text-[9px] bg-blue-100 text-blue-800 px-1 rounded font-bold">
+                          View Only
+                        </span>
+                      </div>
+                    ) : elem.field_type === 'interactive_field' ? (
+                      <div className="mt-1 pt-1 border-t border-slate-100 space-y-1 text-[11px] bg-purple-50/50 p-1.5 rounded">
+                        <div className="text-purple-800 font-semibold text-[10px]">
+                          Description &bull; Input Part
+                        </div>
+                        <div className="h-4 bg-white rounded border border-purple-200" />
+                      </div>
+                    ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
                       <div className="mt-1 pt-1 border-t border-dashed border-slate-200 flex items-center justify-between text-[11px] text-emerald-700 bg-emerald-50/50 p-1 rounded">
-                        <span>Dynamic items container</span>
+                        <span>Iterative Array: Description - Value</span>
                         <span className="font-bold flex items-center gap-0.5 text-emerald-800">
                           <Plus className="w-3 h-3" /> Add Item
                         </span>

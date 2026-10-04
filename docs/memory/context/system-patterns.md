@@ -16,8 +16,8 @@ This document specifies reusable engineering patterns and code standards across 
   - Development defaults are maintained in `docs/ops/config-templates/.env.dev` (`NODE_ENV=development`, phpMyAdmin enabled by default).
   - Production defaults are maintained in `docs/ops/config-templates/.env.prod` (`NODE_ENV=production`, phpMyAdmin disabled by default, Certbot webroot defined).
 - **Template-Driven Dynamic Authoring Pattern**:
-  - Document templates define ordered schemas of `document_elements` (markdown fields, short text, select, callouts, code, checklists).
-  - The document editor dynamically instantiates input fields and formatting tools directly from the template schema.
+  - Document templates define ordered schemas of `document_elements` (pure markdown text fields for viewing, interactive fields with description and input parts, iterative arrays of editable elements with description-value pairs, rich markdown editors, short text, select, callouts, code, checklists).
+  - The document editor dynamically instantiates input fields, view-only specification blocks, and formatting tools directly from the template schema.
   - The markdown compiler (`src/backend/src/compiler.ts`) stitches discrete elements deterministically into GitHub-Flavored Markdown.
 - **Self-Healing Database Pattern**:
   - The backend verifies database tables on startup and automatically seeds industry-standard templates (ADR, PRD, Postmortem) if empty.

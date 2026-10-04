@@ -150,18 +150,25 @@ export interface Project {
 
 export type DocumentElementType =
   | 'markdown'
+  | 'pure_markdown'
+  | 'interactive_field'
+  | 'interactive_list'
+  | 'repeatable_list'
   | 'short_text'
   | 'select'
   | 'callout'
   | 'code'
-  | 'checklist'
-  | 'repeatable_list';
+  | 'checklist';
 
-export interface RepeatableSubItem {
+export interface EditableItem {
   id: string;
-  title: string;
-  content: string;
+  description: string;
+  value: string;
+  title?: string;
+  content?: string;
 }
+
+export type RepeatableSubItem = EditableItem;
 
 export interface DocumentElementConfig {
   id: string;
@@ -174,6 +181,7 @@ export interface DocumentElementConfig {
   required: boolean;
   order: number;
   options?: string[] | null;
+  view_markdown?: string | null;
 }
 
 export type TemplateVisibility = 'private' | 'public';

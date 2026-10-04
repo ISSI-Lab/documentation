@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 
 class DocumentElementType(str, Enum):
     MARKDOWN = "markdown"
+    PURE_MARKDOWN = "pure_markdown"
+    INTERACTIVE_FIELD = "interactive_field"
+    INTERACTIVE_LIST = "interactive_list"
+    REPEATABLE_LIST = "repeatable_list"
     SHORT_TEXT = "short_text"
     SELECT = "select"
     CALLOUT = "callout"
@@ -21,10 +25,11 @@ class DocumentElementConfig(BaseModel):
     description: str = Field(default="", description="Helpful guidance for the author writing in this section")
     field_type: DocumentElementType = Field(default=DocumentElementType.MARKDOWN, description="Input field type")
     placeholder: str = Field(default="", description="Placeholder hint for the editor")
-    default_value: str = Field(default="", description="Starter boilerplate content or template markdown")
+    default_value: Any = Field(default="", description="Starter boilerplate content or template markdown")
     required: bool = Field(default=False, description="Whether this field must be filled")
     order: int = Field(default=0, description="Display order index")
     options: Optional[List[str]] = Field(default=None, description="Choices for select dropdowns")
+    view_markdown: Optional[str] = Field(default=None, description="Pure markdown text part strictly for viewing")
 
 
 class TemplateBase(BaseModel):

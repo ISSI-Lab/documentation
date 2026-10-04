@@ -12,20 +12,23 @@ Each template defines an ordered collection of `DocumentElementConfig` items:
 | :--- | :--- | :--- |
 | `id` | `string` | Unique identifier within the template (slug format, e.g. `elem_summary`). |
 | `label` | `string` | User-facing section title (e.g. "Executive Summary"). |
-| `description` | `string` | Guidance and instructions for the author when writing in this section. |
-| `field_type` | `string` | Type of field: `markdown`, `repeatable_list`, `short_text`, `select`, `callout`, `code`, `checklist`. |
+| `description` | `string` | Guidance and instructions for the author when writing in this section (or Key in interactive field). |
+| `field_type` | `string` | Type of field: `pure_markdown` (view-only), `interactive_field` (description & input), `interactive_list` / `repeatable_list` (array of editable elements), `markdown`, `short_text`, `select`, `callout`, `code`, `checklist`. |
 | `level` | `integer` | Hierarchy level: `1` (H2 Section), `2` (H3 Subsection), `3` (H4 Sub-item). |
 | `placeholder` | `string` | Hint text displayed inside the editor when empty. |
-| `default_value` | `any` | Initial markdown text, or array of `RepeatableSubItem` objects for `repeatable_list`. |
+| `default_value` | `any` | Initial markdown text, or array of `EditableItem` objects for `interactive_list` / `repeatable_list`. |
 | `required` | `boolean` | Whether the author must supply content before publishing. |
 | `order` | `integer` | Sequence order for rendering in edit mode and view preview. |
 | `options` | `list[string]` | Available choices when `field_type` is `select`. |
+| `view_markdown` | `string` | Optional pure markdown text part strictly for viewing (rendered read-only in editor). |
 
-### Repeatable Sub-Item Schema (`RepeatableSubItem`)
-For elements with `field_type: "repeatable_list"`, items added dynamically via the `+` button follow this schema:
+### Iterative Editable Element Schema (`EditableItem` / `RepeatableSubItem`)
+For elements with `field_type: "interactive_list"` or `"repeatable_list"`, items added dynamically via the `+` button represent an iterative array of editable elements where each editable element is a `description - value` pair (key is description and value is editable):
 ```json
 {
   "id": "sub_1726058400_1",
+  "description": "Option 1: PostgreSQL Database",
+  "value": "### Analysis\n- Low latency\n- Strong ACID guarantees",
   "title": "Option 1: PostgreSQL Database",
   "content": "### Analysis\n- Low latency\n- Strong ACID guarantees"
 }

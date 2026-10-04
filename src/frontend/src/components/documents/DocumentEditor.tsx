@@ -168,7 +168,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }));
   };
 
-  // Repeatable List Handlers (the special item '+' button)
+  // Iterative / Repeatable List Handlers (iterative array of editable elements: description - value)
   const handleAddRepeatableSubItem = (elemId: string) => {
     const currentList: RepeatableSubItem[] = Array.isArray(elementsData[elemId])
       ? [...elementsData[elemId]]
@@ -176,7 +176,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     const nextIdx = currentList.length + 1;
     const newItem: RepeatableSubItem = {
       id: `sub_${Date.now()}_${nextIdx}`,
-      title: `Item ${nextIdx}`,
+      description: `Item ${nextIdx} Description`,
+      value: '',
+      title: `Item ${nextIdx} Description`,
       content: '',
     };
     updateElementValue(elemId, [...currentList, newItem]);
@@ -190,9 +192,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     const currentList: RepeatableSubItem[] = Array.isArray(elementsData[elemId])
       ? [...elementsData[elemId]]
       : [];
-    const updated = currentList.map((item) =>
-      item.id === subItemId ? { ...item, ...patch } : item
-    );
+    const updated = currentList.map((item) => {
+      if (item.id !== subItemId) return item;
+      const merged = { ...item, ...patch };
+      if (patch.description !== undefined) {
+        merged.title = patch.description;
+      } else if (patch.title !== undefined) {
+        merged.description = patch.title;
+      }
+      if (patch.value !== undefined) {
+        merged.content = patch.value;
+      } else if (patch.content !== undefined) {
+        merged.value = patch.content;
+      }
+      return merged;
+    });
     updateElementValue(elemId, updated);
   };
 
@@ -258,14 +272,51 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       lines.push(`${headingPrefix} ${elem.label}`);
       lines.push('');
 
+      // Pure markdown text element part. Only for viewing.
+      if (elem.view_markdown && typeof elem.view_markdown === 'string' && elem.view_markdown.trim()) {
+        lines.push(elem.view_markdown.trim());
+        lines.push('');
+      }
+
       const val = elementsData[elem.id];
-      if (elem.field_type === 'repeatable_list') {
+
+      if (elem.field_type === 'pure_markdown') {
+        const text = (val !== undefined && val !== null && String(val).trim())
+          ? String(val).trim()
+          : (elem.view_markdown && elem.view_markdown.trim()) || (elem.default_value && String(elem.default_value).trim()) || '_No content provided._';
+        lines.push(text);
+        lines.push('');
+      } else if (elem.field_type === 'interactive_field') {
+        if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+          const desc = val.description || elem.description || '';
+          const editVal = val.value !== undefined ? String(val.value).trim() : '';
+          if (desc) {
+            lines.push(`**${desc}:** ${editVal || '_No content provided._'}`);
+          } else {
+            lines.push(editVal || '_No content provided._');
+          }
+        } else {
+          const text = String(val || '').trim();
+          if (elem.description) {
+            lines.push(`> ${elem.description}`);
+            lines.push('');
+          }
+          lines.push(text ? text : '_No content provided._');
+        }
+        lines.push('');
+      } else if (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') {
         const subHeadingPrefix = getHeadingDepth((elem.level || 1) + 1);
         if (Array.isArray(val) && val.length > 0) {
           for (const item of val as RepeatableSubItem[]) {
-            lines.push(`${subHeadingPrefix} ${item.title || 'Item'}`);
+            const itemKey = (item.description && item.description.trim()) ||
+                            (item.title && item.title.trim()) ||
+                            'Item';
+            const itemVal = item.value !== undefined && item.value !== null && String(item.value).trim() !== ''
+              ? String(item.value).trim()
+              : (item.content && item.content.trim() ? item.content.trim() : '_No details provided._');
+            lines.push(`${subHeadingPrefix} ${itemKey}`);
             lines.push('');
-            lines.push(item.content ? item.content : '_No details provided._');
+            lines.push(itemVal);
             lines.push('');
           }
         } else {
@@ -712,55 +763,156 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                     </span>
                   </div>
 
-                  {/* SPECIAL DOCUMENT ITEM: Repeatable Dynamic List with '+' button */}
-                  {elem.field_type === 'repeatable_list' && (
+                  {/* PURE MARKDOWN TEXT PART: Only for viewing */}
+                  {elem.view_markdown && (
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <Eye className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Pure Markdown • Only for viewing</span>
+                      </div>
+                      <div
+                        className="prose-custom text-xs text-slate-700 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: marked.parse(elem.view_markdown) as string,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* PURE MARKDOWN ELEMENT TYPE: Strictly for viewing, no input textarea */}
+                  {elem.field_type === 'pure_markdown' && (
+                    <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between text-xs text-slate-500 pb-2 border-b border-slate-200">
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-700">
+                          <Eye className="w-4 h-4 text-blue-600" />
+                          Pure Markdown Text (Viewing Only)
+                        </span>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                          View Only
+                        </span>
+                      </div>
+                      <div
+                        className="prose-custom text-xs text-slate-800 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: marked.parse(
+                            currentVal || elem.view_markdown || elem.default_value || '_No content provided._'
+                          ) as string,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* INTERACTIVE ELEMENT: Portion that can be put description and an input (editing) part */}
+                  {elem.field_type === 'interactive_field' && (
+                    <div className="space-y-3 p-4 bg-slate-50/60 border border-slate-200 rounded-xl">
+                      {/* Portion that can be put description */}
+                      <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                          Description (Key)
+                        </span>
+                        <p className="text-xs font-semibold text-slate-800">
+                          {(typeof currentVal === 'object' && currentVal?.description) || elem.description || 'Editable Item Description'}
+                        </p>
+                      </div>
+
+                      {/* Input (editing) part */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Editable Value (Input)
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={
+                            typeof currentVal === 'object' && currentVal !== null
+                              ? (currentVal.value !== undefined ? currentVal.value : currentVal.content || '')
+                              : currentVal || ''
+                          }
+                          onChange={(e) =>
+                            updateElementValue(
+                              elem.id,
+                              typeof currentVal === 'object' && currentVal !== null
+                                ? { ...currentVal, value: e.target.value, content: e.target.value }
+                                : e.target.value
+                            )
+                          }
+                          placeholder={elem.placeholder || 'Enter editable value...'}
+                          className="w-full p-3 font-mono text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ITERATIVE ARRAY OF EDITABLE ELEMENTS: Description (Key) - Value (Editable Input) */}
+                  {(elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') && (
                     <div className="space-y-3 pt-1">
                       {Array.isArray(currentVal) && currentVal.length > 0 ? (
-                        currentVal.map((subItem: RepeatableSubItem, subIdx: number) => (
-                          <div
-                            key={subItem.id || subIdx}
-                            className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2.5 transition-all"
-                          >
-                            <div className="flex items-center justify-between">
-                              <input
-                                type="text"
-                                value={subItem.title}
-                                onChange={(e) =>
-                                  handleUpdateRepeatableSubItem(elem.id, subItem.id, {
-                                    title: e.target.value,
-                                  })
-                                }
-                                placeholder={`Item ${subIdx + 1} Title...`}
-                                className="font-semibold text-xs text-slate-900 bg-white px-2.5 py-1 border border-slate-300 rounded-lg w-full max-w-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveRepeatableSubItem(elem.id, subItem.id)}
-                                title="Delete Item"
-                                className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-2"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                        currentVal.map((subItem: RepeatableSubItem, subIdx: number) => {
+                          const itemDesc = subItem.description || subItem.title || '';
+                          const itemVal = subItem.value !== undefined ? subItem.value : (subItem.content || '');
 
-                            <div className="border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-1 focus-within:ring-blue-500">
-                              <textarea
-                                rows={3}
-                                value={subItem.content}
-                                onChange={(e) =>
-                                  handleUpdateRepeatableSubItem(elem.id, subItem.id, {
-                                    content: e.target.value,
-                                  })
-                                }
-                                placeholder="Enter details or markdown content for this item..."
-                                className="w-full p-2.5 font-mono text-xs text-slate-800 outline-none resize-y"
-                              />
+                          return (
+                            <div
+                              key={subItem.id || subIdx}
+                              className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3 transition-all"
+                            >
+                              {/* Header: Description Key & Delete Button */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 flex items-center gap-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                                    Description (Key):
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={itemDesc}
+                                    onChange={(e) =>
+                                      handleUpdateRepeatableSubItem(elem.id, subItem.id, {
+                                        description: e.target.value,
+                                        title: e.target.value,
+                                      })
+                                    }
+                                    placeholder={`Description Key (e.g. Item ${subIdx + 1})...`}
+                                    className="font-semibold text-xs text-slate-900 bg-white px-2.5 py-1 border border-slate-300 rounded-lg w-full max-w-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                                  />
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRepeatableSubItem(elem.id, subItem.id)}
+                                  title="Delete Editable Element"
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-2 flex-shrink-0 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Editable Value (Input) */}
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    Value (Editable Input)
+                                  </span>
+                                </div>
+                                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-1 focus-within:ring-blue-500">
+                                  <textarea
+                                    rows={3}
+                                    value={itemVal}
+                                    onChange={(e) =>
+                                      handleUpdateRepeatableSubItem(elem.id, subItem.id, {
+                                        value: e.target.value,
+                                        content: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Enter editable value or markdown content for this element..."
+                                    className="w-full p-2.5 font-mono text-xs text-slate-800 outline-none resize-y"
+                                  />
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
-                          No items added yet. Click the button below to add your first item.
+                          No editable elements added yet. Click the button below to add your first element.
                         </div>
                       )}
 
@@ -771,7 +923,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
                         className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
                       >
                         <Plus className="w-4 h-4 text-emerald-600" />
-                        <span>Add New Item to "{elem.label}"</span>
+                        <span>Add New Editable Element (Description - Value)</span>
                       </button>
                     </div>
                   )}

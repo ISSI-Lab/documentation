@@ -14,9 +14,11 @@ import {
   Edit3,
   HelpCircle,
   Sparkles,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { marked } from 'marked';
-import { Document, DocumentSubmission, SubmissionComment, Template, User as UserModel } from '../../types';
+import { Document, DocumentSubmission, RepeatableSubItem, SubmissionComment, Template, User as UserModel } from '../../types';
 import { api } from '../../api/client';
 
 interface ParticipantSubmissionWorkspaceProps {
@@ -75,6 +77,55 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       ...prev,
       [elemId]: val,
     }));
+  };
+
+  const handleAddRepeatableSubItem = (elemId: string) => {
+    const currentList: RepeatableSubItem[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const nextIdx = currentList.length + 1;
+    const newItem: RepeatableSubItem = {
+      id: `sub_${Date.now()}_${nextIdx}`,
+      description: `Item ${nextIdx} Description`,
+      value: '',
+      title: `Item ${nextIdx} Description`,
+      content: '',
+    };
+    updateElementValue(elemId, [...currentList, newItem]);
+  };
+
+  const handleUpdateRepeatableSubItem = (
+    elemId: string,
+    subItemId: string,
+    patch: Partial<RepeatableSubItem>
+  ) => {
+    const currentList: RepeatableSubItem[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const updated = currentList.map((item) => {
+      if (item.id !== subItemId) return item;
+      const merged = { ...item, ...patch };
+      if (patch.description !== undefined) {
+        merged.title = patch.description;
+      } else if (patch.title !== undefined) {
+        merged.description = patch.title;
+      }
+      if (patch.value !== undefined) {
+        merged.content = patch.value;
+      } else if (patch.content !== undefined) {
+        merged.value = patch.content;
+      }
+      return merged;
+    });
+    updateElementValue(elemId, updated);
+  };
+
+  const handleRemoveRepeatableSubItem = (elemId: string, subItemId: string) => {
+    const currentList: RepeatableSubItem[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const updated = currentList.filter((item) => item.id !== subItemId);
+    updateElementValue(elemId, updated);
   };
 
   const handleSaveDraft = async () => {
@@ -350,8 +401,162 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                         <p className="text-[11px] text-slate-500 italic">{elem.placeholder}</p>
                       )}
 
-                      {/* Text / Markdown Area */}
-                      {elem.field_type === 'markdown' ? (
+                      {/* PURE MARKDOWN TEXT PART: Only for viewing */}
+                      {elem.view_markdown && (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <Eye className="w-3 h-3 text-blue-600" />
+                            <span>Pure Markdown • Only for viewing</span>
+                          </div>
+                          <div
+                            className="prose-custom text-xs text-slate-700 leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                              __html: marked.parse(elem.view_markdown) as string,
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* PURE MARKDOWN ELEMENT TYPE: Strictly for viewing, no input textarea */}
+                      {elem.field_type === 'pure_markdown' ? (
+                        <div className="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between text-xs text-slate-500 pb-1.5 border-b border-slate-200">
+                            <span className="flex items-center gap-1 font-semibold text-slate-700">
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              Pure Markdown (Viewing Only)
+                            </span>
+                            <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                              View Only
+                            </span>
+                          </div>
+                          <div
+                            className="prose-custom text-xs text-slate-800 leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                              __html: marked.parse(
+                                val || elem.view_markdown || elem.default_value || '_No content provided._'
+                              ) as string,
+                            }}
+                          />
+                        </div>
+                      ) : elem.field_type === 'interactive_field' ? (
+                        <div className="space-y-3 p-3.5 bg-slate-50/60 border border-slate-200 rounded-xl">
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                              Description (Key)
+                            </span>
+                            <p className="text-xs font-semibold text-slate-800">
+                              {(typeof val === 'object' && val?.description) || elem.description || 'Description'}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                              Editable Value (Input)
+                            </span>
+                            <textarea
+                              rows={4}
+                              disabled={isSubmitted}
+                              value={
+                                typeof val === 'object' && val !== null
+                                  ? (val.value !== undefined ? val.value : val.content || '')
+                                  : val || ''
+                              }
+                              onChange={(e) =>
+                                updateElementValue(
+                                  elem.id,
+                                  typeof val === 'object' && val !== null
+                                    ? { ...val, value: e.target.value, content: e.target.value }
+                                    : e.target.value
+                                )
+                              }
+                              placeholder={elem.placeholder || 'Enter response value...'}
+                              className="w-full p-2.5 font-mono text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
+                            />
+                          </div>
+                        </div>
+                      ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
+                        <div className="space-y-3 pt-1">
+                          {Array.isArray(val) && val.length > 0 ? (
+                            val.map((subItem: RepeatableSubItem, subIdx: number) => {
+                              const itemDesc = subItem.description || subItem.title || '';
+                              const itemVal = subItem.value !== undefined ? subItem.value : (subItem.content || '');
+
+                              return (
+                                <div
+                                  key={subItem.id || subIdx}
+                                  className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl space-y-2.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex-1 flex items-center gap-2">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                                        Description (Key):
+                                      </span>
+                                      <input
+                                        type="text"
+                                        disabled={isSubmitted}
+                                        value={itemDesc}
+                                        onChange={(e) =>
+                                          handleUpdateRepeatableSubItem(elem.id, subItem.id, {
+                                            description: e.target.value,
+                                            title: e.target.value,
+                                          })
+                                        }
+                                        placeholder={`Description Key (e.g. Item ${subIdx + 1})...`}
+                                        className="font-semibold text-xs text-slate-900 bg-white px-2 py-1 border border-slate-300 rounded-lg w-full max-w-sm focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-slate-50"
+                                      />
+                                    </div>
+
+                                    {!isSubmitted && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveRepeatableSubItem(elem.id, subItem.id)}
+                                        title="Delete Editable Element"
+                                        className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-2 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                      Value (Editable Input)
+                                    </span>
+                                    <textarea
+                                      rows={3}
+                                      disabled={isSubmitted}
+                                      value={itemVal}
+                                      onChange={(e) =>
+                                        handleUpdateRepeatableSubItem(elem.id, subItem.id, {
+                                          value: e.target.value,
+                                          content: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Enter editable value..."
+                                      className="w-full p-2.5 font-mono text-xs text-slate-800 bg-white border border-slate-200 rounded-lg outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-center py-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
+                              No editable elements added yet.
+                            </div>
+                          )}
+
+                          {!isSubmitted && (
+                            <button
+                              type="button"
+                              onClick={() => handleAddRepeatableSubItem(elem.id)}
+                              className="w-full py-2 px-3 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-semibold text-xs flex items-center justify-center space-x-1 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Add New Editable Element</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : elem.field_type === 'markdown' ? (
                         <textarea
                           rows={4}
                           disabled={isSubmitted}

@@ -69,16 +69,60 @@ export function compileDocumentMarkdown(
     lines.push(`${headingPrefix} ${elem.label}`);
     lines.push('');
 
+    // Document elements should contain a pure markdown text element part. Only for viewing.
+    if (elem.view_markdown && typeof elem.view_markdown === 'string' && elem.view_markdown.trim()) {
+      lines.push(elem.view_markdown.trim());
+      lines.push('');
+    }
+
     switch (elem.field_type) {
+      case 'pure_markdown': {
+        // Pure markdown text element strictly for viewing
+        const text = (val !== undefined && val !== null && String(val).trim())
+          ? String(val).trim()
+          : (elem.view_markdown && elem.view_markdown.trim()) || (elem.default_value && String(elem.default_value).trim()) || '_No content provided._';
+        lines.push(text);
+        lines.push('');
+        break;
+      }
+
+      case 'interactive_field': {
+        // Interactive element with description portion and input (editing) part
+        if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+          const desc = val.description || elem.description || '';
+          const editVal = val.value !== undefined ? String(val.value).trim() : '';
+          if (desc) {
+            lines.push(`**${desc}:** ${editVal || '_No content provided._'}`);
+          } else {
+            lines.push(editVal || '_No content provided._');
+          }
+        } else {
+          const text = String(val || '').trim();
+          if (elem.description) {
+            lines.push(`> ${elem.description}`);
+            lines.push('');
+          }
+          lines.push(text ? text : '_No content provided._');
+        }
+        lines.push('');
+        break;
+      }
+
+      case 'interactive_list':
       case 'repeatable_list': {
+        // Iterative array of editable elements (each element is description - value)
         const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
         if (Array.isArray(val) && val.length > 0) {
           for (const item of val as RepeatableSubItem[]) {
-            const itemTitle = item.title && item.title.trim() ? item.title.trim() : 'Item';
-            lines.push(`${subHeadingPrefix} ${itemTitle}`);
+            const itemKey = (item.description && item.description.trim()) ||
+                            (item.title && item.title.trim()) ||
+                            'Item';
+            const itemVal = item.value !== undefined && item.value !== null && String(item.value).trim() !== ''
+              ? String(item.value).trim()
+              : (item.content && item.content.trim() ? item.content.trim() : '_No details provided._');
+            lines.push(`${subHeadingPrefix} ${itemKey}`);
             lines.push('');
-            const itemContent = item.content && item.content.trim() ? item.content.trim() : '_No details provided._';
-            lines.push(itemContent);
+            lines.push(itemVal);
             lines.push('');
           }
         } else if (typeof val === 'string' && val.trim()) {

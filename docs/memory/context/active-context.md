@@ -35,6 +35,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Personal & Team Submittable Document Copies & Isolation | AI Agent | Completed | Enforced independent copy instances for submittable documents: personal documents copy per individual; team-shared documents copy per team on first open with shared team editing; master specifications protected from non-creator edits; edits synced to review roster ([ADR-0008](../decisions/0008-independent-personal-submittable-document-copies.md)) |
 | Project & Document Deletion Protection Rules | AI Agent | Completed | Allowed project creators to delete projects; enforced doc creator deletion rules: submittable docs can be deleted only if no copies exist (otherwise blocked with snackbar), and non-submittable docs prompt creator with warning confirmation popup before deletion |
 | Organization Deletion Guardrails | AI Agent | Completed | Enabled organization creators to delete organizations if empty (0 projects, 0 documents) and not personal private workspace; enforced snackbar error messages if personal workspace, non-creator, or if projects/documents remain |
+| Pure Markdown View-Only & Iterative Editable Elements | AI Agent | Completed | Implemented pure markdown text elements (view-only), interactive elements with description & input parts, and iterative arrays of editable elements with description (key) and value (editable) pairs ([ADR-0009](../decisions/0009-pure-markdown-and-iterative-editable-elements.md)) |
 
 ---
 
@@ -100,6 +101,11 @@ This file tracks the current sprint state, active workstreams, and recent change
   2. Organization Creator Permission: Only the organization creator can delete an organization. Non-creators are blocked with `403 Forbidden` and receive an error snackbar stating that only the organization creator can delete it.
   3. Zero Projects & Zero Documents Requirement: An organization can only be deleted if it has 0 projects and 0 documents. If either projects or documents remain, deletion is blocked (`400 Bad Request`) and an error snackbar is displayed informing the user to remove all projects and documents first.
   4. Cascade Cleanup: Deleting an eligible empty organization cascades across organization members, teams, team members, assignment sets, and set items in a database transaction.
+- Pure Markdown View-Only and Iterative Editable Document Elements ([ADR-0009](../decisions/0009-pure-markdown-and-iterative-editable-elements.md)):
+  1. Pure Markdown View-Only: Added `pure_markdown` element type and `view_markdown` property on any element in `DocumentElementConfig`. In `DocumentEditor` and `ParticipantSubmissionWorkspace`, pure markdown is rendered strictly for viewing without an editable textarea, protecting specifications and guidelines.
+  2. Interactive / Iterative Element: Added `interactive_field` element type containing a description portion (key) and an input (editing) part for author response.
+  3. Iterative Array of Editable Elements: Enhanced `interactive_list` and `repeatable_list` so that each editable element is structured as a `description - value` pair (key is description and value is editable), supporting dynamic item additions, key editing, and value responses.
+  4. Full-Stack Alignment: Updated backend models, template routes, compiler (`compiler.ts`), frontend `DocumentEditor.tsx`, `ParticipantSubmissionWorkspace.tsx`, and `TemplateBuilder.tsx` with seamless backwards compatibility.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

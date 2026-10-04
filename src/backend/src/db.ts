@@ -771,18 +771,23 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
       {
         id: 'considered_options',
         label: '3. Considered Options',
-        description: 'Evaluated architectural alternatives. Click "+" to add new options while writing.',
+        description: 'Evaluated architectural alternatives. Each item contains a description (key) and editable value.',
+        view_markdown: '> **Reviewer Guidance**: Evaluate each architecture alternative thoroughly against operational cost and team velocity.',
         field_type: 'repeatable_list',
         level: 1,
         placeholder: 'Click + to add an option',
         default_value: [
           {
             id: 'opt-1',
+            description: 'Option A: Managed Cloud Service',
+            value: '- Pros: Zero infrastructure maintenance\n- Cons: High monthly cost, vendor lock-in',
             title: 'Option A: Managed Cloud Service',
             content: '- Pros: Zero infrastructure maintenance\n- Cons: High monthly cost, vendor lock-in',
           },
           {
             id: 'opt-2',
+            description: 'Option B: Self-Hosted Docker Container Tier',
+            value: '- Pros: Complete control, portable across developer laptops and cloud\n- Cons: Requires Docker Compose orchestration',
             title: 'Option B: Self-Hosted Docker Container Tier',
             content: '- Pros: Complete control, portable across developer laptops and cloud\n- Cons: Requires Docker Compose orchestration',
           },

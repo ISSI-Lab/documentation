@@ -167,18 +167,35 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
 
     const id = `tpl-${crypto.randomBytes(4).toString('hex')}`;
     const cleanElements: DocumentElementConfig[] = Array.isArray(document_elements)
-      ? document_elements.map((elem: any, idx: number) => ({
-          id: elem.id || `elem_${idx + 1}`,
-          label: elem.label || `Section ${idx + 1}`,
-          description: elem.description || '',
-          field_type: elem.field_type || 'markdown',
-          level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
-          placeholder: elem.placeholder || '',
-          default_value: elem.default_value !== undefined ? elem.default_value : '',
-          required: Boolean(elem.required),
-          order: idx,
-          options: Array.isArray(elem.options) ? elem.options : null,
-        }))
+      ? document_elements.map((elem: any, idx: number) => {
+          let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
+          if (Array.isArray(defaultValue)) {
+            defaultValue = defaultValue.map((item: any, itemIdx: number) => {
+              const desc = item.description || item.title || `Item ${itemIdx + 1}`;
+              const val = item.value !== undefined ? item.value : (item.content || '');
+              return {
+                id: item.id || `item_${itemIdx + 1}`,
+                description: desc,
+                value: val,
+                title: desc,
+                content: val,
+              };
+            });
+          }
+          return {
+            id: elem.id || `elem_${idx + 1}`,
+            label: elem.label || `Section ${idx + 1}`,
+            description: elem.description || '',
+            field_type: elem.field_type || 'markdown',
+            level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
+            placeholder: elem.placeholder || '',
+            default_value: defaultValue,
+            required: Boolean(elem.required),
+            order: idx,
+            options: Array.isArray(elem.options) ? elem.options : null,
+            view_markdown: elem.view_markdown || elem.view_only_markdown || null,
+          };
+        })
       : [];
 
     const cleanTags = Array.isArray(tags)
@@ -237,18 +254,35 @@ templatesRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
     let elementsJson = current.document_elements;
     if (document_elements !== undefined) {
       const cleanElements = Array.isArray(document_elements)
-        ? document_elements.map((elem: any, idx: number) => ({
-            id: elem.id || `elem_${idx + 1}`,
-            label: elem.label || `Section ${idx + 1}`,
-            description: elem.description || '',
-            field_type: elem.field_type || 'markdown',
-            level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
-            placeholder: elem.placeholder || '',
-            default_value: elem.default_value !== undefined ? elem.default_value : '',
-            required: Boolean(elem.required),
-            order: idx,
-            options: Array.isArray(elem.options) ? elem.options : null,
-          }))
+        ? document_elements.map((elem: any, idx: number) => {
+            let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
+            if (Array.isArray(defaultValue)) {
+              defaultValue = defaultValue.map((item: any, itemIdx: number) => {
+                const desc = item.description || item.title || `Item ${itemIdx + 1}`;
+                const val = item.value !== undefined ? item.value : (item.content || '');
+                return {
+                  id: item.id || `item_${itemIdx + 1}`,
+                  description: desc,
+                  value: val,
+                  title: desc,
+                  content: val,
+                };
+              });
+            }
+            return {
+              id: elem.id || `elem_${idx + 1}`,
+              label: elem.label || `Section ${idx + 1}`,
+              description: elem.description || '',
+              field_type: elem.field_type || 'markdown',
+              level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
+              placeholder: elem.placeholder || '',
+              default_value: defaultValue,
+              required: Boolean(elem.required),
+              order: idx,
+              options: Array.isArray(elem.options) ? elem.options : null,
+              view_markdown: elem.view_markdown || elem.view_only_markdown || null,
+            };
+          })
         : [];
       elementsJson = JSON.stringify(cleanElements);
     } else if (typeof elementsJson !== 'string') {
