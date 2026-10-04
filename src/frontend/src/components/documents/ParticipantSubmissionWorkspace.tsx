@@ -48,12 +48,13 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   const [postingComment, setPostingComment] = useState(false);
 
   const isPersonal = document.document_type === 'personal';
+  const targetDocId = document.copied_from_id || document.id;
 
   const loadMySubmission = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getMySubmission(document.id);
+      const data = await api.getMySubmission(targetDocId);
       setSubmission(data);
       setElementsData(data.elements_data || {});
       setComments(data.comments || []);
@@ -66,7 +67,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
 
   useEffect(() => {
     loadMySubmission();
-  }, [document.id]);
+  }, [targetDocId]);
 
   const updateElementValue = (elemId: string, val: any) => {
     setElementsData((prev) => ({
@@ -80,7 +81,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     try {
       setSaving(true);
       setError(null);
-      const updated = await api.updateSubmission(document.id, submission.id, {
+      const updated = await api.updateSubmission(targetDocId, submission.id, {
         elements_data: elementsData,
       });
       setSubmission(updated);
@@ -105,10 +106,10 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       setSubmitting(true);
       setError(null);
       // Save any pending edits first
-      await api.updateSubmission(document.id, submission.id, {
+      await api.updateSubmission(targetDocId, submission.id, {
         elements_data: elementsData,
       });
-      const res = await api.submitDocument(document.id, submission.id);
+      const res = await api.submitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
       setViewTab('preview');
     } catch (err: any) {
@@ -124,7 +125,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     try {
       setSubmitting(true);
       setError(null);
-      const res = await api.unsubmitDocument(document.id, submission.id);
+      const res = await api.unsubmitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
       setViewTab('edit');
     } catch (err: any) {
@@ -139,7 +140,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     if (!commentInput.trim() || !submission) return;
     try {
       setPostingComment(true);
-      const created = await api.addSubmissionComment(document.id, submission.id, {
+      const created = await api.addSubmissionComment(targetDocId, submission.id, {
         content: commentInput.trim(),
       });
       setComments((prev) => [...prev, created]);

@@ -17,6 +17,8 @@ import {
   Globe,
   Building2,
   Send,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Document, DocumentStatus, Organization, Project, Team, Template, User } from '../../types';
 
@@ -518,6 +520,33 @@ export const DocumentList: React.FC<DocumentListProps> = ({
             const orgName = getOrganizationName(docOrgId);
             const isPersonal = docOrgId === null;
 
+            const isPersonalSubmittableMaster = Boolean(
+              doc.document_type === 'personal' &&
+              doc.is_submittable &&
+              !doc.copied_from_id &&
+              doc.created_by &&
+              currentUser?.id &&
+              doc.created_by !== currentUser.id
+            );
+            const userCopyDoc = isPersonalSubmittableMaster
+              ? documents.find((d) => d.copied_from_id === doc.id && d.created_by === currentUser?.id)
+              : null;
+
+            const isTeamSubmittableMaster = Boolean(
+              doc.document_type === 'project_shared' &&
+              doc.is_submittable &&
+              !doc.copied_from_id &&
+              doc.created_by &&
+              currentUser?.id &&
+              doc.created_by !== currentUser.id
+            );
+            const teamCopyDoc = isTeamSubmittableMaster
+              ? documents.find((d) => d.copied_from_id === doc.id && Boolean(d.assigned_team_id))
+              : null;
+
+            const isSubmittableMaster = isPersonalSubmittableMaster || isTeamSubmittableMaster;
+            const activeCopyDoc = userCopyDoc || teamCopyDoc;
+
             return (
               <div
                 key={doc.id}
@@ -573,6 +602,39 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                       )}
                     </span>
 
+                    {/* Copy badge */}
+                    {doc.copied_from_id && (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded ${
+                          doc.assigned_team_id
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                            : 'bg-violet-50 text-violet-800 border-violet-200'
+                        }`}
+                      >
+                        {doc.assigned_team_id ? (
+                          <>
+                            <Users className="w-2.5 h-2.5 text-indigo-600" /> Team Copy{doc.assigned_team_name ? `: ${doc.assigned_team_name}` : ''}
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-2.5 h-2.5 text-violet-600" /> Personal Copy
+                          </>
+                        )}
+                      </span>
+                    )}
+
+                    {/* Active Copy badge for master deliverable */}
+                    {isPersonalSubmittableMaster && userCopyDoc && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded bg-emerald-50 text-emerald-800 border-emerald-300">
+                        <Check className="w-2.5 h-2.5 text-emerald-600" /> Copy Active
+                      </span>
+                    )}
+                    {isTeamSubmittableMaster && teamCopyDoc && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded bg-emerald-50 text-emerald-800 border-emerald-300">
+                        <Check className="w-2.5 h-2.5 text-emerald-600" /> Team Copy Active{teamCopyDoc.assigned_team_name ? ` (${teamCopyDoc.assigned_team_name})` : ''}
+                      </span>
+                    )}
+
                     {/* Submittable badge if active */}
                     {doc.is_submittable && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 border rounded bg-emerald-50 text-emerald-800 border-emerald-300">
@@ -613,7 +675,13 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                   </div>
 
                   <h3
-                    onClick={() => onViewDocument(doc.id)}
+                    onClick={() => {
+                      if (activeCopyDoc) {
+                        onViewDocument(activeCopyDoc.id);
+                      } else {
+                        onViewDocument(doc.id);
+                      }
+                    }}
                     className="text-base font-bold text-slate-900 hover:text-blue-600 cursor-pointer transition-colors"
                   >
                     {doc.title}
@@ -654,19 +722,31 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                     Preview
                   </button>
                   <button
-                    onClick={() => onEditDocument(doc.id)}
+                    onClick={() => {
+                      if (activeCopyDoc) {
+                        onEditDocument(activeCopyDoc.id);
+                      } else {
+                        onEditDocument(doc.id);
+                      }
+                    }}
                     className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors cursor-pointer border border-blue-700"
                   >
                     <Edit3 className="w-3.5 h-3.5 mr-1" />
-                    Edit
+                    {isPersonalSubmittableMaster
+                      ? (userCopyDoc ? 'Edit My Copy' : 'Copy & Edit')
+                      : (isTeamSubmittableMaster
+                        ? (teamCopyDoc ? 'Edit Team Copy' : 'Start Team Copy')
+                        : 'Edit')}
                   </button>
-                  <button
-                    onClick={() => onDeleteDocument(doc.id)}
-                    title="Delete document"
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer border border-transparent hover:border-red-200"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {(!isPersonal || doc.created_by === currentUser?.id) && !isSubmittableMaster && (
+                    <button
+                      onClick={() => onDeleteDocument(doc.id)}
+                      title="Delete document"
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer border border-transparent hover:border-red-200"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

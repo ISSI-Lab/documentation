@@ -38,8 +38,9 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onBack,
   onExportMarkdown,
 }) => {
+  const isMasterDeliverable = !document.copied_from_id;
   const isDocCreator = Boolean(
-    !document.created_by || (currentUser && currentUser.id === document.created_by)
+    isMasterDeliverable && (!document.created_by || (currentUser && currentUser.id === document.created_by))
   );
 
   const [copied, setCopied] = useState(false);
@@ -175,7 +176,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
             >
               <Edit3 className="w-3.5 h-3.5 mr-1" />
-              Edit Specification
+              {document.document_type === 'personal' && document.is_submittable && !isDocCreator
+                ? (document.copied_from_id ? 'Edit My Document' : 'Start / Edit My Copy')
+                : (document.document_type === 'project_shared' && document.is_submittable && !isDocCreator
+                  ? (document.copied_from_id ? 'Edit Team Document' : 'Start / Edit Team Copy')
+                  : (isDocCreator ? 'Edit Specification' : 'Edit Document'))}
             </button>
           </div>
         </div>
@@ -271,8 +276,14 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                   </div>
                   <p className="text-xs text-slate-600">
                     {isPersonal
-                      ? 'Each individual participant will submit their own response for creator review.'
-                      : 'Each assigned team will submit a single shared deliverable for creator review.'}
+                      ? (!isDocCreator && !document.copied_from_id
+                          ? 'This is the creator’s published document specification. Opening or editing it copies a new independent document instance for you.'
+                          : 'Each individual participant works on their own independent document copy and submits for creator review.')
+                      : (!isDocCreator && !document.copied_from_id
+                          ? 'This is the creator’s published document specification for teams. The first member in your team to open it will copy a new shared document for your team to edit.'
+                          : (document.assigned_team_name
+                              ? `Team document instance for ${document.assigned_team_name}. Members of your team share editing on this copy.`
+                              : 'Each assigned team shares an independent copy of this document to collaborate and submit.'))}
                   </p>
                 </div>
 
@@ -284,6 +295,18 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs"
                     >
                       Review Submissions
+                    </button>
+                  )}
+                  {!isDocCreator && document.is_submittable && (
+                    <button
+                      type="button"
+                      onClick={onSwitchToEdit}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 mr-0.5" />
+                      {document.copied_from_id
+                        ? (isPersonal ? 'Edit My Document' : 'Edit Team Document')
+                        : (isPersonal ? 'Start My Document' : 'Start Team Document')}
                     </button>
                   )}
                   <button

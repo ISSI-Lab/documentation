@@ -283,6 +283,31 @@ export const App: React.FC = () => {
     window.open(url, '_blank');
   };
 
+  const handleOpenEditDocument = async (id: string) => {
+    const targetDoc = documents.find((d) => d.id === id);
+    if (
+      targetDoc &&
+      targetDoc.is_submittable &&
+      !targetDoc.copied_from_id &&
+      targetDoc.created_by &&
+      currentUser &&
+      targetDoc.created_by !== currentUser.id
+    ) {
+      try {
+        const copiedDoc = await api.copyDocument(id);
+        await loadDocuments();
+        setActiveDocId(copiedDoc.id);
+        setCurrentView('edit_document');
+        return;
+      } catch (err: any) {
+        showToast(err.message || 'Failed to open document instance', 'error');
+        return;
+      }
+    }
+    setActiveDocId(id);
+    setCurrentView('edit_document');
+  };
+
   const activeOrganization = organizations.find((o) => o.id === activeOrganizationId) || null;
   const activeDoc = documents.find((d) => d.id === activeDocId) || null;
   const activeTemplate =
@@ -358,10 +383,7 @@ export const App: React.FC = () => {
               setActiveDocId(id);
               setCurrentView('view_document');
             }}
-            onEditDocument={(id) => {
-              setActiveDocId(id);
-              setCurrentView('edit_document');
-            }}
+            onEditDocument={handleOpenEditDocument}
             onSelectOrganization={(orgId) => {
               setActiveOrganizationId(orgId);
               setActiveProjectId(null);
@@ -403,10 +425,7 @@ export const App: React.FC = () => {
               setModalInitialProjectId(targetPId);
               setIsCreateModalOpen(true);
             }}
-            onEditDocument={(id) => {
-              setActiveDocId(id);
-              setCurrentView('edit_document');
-            }}
+            onEditDocument={handleOpenEditDocument}
             onViewDocument={(id) => {
               setActiveDocId(id);
               setDocViewerInitialTab('overview');
@@ -592,7 +611,8 @@ export const App: React.FC = () => {
               setCurrentView('view_document');
             }}
             onOpenSubmissions={() => {
-              const isCreator = !activeDoc.created_by || (currentUser && currentUser.id === activeDoc.created_by);
+              const isMaster = !activeDoc.copied_from_id;
+              const isCreator = isMaster && (!activeDoc.created_by || (currentUser && currentUser.id === activeDoc.created_by));
               setDocViewerInitialTab(isCreator ? 'submissions' : 'my_submission');
               setCurrentView('view_document');
             }}
@@ -606,7 +626,7 @@ export const App: React.FC = () => {
             template={activeTemplate}
             currentUser={currentUser}
             initialTab={docViewerInitialTab}
-            onSwitchToEdit={() => setCurrentView('edit_document')}
+            onSwitchToEdit={() => handleOpenEditDocument(activeDoc.id)}
             onBack={() => {
               setCurrentView('documents');
               loadDocuments();

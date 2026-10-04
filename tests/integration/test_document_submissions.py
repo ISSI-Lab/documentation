@@ -212,6 +212,53 @@ def run_tests():
     assert r_hacked_subm.status_code == 403, f"Expected 403 for non-creator disabling submissions, got {r_hacked_subm.status_code}"
     print("✓ Backend rejected non-creator attempt to disable submissions (403 Forbidden).")
 
+    # 4.3.4 Verify non-creator attempting to edit creator's personal document elements directly is rejected (403 Forbidden)
+    r_hacked_edit = requests.put(f"{BASE_URL}/documents/{personal_doc_id}", json={
+        "elements_data": {
+            "context": "Hacked content from participant!"
+        }
+    }, headers=headers_participant)
+    assert r_hacked_edit.status_code == 403, f"Expected 403 for non-creator editing personal doc, got {r_hacked_edit.status_code}"
+    print("✓ Backend rejected non-creator attempt to edit personal document (403 Forbidden).")
+
+    # 4.3.5 Participant copies the personal submittable doc into an independent instance
+    r_copy = requests.post(f"{BASE_URL}/documents/{personal_doc_id}/copy", headers=headers_participant)
+    assert r_copy.status_code in [200, 201], f"Copy document failed: {r_copy.text}"
+    copied_doc = r_copy.json()
+    copied_doc_id = copied_doc["id"]
+    assert copied_doc_id != personal_doc_id, "Copied document must have a distinct ID"
+    assert copied_doc.get("copied_from_id") == personal_doc_id, "Copied document must reference source document ID"
+    assert copied_doc.get("created_by") == reg_user["id"], "Copied document must belong to participant"
+    assert copied_doc.get("document_type") == "personal"
+    assert copied_doc.get("is_submittable") is True
+    print(f"✓ Participant successfully copied new independent document instance (ID: {copied_doc_id}).")
+
+    # 4.3.6 Re-calling copy returns existing instance (idempotent)
+    r_copy_again = requests.post(f"{BASE_URL}/documents/{personal_doc_id}/copy", headers=headers_participant)
+    assert r_copy_again.status_code == 200
+    assert r_copy_again.json()["id"] == copied_doc_id
+    print("✓ Re-copying returns existing instance without creating duplicates.")
+
+    # 4.3.7 Participant edits their copied document instance
+    r_update_copy = requests.put(f"{BASE_URL}/documents/{copied_doc_id}", json={
+        "elements_data": {
+            "title": "Participant's Title",
+            "context": "Participant's unique work."
+        }
+    }, headers=headers_participant)
+    assert r_update_copy.status_code == 200, f"Update copied doc failed: {r_update_copy.text}"
+    print("✓ Participant updated their independent document instance.")
+
+    # 4.3.8 Creator inspects creator's personal submittable document and verifies it is untouched
+    r_creator_check = requests.get(f"{BASE_URL}/documents/{personal_doc_id}", headers=headers_creator)
+    assert r_creator_check.status_code == 200
+    creator_doc_data = r_creator_check.json()
+    assert "Please describe your proposed architecture and tech stack." in creator_doc_data["elements_data"].get("context", ""), \
+        "Creator document was corrupted by participant's edits!"
+    assert "Participant's unique work" not in creator_doc_data["elements_data"].get("context", ""), \
+        "Creator document contains participant edits!"
+    print("✓ Creator master document remains untouched with original prompt (independent instances verified).")
+
     # 4.4 Creator checks review roster before participant starts
     r = requests.get(f"{BASE_URL}/documents/{personal_doc_id}/submissions", headers=headers_creator)
     assert r.status_code == 200, f"List submissions failed: {r.text}"
@@ -383,6 +430,106 @@ def run_tests():
     assert team_personal_doc["document_type"] == "personal"
     assert team_personal_doc["project_association_type"] == "team"
     print(f"✓ Created Personal Document inside Team Project: {team_personal_doc['title']} (both collaboration types permitted in team projects).")
+
+    # 5.5.2 Participant attempts direct edit on creator's master project shared submittable doc (403 Forbidden required)
+    r_direct = requests.put(f"{BASE_URL}/documents/{shared_doc_id}", json={
+        "elements_data": {"context": "Participant trying to hijack master specification."}
+    }, headers=headers_participant)
+    assert r_direct.status_code == 403, f"Expected 403 Forbidden for non-creator edit on master team document, got {r_direct.status_code}: {r_direct.text}"
+    print("✓ Non-creator rejected with 403 Forbidden when attempting direct edits on master team document.")
+
+    # 5.5.3 Create second teammate user in Alpha Team to verify shared editing within the team
+    r_teammate = requests.post(f"{BASE_URL}/auth/register", json={
+        "username": f"alpha_teammate_{uid}",
+        "name": f"Alpha Teammate {uid}",
+        "email": f"teammate_{uid}@example.com",
+        "password": "Password123!"
+    })
+    assert r_teammate.status_code in [200, 201]
+    teammate_user = r_teammate.json()["user"]
+    teammate_token = r_teammate.json()["token"]
+    headers_teammate = {"Authorization": f"Bearer {teammate_token}"}
+
+    # Add teammate to organization and to Alpha Team
+    requests.post(f"{BASE_URL}/organizations/{org_id}/members", json={"userId": teammate_user["id"], "role": "member"}, headers=headers_creator)
+    requests.post(f"{BASE_URL}/organizations/{org_id}/teams/{team_id}/members", json={"userId": teammate_user["id"], "role": "member"}, headers=headers_creator)
+    print("✓ Registered Teammate 2 and assigned to Alpha Team.")
+
+    # 5.5.4 Participant 1 (first person in Alpha Team to open doc) copies the document for Alpha Team
+    r_copy1 = requests.post(f"{BASE_URL}/documents/{shared_doc_id}/copy", headers=headers_participant)
+    assert r_copy1.status_code in [200, 201], f"Copy team doc failed: {r_copy1.text}"
+    team_alpha_copy = r_copy1.json()
+    assert team_alpha_copy["copied_from_id"] == shared_doc_id
+    assert team_alpha_copy["assigned_team_id"] == team_id
+    assert team_alpha_copy["document_type"] == "project_shared"
+    print(f"✓ Alpha Team member 1 created shared team copy: {team_alpha_copy['id']} (Team: {team_alpha_copy.get('assigned_team_name')})")
+
+    # 5.5.5 Participant 2 (second person in Alpha Team) opens/copies the document and receives the SAME instance
+    r_copy2 = requests.post(f"{BASE_URL}/documents/{shared_doc_id}/copy", headers=headers_teammate)
+    assert r_copy2.status_code in [200, 201]
+    assert r_copy2.json()["id"] == team_alpha_copy["id"], "Second teammate must receive the existing shared team copy"
+    print("✓ Alpha Team member 2 retrieved existing shared team copy (idempotent shared team copy verified).")
+
+    # 5.5.6 Participant 1 updates Team Alpha's copy
+    r_upd_team = requests.put(f"{BASE_URL}/documents/{team_alpha_copy['id']}", json={
+        "elements_data": {
+            "title": f"System Architecture Milestone - {uid}",
+            "context": "Alpha Team collaborative architecture: gRPC microservices with shared event bus."
+        }
+    }, headers=headers_participant)
+    assert r_upd_team.status_code == 200
+    print("✓ Alpha Team member 1 updated Team Alpha's shared document instance.")
+
+    # 5.5.7 Participant 2 fetches Team Alpha's copy and verifies they see Participant 1's edits
+    r_check_team = requests.get(f"{BASE_URL}/documents/{team_alpha_copy['id']}", headers=headers_teammate)
+    assert r_check_team.status_code == 200
+    assert "shared event bus" in r_check_team.json()["elements_data"].get("context", "")
+    print("✓ Alpha Team member 2 successfully read shared edits (shared editing within team verified).")
+
+    # 5.5.8 Creator verifies master document remains untouched
+    r_check_master = requests.get(f"{BASE_URL}/documents/{shared_doc_id}", headers=headers_creator)
+    assert r_check_master.status_code == 200
+    assert "Team deliverables: submit your shared architectural design." in r_check_master.json()["elements_data"].get("context", "")
+    assert "shared event bus" not in r_check_master.json()["elements_data"].get("context", "")
+    print("✓ Creator master document remains pristine and uncorrupted by team edits.")
+
+    # 5.5.9 Create Team Beta with a different participant and verify team isolation
+    r_beta_user = requests.post(f"{BASE_URL}/auth/register", json={
+        "username": f"beta_member_{uid}",
+        "name": f"Beta Member {uid}",
+        "email": f"beta_{uid}@example.com",
+        "password": "Password123!"
+    })
+    assert r_beta_user.status_code in [200, 201]
+    beta_user = r_beta_user.json()["user"]
+    beta_token = r_beta_user.json()["token"]
+    headers_beta = {"Authorization": f"Bearer {beta_token}"}
+
+    r_team_beta = requests.post(f"{BASE_URL}/organizations/{org_id}/teams", json={
+        "name": f"Backend Beta Squad {uid}",
+        "description": "Beta engineering squad"
+    }, headers=headers_creator)
+    assert r_team_beta.status_code == 201
+    team_beta_id = r_team_beta.json()["id"]
+
+    requests.post(f"{BASE_URL}/organizations/{org_id}/members", json={"userId": beta_user["id"], "role": "member"}, headers=headers_creator)
+    requests.post(f"{BASE_URL}/organizations/{org_id}/teams/{team_beta_id}/members", json={"userId": beta_user["id"], "role": "lead"}, headers=headers_creator)
+    requests.post(f"{BASE_URL}/projects/{team_proj_id}/assigned-teams", json={"team_id": team_beta_id, "role": "Secondary Squad"}, headers=headers_creator)
+
+    # Beta member copies the shared doc and gets a different instance
+    r_copy_beta = requests.post(f"{BASE_URL}/documents/{shared_doc_id}/copy", headers=headers_beta)
+    assert r_copy_beta.status_code in [200, 201]
+    team_beta_copy = r_copy_beta.json()
+    assert team_beta_copy["id"] != team_alpha_copy["id"], "Different teams must have different copy instances"
+    assert team_beta_copy["assigned_team_id"] == team_beta_id
+    print(f"✓ Beta Team member provisioned independent copy for Team Beta: {team_beta_copy['id']}")
+
+    # Beta member attempts to edit Alpha Team's copy (403 Forbidden required)
+    r_cross_edit = requests.put(f"{BASE_URL}/documents/{team_alpha_copy['id']}", json={
+        "elements_data": {"context": "Cross-team tampering attempt"}
+    }, headers=headers_beta)
+    assert r_cross_edit.status_code == 403, f"Expected 403 for cross-team edit, got {r_cross_edit.status_code}"
+    print("✓ Cross-team edit rejected with 403 Forbidden (cross-team isolation verified).")
 
     # 5.6 Creator views submissions roster (according to assigned teams)
     r = requests.get(f"{BASE_URL}/documents/{shared_doc_id}/submissions", headers=headers_creator)

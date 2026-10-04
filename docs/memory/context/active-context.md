@@ -32,6 +32,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Dedicated Create Organization Page & Pure Org List | AI Agent | Completed | Built dedicated `CreateOrganizationPage.tsx` view for creating organizations, streamlined `OrganizationManagement.tsx` into a pure organization list with prominent join tokens and member rosters, and linked navbar selection switcher |
 | Project & Document Creator Tile Metadata | AI Agent | Completed | Exposed creator metadata (creator name & username) via SQL JOINs across project and document APIs, and rendered creator attribution badges on project tiles and document tiles across Project Management, Document List, Document Viewer, and Personal Homepage |
 | Personal Private Organization & Standalone Docs | AI Agent | Completed | Auto-provisioned `{username}_workspace` for demo users, existing database users, and on first login/registration; enabled standalone personal document authoring (`project_id = null`) and private project containers within personal workspaces; protected private workspaces from outside joins |
+| Personal & Team Submittable Document Copies & Isolation | AI Agent | Completed | Enforced independent copy instances for submittable documents: personal documents copy per individual; team-shared documents copy per team on first open with shared team editing; master specifications protected from non-creator edits; edits synced to review roster ([ADR-0008](../decisions/0008-independent-personal-submittable-document-copies.md)) |
 
 ---
 
@@ -81,6 +82,12 @@ This file tracks the current sprint state, active workstreams, and recent change
   4. Private Project Containers: Under their personal workspace, the user is the organization creator and can create private projects as containers to organize documents.
   5. Access Controls & Join Protection: Personal private workspaces are protected in `POST /organizations/join` from outside users joining (`403 Forbidden`).
   6. Visual Distinction: Top navbar switcher, Organization Management, Personal Homepage, and Document Creation modal display a dedicated "Personal Workspace" badge with lock icon, confidential status, and clean standalone document authoring options.
+- Submittable Personal and Team Document Independent Copy Instances and Isolation ([ADR-0008](../decisions/0008-independent-personal-submittable-document-copies.md)):
+  1. Strict Instance Separation: Master submittable documents are published specifications. Backend `PUT /api/v1/documents/:id` strictly rejects non-creator edits on master submittable documents (`403 Forbidden`). Only the document creator can edit the published specification.
+  2. Personal Deliverables: When an individual opens or edits a published personal submittable deliverable, an independent personal document instance (`copied_from_id = masterDoc.id`, `created_by = user.id`) is provisioned or opened via `POST /api/v1/documents/:id/copy`.
+  3. Team Deliverables: When a team-shared submittable document is published, whoever in the assigned team first opens or edits the document provisions a shared copy for the team (`copied_from_id = masterDoc.id`, `assigned_team_id = team.id`). Subsequent team members opening the document retrieve that same team copy to share editing within the team. Different teams maintain distinct instances, ensuring inter-team isolation.
+  4. Automatic Submission Synchronization: Saving edits on a personal or team copied instance automatically synchronizes elements and compiled markdown into `document_submissions`, updating the creator's review roster without corrupting the master document. Reciprocally, edits in the submission workspace sync back into the copy instance.
+  5. Isolated Document Listing: In `GET /api/v1/documents`, personal copies are isolated strictly to their owner, and team copies are isolated strictly to members of that assigned team, ensuring document lists remain uncluttered and secure.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

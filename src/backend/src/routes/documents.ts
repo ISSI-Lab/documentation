@@ -47,10 +47,13 @@ function formatDocumentRow(row: any): Document {
     project_association_type: row.project_association_type || null,
     organization_id: orgId,
     team_id: orgId, // compatibility
+    assigned_team_id: row.assigned_team_id || null,
+    assigned_team_name: row.assigned_team_name || row.team_name || undefined,
     template_id: row.template_id,
     template_title: row.template_title,
     document_type: row.document_type === 'personal' ? 'personal' : 'project_shared',
     is_submittable: Boolean(row.is_submittable),
+    copied_from_id: row.copied_from_id || null,
     status: row.status,
     author: row.author || 'Anonymous',
     created_by: row.created_by || null,
@@ -157,10 +160,12 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
         u.name as creator_name,
         u.username as creator_username,
         p.association_type as project_association_type,
+        ot.name as assigned_team_name,
         (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
       FROM documents d
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN projects p ON d.project_id = p.id
+      LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
     `;
     const params: any[] = [];
     const conditions: string[] = [];
@@ -171,6 +176,27 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
         `((d.organization_id IS NULL AND d.created_by = ?) OR (d.organization_id IS NOT NULL AND d.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
       );
       params.push(userId, userId);
+
+      // Document isolation and visibility scoping:
+      // 1. Master documents (copied_from_id IS NULL):
+      //    - If project_shared: visible to all project/org members.
+      //    - If personal: visible if user is creator OR if is_submittable = 1.
+      // 2. Personal copies (copied_from_id IS NOT NULL AND assigned_team_id IS NULL):
+      //    - Strictly private to their creator.
+      // 3. Team copies (copied_from_id IS NOT NULL AND assigned_team_id IS NOT NULL):
+      //    - Visible only to members of that assigned team, or the copy creator.
+      conditions.push(
+        `(
+          (d.copied_from_id IS NULL AND (d.document_type != 'personal' OR d.created_by = ? OR d.is_submittable = 1))
+          OR
+          (d.copied_from_id IS NOT NULL AND d.assigned_team_id IS NULL AND d.created_by = ?)
+          OR
+          (d.copied_from_id IS NOT NULL AND d.assigned_team_id IS NOT NULL AND (
+            d.created_by = ? OR d.assigned_team_id IN (SELECT team_id FROM organization_team_members WHERE user_id = ?)
+          ))
+        )`
+      );
+      params.push(userId, userId, userId, userId);
     } else {
       conditions.push('1 = 0');
     }
@@ -249,10 +275,12 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
          u.name as creator_name,
          u.username as creator_username,
          p.association_type as project_association_type,
+         ot.name as assigned_team_name,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
+       LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
        WHERE d.id = ?`,
       [req.params.id]
     );
@@ -434,8 +462,44 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     const { title, status, author, tags, elements_data, project_id, document_type, is_submittable } = req.body;
 
-    // Only the document creator can change the collaboration type and enable/disable submissions
+    // Only the document creator can edit master submittable documents or non-submittable personal documents
     const isDocCreator = !currentDoc.created_by || user.id === currentDoc.created_by;
+    const isMasterSubmittable = currentDoc.is_submittable && !currentDoc.copied_from_id;
+
+    if (isMasterSubmittable && !isDocCreator) {
+      const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
+      if (!isMgr) {
+        return res.status(403).json({
+          error: currentDoc.document_type === 'personal'
+            ? 'Personal documents can only be edited by their creator'
+            : 'Only the creator can edit the master specification. Your team must work on its team copy.',
+        });
+      }
+    }
+
+    if (currentDoc.document_type === 'personal' && !isDocCreator) {
+      const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
+      if (!isMgr) {
+        return res.status(403).json({ error: 'Personal documents can only be edited by their creator' });
+      }
+    }
+
+    // Team copy authorization check: only members of the assigned team can edit this team copy
+    if (currentDoc.copied_from_id && currentDoc.assigned_team_id) {
+      const [membership] = await pool.query<any[]>(
+        'SELECT 1 FROM organization_team_members WHERE team_id = ? AND user_id = ?',
+        [currentDoc.assigned_team_id, user.id]
+      );
+      const isTeamMember = membership && membership.length > 0;
+      const isCopyCreator = currentDoc.created_by === user.id;
+      const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
+      if (!isTeamMember && !isCopyCreator && !isMgr) {
+        return res.status(403).json({
+          error: 'You do not belong to the team assigned to this document copy.',
+        });
+      }
+    }
+
     if (!isDocCreator) {
       if (document_type !== undefined && document_type !== currentDoc.document_type) {
         return res.status(403).json({ error: 'Only the document creator can change the collaboration type' });
@@ -556,15 +620,80 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
       ]
     );
 
+    // If this document is a copy, keep document_submissions in sync for the creator's review roster
+    if (currentDoc.copied_from_id) {
+      const masterDocId = currentDoc.copied_from_id;
+      if (currentDoc.assigned_team_id) {
+        // Team copy sync:
+        const [existingSubm] = await pool.query<any[]>(
+          'SELECT id FROM document_submissions WHERE document_id = ? AND team_id = ?',
+          [masterDocId, currentDoc.assigned_team_id]
+        );
+        if (existingSubm && existingSubm.length > 0) {
+          await pool.query(
+            `UPDATE document_submissions
+             SET elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+             WHERE id = ?`,
+            [JSON.stringify(finalElementsData), compiledMd, existingSubm[0].id]
+          );
+        } else {
+          const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+          await pool.query(
+            `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+             VALUES (?, ?, ?, 'team', ?, ?, 'draft', ?, ?, NOW(), NOW())`,
+            [
+              submId,
+              masterDocId,
+              newProjectId || '',
+              user.id,
+              currentDoc.assigned_team_id,
+              JSON.stringify(finalElementsData),
+              compiledMd,
+            ]
+          );
+        }
+      } else {
+        // Personal copy sync:
+        const [existingSubm] = await pool.query<any[]>(
+          'SELECT id FROM document_submissions WHERE document_id = ? AND user_id = ?',
+          [masterDocId, user.id]
+        );
+        if (existingSubm && existingSubm.length > 0) {
+          await pool.query(
+            `UPDATE document_submissions
+             SET elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+             WHERE id = ?`,
+            [JSON.stringify(finalElementsData), compiledMd, existingSubm[0].id]
+          );
+        } else {
+          const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+          await pool.query(
+            `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+             VALUES (?, ?, ?, 'personal', ?, NULL, 'draft', ?, ?, NOW(), NOW())`,
+            [
+              submId,
+              masterDocId,
+              newProjectId || '',
+              user.id,
+              JSON.stringify(finalElementsData),
+              compiledMd,
+            ]
+          );
+        }
+      }
+    }
+
     const [updatedRows] = await pool.query<any[]>(
       `SELECT d.*,
          u.name as creator_name,
          u.username as creator_username,
          p.association_type as project_association_type,
+         ot.name as assigned_team_name,
          (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
        FROM documents d
        LEFT JOIN users u ON d.created_by = u.id
        LEFT JOIN projects p ON d.project_id = p.id
+       LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
        WHERE d.id = ?`,
       [id]
     );
@@ -589,6 +718,29 @@ documentsRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
       const isMember = await isOrganizationMember(user.id, docOrgId);
       if (!isMember) {
         return res.status(403).json({ error: 'You do not have permission to delete this document' });
+      }
+    }
+
+    const isDocCreator = !doc.created_by || user.id === doc.created_by;
+    const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
+
+    // Master submittable document deletion protection
+    if (doc.is_submittable && !doc.copied_from_id && !isDocCreator && !isMgr) {
+      return res.status(403).json({ error: 'Only the creator can delete the master submittable document' });
+    }
+
+    if (doc.document_type === 'personal' && !isDocCreator && !isMgr) {
+      return res.status(403).json({ error: 'Only the creator can delete their personal document' });
+    }
+
+    if (doc.copied_from_id && doc.assigned_team_id) {
+      const [membership] = await pool.query<any[]>(
+        'SELECT 1 FROM organization_team_members WHERE team_id = ? AND user_id = ?',
+        [doc.assigned_team_id, user.id]
+      );
+      const isTeamMember = membership && membership.length > 0;
+      if (!isTeamMember && !isDocCreator && !isMgr) {
+        return res.status(403).json({ error: 'You do not belong to the team assigned to this document copy' });
       }
     }
 
@@ -629,6 +781,316 @@ documentsRouter.get('/:id/export/markdown', optionalAuth, async (req: Authentica
   }
 });
 
+// POST /api/v1/documents/:id/copy - Copy a submittable doc (personal or team) into an independent instance
+documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+
+    const [rows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [id]);
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const sourceDoc = rows[0];
+    const docOrgId = sourceDoc.organization_id || sourceDoc.team_id;
+
+    if (docOrgId) {
+      const isMember = await isOrganizationMember(user.id, docOrgId);
+      if (!isMember) {
+        return res.status(403).json({ error: 'You are not a member of the organization for this document' });
+      }
+    }
+
+    if (!sourceDoc.is_submittable) {
+      return res.status(400).json({ error: 'Only submittable documents can be copied as deliverable instances' });
+    }
+
+    // If caller is the creator of the master document, return master document
+    if (sourceDoc.created_by === user.id && !sourceDoc.copied_from_id) {
+      const [creatorRows] = await pool.query<any[]>(
+        `SELECT d.*,
+           u.name as creator_name,
+           u.username as creator_username,
+           p.association_type as project_association_type,
+           ot.name as assigned_team_name,
+           (SELECT COUNT(*) FROM document_submissions WHERE document_id = d.id AND status = 'submitted') as submissions_count
+         FROM documents d
+         LEFT JOIN users u ON d.created_by = u.id
+         LEFT JOIN projects p ON d.project_id = p.id
+         LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
+         WHERE d.id = ?`,
+        [id]
+      );
+      return res.json(formatDocumentRow(creatorRows[0]));
+    }
+
+    // Parse elements data from source document
+    let sourceElementsData: Record<string, any> = {};
+    if (typeof sourceDoc.elements_data === 'string') {
+      try {
+        sourceElementsData = JSON.parse(sourceDoc.elements_data);
+      } catch {
+        sourceElementsData = {};
+      }
+    } else if (typeof sourceDoc.elements_data === 'object' && sourceDoc.elements_data !== null) {
+      sourceElementsData = { ...sourceDoc.elements_data };
+    }
+
+    let sourceTags: string[] = [];
+    if (typeof sourceDoc.tags === 'string') {
+      try {
+        sourceTags = JSON.parse(sourceDoc.tags);
+      } catch {
+        sourceTags = [];
+      }
+    } else if (Array.isArray(sourceDoc.tags)) {
+      sourceTags = sourceDoc.tags;
+    }
+
+    const template = await fetchTemplateById(sourceDoc.template_id);
+
+    // =========================================================================
+    // BRANCH A: Personal Document Copy
+    // =========================================================================
+    if (sourceDoc.document_type === 'personal') {
+      // Check if user already has an existing copy of this master document
+      const [existingCopies] = await pool.query<any[]>(
+        `SELECT d.*,
+           u.name as creator_name,
+           u.username as creator_username,
+           p.association_type as project_association_type,
+           NULL as assigned_team_name,
+           0 as submissions_count
+         FROM documents d
+         LEFT JOIN users u ON d.created_by = u.id
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.copied_from_id = ? AND d.created_by = ?`,
+        [sourceDoc.id, user.id]
+      );
+
+      if (existingCopies && existingCopies.length > 0) {
+        return res.json(formatDocumentRow(existingCopies[0]));
+      }
+
+      const authorLabel = user.name || user.username;
+      const newDocId = `doc-${crypto.randomBytes(4).toString('hex')}`;
+      const compiledMd = compileDocumentMarkdown(
+        sourceDoc.title,
+        'draft',
+        authorLabel,
+        sourceTags,
+        template,
+        sourceElementsData
+      );
+
+      await pool.query(
+        `INSERT INTO documents (id, title, project_id, organization_id, template_id, template_title, document_type, is_submittable, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, copied_from_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'personal', TRUE, 'draft', ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          newDocId,
+          sourceDoc.title,
+          sourceDoc.project_id || null,
+          sourceDoc.organization_id || null,
+          sourceDoc.template_id,
+          sourceDoc.template_title,
+          authorLabel,
+          user.id,
+          user.id,
+          JSON.stringify(sourceTags),
+          JSON.stringify(sourceElementsData),
+          compiledMd,
+          sourceDoc.id,
+        ]
+      );
+
+      // Ensure document_submissions row exists for creator's review roster
+      const [submExists] = await pool.query<any[]>(
+        'SELECT id FROM document_submissions WHERE document_id = ? AND user_id = ?',
+        [sourceDoc.id, user.id]
+      );
+      if (!submExists || submExists.length === 0) {
+        const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+        await pool.query(
+          `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+           VALUES (?, ?, ?, 'personal', ?, NULL, 'draft', ?, ?, NOW(), NOW())`,
+          [
+            submId,
+            sourceDoc.id,
+            sourceDoc.project_id || '',
+            user.id,
+            JSON.stringify(sourceElementsData),
+            compiledMd,
+          ]
+        );
+      }
+
+      const [createdRows] = await pool.query<any[]>(
+        `SELECT d.*,
+           u.name as creator_name,
+           u.username as creator_username,
+           p.association_type as project_association_type,
+           NULL as assigned_team_name,
+           0 as submissions_count
+         FROM documents d
+         LEFT JOIN users u ON d.created_by = u.id
+         LEFT JOIN projects p ON d.project_id = p.id
+         WHERE d.id = ?`,
+        [newDocId]
+      );
+
+      return res.status(201).json(formatDocumentRow(createdRows[0]));
+    }
+
+    // =========================================================================
+    // BRANCH B: Project Shared Document (Team-Based Shared Copy)
+    // "Whoever in the team firstly open a document must create a copy for the team to share editing."
+    // =========================================================================
+    if (!sourceDoc.project_id) {
+      return res.status(400).json({ error: 'Team shared documents must belong to a project to determine assigned teams' });
+    }
+
+    // Determine the caller's team in this project
+    const [teamRows] = await pool.query<any[]>(
+      `SELECT otm.team_id, ot.name as team_name
+       FROM organization_team_members otm
+       JOIN project_team_assignments pta ON otm.team_id = pta.team_id
+       JOIN organization_teams ot ON otm.team_id = ot.id
+       WHERE pta.project_id = ? AND otm.user_id = ?
+       LIMIT 1`,
+      [sourceDoc.project_id, user.id]
+    );
+
+    let targetTeamId: string;
+    let targetTeamName: string;
+
+    if (teamRows && teamRows.length > 0) {
+      targetTeamId = teamRows[0].team_id;
+      targetTeamName = teamRows[0].team_name;
+    } else {
+      // Check if user is organization manager and can test with first assigned team
+      const isMgr = docOrgId ? await isOrganizationManager(user.id, docOrgId) : false;
+      if (isMgr) {
+        const [anyTeams] = await pool.query<any[]>(
+          `SELECT ot.id as team_id, ot.name as team_name
+           FROM project_team_assignments pta
+           JOIN organization_teams ot ON pta.team_id = ot.id
+           WHERE pta.project_id = ?
+           LIMIT 1`,
+          [sourceDoc.project_id]
+        );
+        if (anyTeams && anyTeams.length > 0) {
+          targetTeamId = anyTeams[0].team_id;
+          targetTeamName = anyTeams[0].team_name;
+        } else {
+          return res.status(400).json({ error: 'No teams have been assigned to this project yet.' });
+        }
+      } else {
+        return res.status(403).json({
+          error: 'You are not a member of any team assigned to this project.',
+        });
+      }
+    }
+
+    // Check if a copy ALREADY EXISTS for this team:
+    // If ANY member of this team already opened it, return that shared team copy!
+    const [existingTeamCopies] = await pool.query<any[]>(
+      `SELECT d.*,
+         u.name as creator_name,
+         u.username as creator_username,
+         p.association_type as project_association_type,
+         ot.name as assigned_team_name,
+         0 as submissions_count
+       FROM documents d
+       LEFT JOIN users u ON d.created_by = u.id
+       LEFT JOIN projects p ON d.project_id = p.id
+       LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
+       WHERE d.copied_from_id = ? AND d.assigned_team_id = ?`,
+      [sourceDoc.id, targetTeamId]
+    );
+
+    if (existingTeamCopies && existingTeamCopies.length > 0) {
+      // Another member of this team (or this user) already created the copy - return it so they share editing!
+      return res.json(formatDocumentRow(existingTeamCopies[0]));
+    }
+
+    // The caller is the first person in their team to open it!
+    // Create the team copy:
+    const newDocId = `doc-${crypto.randomBytes(4).toString('hex')}`;
+    const authorLabel = `${targetTeamName}`;
+    const compiledMd = compileDocumentMarkdown(
+      sourceDoc.title,
+      'draft',
+      authorLabel,
+      sourceTags,
+      template,
+      sourceElementsData
+    );
+
+    await pool.query(
+      `INSERT INTO documents (id, title, project_id, organization_id, template_id, template_title, document_type, is_submittable, status, author, created_by, last_edited_by, tags, elements_data, compiled_markdown, copied_from_id, assigned_team_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'project_shared', TRUE, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        newDocId,
+        sourceDoc.title,
+        sourceDoc.project_id,
+        sourceDoc.organization_id || null,
+        sourceDoc.template_id,
+        sourceDoc.template_title,
+        authorLabel,
+        user.id,
+        user.id,
+        JSON.stringify(sourceTags),
+        JSON.stringify(sourceElementsData),
+        compiledMd,
+        sourceDoc.id,
+        targetTeamId,
+      ]
+    );
+
+    // Also ensure team submission draft exists in document_submissions
+    const [submExists] = await pool.query<any[]>(
+      'SELECT id FROM document_submissions WHERE document_id = ? AND team_id = ?',
+      [sourceDoc.id, targetTeamId]
+    );
+    if (!submExists || submExists.length === 0) {
+      const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO document_submissions (id, document_id, project_id, submission_type, user_id, team_id, status, elements_data, compiled_markdown, created_at, updated_at)
+         VALUES (?, ?, ?, 'team', ?, ?, 'draft', ?, ?, NOW(), NOW())`,
+        [
+          submId,
+          sourceDoc.id,
+          sourceDoc.project_id,
+          user.id,
+          targetTeamId,
+          JSON.stringify(sourceElementsData),
+          compiledMd,
+        ]
+      );
+    }
+
+    const [createdRows] = await pool.query<any[]>(
+      `SELECT d.*,
+         u.name as creator_name,
+         u.username as creator_username,
+         p.association_type as project_association_type,
+         ot.name as assigned_team_name,
+         0 as submissions_count
+       FROM documents d
+       LEFT JOIN users u ON d.created_by = u.id
+       LEFT JOIN projects p ON d.project_id = p.id
+       LEFT JOIN organization_teams ot ON d.assigned_team_id = ot.id
+       WHERE d.id = ?`,
+      [newDocId]
+    );
+
+    return res.status(201).json(formatDocumentRow(createdRows[0]));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to copy document', detail: err.message });
+  }
+});
+
 // ==============================================================================
 // Document Submissions & Creator Review Endpoints
 // ==============================================================================
@@ -651,13 +1113,12 @@ async function canReviewSubmissions(userId: string, doc: any, project: any): Pro
 documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const docId = req.params.id;
-
-    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [req.params.id]);
     if (!docRows || docRows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
     const doc = docRows[0];
+    const docId = doc.copied_from_id || doc.id;
     if (!doc.is_submittable) {
       return res.json([]);
     }
@@ -894,13 +1355,12 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
 documentsRouter.get('/:id/my-submission', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = req.user!;
-    const docId = req.params.id;
-
-    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+    const [docRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [req.params.id]);
     if (!docRows || docRows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
     const doc = docRows[0];
+    const docId = doc.copied_from_id || doc.id;
     if (!doc.is_submittable) {
       return res.status(400).json({ error: 'This document is not configured for submissions' });
     }
@@ -1189,6 +1649,23 @@ documentsRouter.put('/:id/submissions/:submissionId', requireAuth, async (req: A
        WHERE id = ?`,
       [JSON.stringify(finalElementsData), compiledMd, submissionId]
     );
+
+    // Keep corresponding document copy in sync
+    if (subm.submission_type === 'team' && subm.team_id) {
+      await pool.query(
+        `UPDATE documents
+         SET elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+         WHERE copied_from_id = ? AND assigned_team_id = ?`,
+        [JSON.stringify(finalElementsData), compiledMd, subm.document_id, subm.team_id]
+      );
+    } else if (subm.submission_type === 'personal' && subm.user_id) {
+      await pool.query(
+        `UPDATE documents
+         SET elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+         WHERE copied_from_id = ? AND created_by = ?`,
+        [JSON.stringify(finalElementsData), compiledMd, subm.document_id, subm.user_id]
+      );
+    }
 
     const [updated] = await pool.query<any[]>(
       `SELECT ds.*, u.name as user_name, u.username, u.email as user_email, ot.name as team_name,

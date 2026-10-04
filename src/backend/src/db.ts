@@ -314,6 +314,10 @@ export async function initDatabase(): Promise<void> {
           organization_id VARCHAR(64) NULL,
           template_id VARCHAR(64) NOT NULL,
           template_title VARCHAR(255) NOT NULL,
+          document_type ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared',
+          is_submittable BOOLEAN NOT NULL DEFAULT FALSE,
+          copied_from_id VARCHAR(64) NULL,
+          assigned_team_id VARCHAR(64) NULL,
           status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
           author VARCHAR(255) DEFAULT 'Anonymous',
           created_by VARCHAR(64) NULL,
@@ -326,6 +330,8 @@ export async function initDatabase(): Promise<void> {
           INDEX idx_project_id (project_id),
           INDEX idx_organization_id (organization_id),
           INDEX idx_template_id (template_id),
+          INDEX idx_copied_from_id (copied_from_id),
+          INDEX idx_assigned_team_id (assigned_team_id),
           INDEX idx_status (status),
           INDEX idx_updated_at (updated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -400,6 +406,8 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'documents', 'last_edited_by', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'document_type', "ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared'");
       await ensureColumnExists(conn, 'documents', 'is_submittable', 'BOOLEAN NOT NULL DEFAULT FALSE');
+      await ensureColumnExists(conn, 'documents', 'copied_from_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'assigned_team_id', 'VARCHAR(64) NULL');
 
       // Auto-repair: Enforce that documents under projects with individual association are strictly personal
       try {

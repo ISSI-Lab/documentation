@@ -53,8 +53,22 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onOpenSubmissions,
   onExportMarkdown,
 }) => {
+  const isMasterDeliverable = !document.copied_from_id;
   const isCreator = Boolean(
     !document.created_by || (currentUser && currentUser.id === document.created_by)
+  );
+  const isSubmittableMasterNonCreator = Boolean(
+    document.is_submittable &&
+    isMasterDeliverable &&
+    !isCreator
+  );
+  const isPersonalMasterNonCreator = Boolean(
+    document.document_type === 'personal' &&
+    isSubmittableMasterNonCreator
+  );
+  const isTeamMasterNonCreator = Boolean(
+    document.document_type === 'project_shared' &&
+    isSubmittableMasterNonCreator
   );
   const isIndividualProject = document.project_association_type === 'individual';
 
@@ -111,6 +125,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   });
 
   const handleSave = async () => {
+    if (isPersonalMasterNonCreator) {
+      setSaveError('Personal documents can only be edited by their creator. Please copy a new document instance to make your edits.');
+      return;
+    }
+    if (isTeamMasterNonCreator) {
+      setSaveError('Master deliverables can only be edited by their creator. Please work on your team copy.');
+      return;
+    }
     try {
       setSaving(true);
       setSaveError(null);
@@ -389,6 +411,47 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           </div>
         </div>
       </header>
+
+      {document.copied_from_id && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-4">
+          <div className="p-3 bg-violet-50 border border-violet-200 text-violet-800 text-xs rounded-lg flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-600 flex-shrink-0" />
+              <span>
+                {document.assigned_team_id ? (
+                  <>
+                    <strong>Team Shared Working Instance:</strong> You are editing your team’s shared copy of this deliverable ({document.assigned_team_name ? `Team: ${document.assigned_team_name}` : 'Assigned Squad'}). Changes are shared within your team and will not alter the creator’s published specification or other teams' copies.
+                  </>
+                ) : (
+                  <>
+                    <strong>Personal Working Instance:</strong> You are editing your independent copy of this deliverable. Your changes are private and will not alter the creator’s published specification.
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSubmittableMasterNonCreator && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-4">
+          <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span>
+                {isPersonalMasterNonCreator ? (
+                  <>
+                    <strong>Published Specification:</strong> This personal document was authored by {document.creator_name || document.author}. Personal documents can only be edited by their creator.
+                  </>
+                ) : (
+                  <>
+                    <strong>Published Specification:</strong> This team deliverable was published by {document.creator_name || document.author}. The first member in your team to open it creates a shared team copy to collaborate and submit.
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saveError && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-4">

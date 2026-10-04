@@ -472,6 +472,12 @@ export const api = {
     });
   },
 
+  async copyDocument(id: string): Promise<Document> {
+    return request<Document>(`/documents/${encodeURIComponent(id)}/copy`, {
+      method: 'POST',
+    });
+  },
+
   getMarkdownExportUrl(id: string): string {
     return `${API_BASE}/documents/${encodeURIComponent(id)}/export/markdown`;
   },

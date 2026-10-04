@@ -137,8 +137,17 @@ Update document contents, title, status, or tags.
 }
 ```
 
+### `POST /api/v1/documents/{id}/copy`
+Creates or retrieves an independent personal or team document copy from a published submittable document.
+- **For `personal` submittable documents**: Provisions or returns the caller's individual copy (`copied_from_id = id`, `created_by = caller.id`). Idempotent per user.
+- **For `project_shared` submittable documents**: Provisions or returns the caller's team copy (`copied_from_id = id`, `assigned_team_id = callerTeam.id`).
+  - **First-Open Provisioning**: The first member in the assigned team to open the document creates the team copy.
+  - **Team Shared Collaboration**: Subsequent team members opening the document retrieve that same team copy to share editing.
+  - **Inter-Team Isolation**: Different teams receive separate, isolated copies.
+- Automatically initializes the participant or team draft in `document_submissions` linked to the source master document.
+
 ### `DELETE /api/v1/documents/{id}`
-Delete a document by ID.
+Delete a document by ID (restricted to document creator).
 
 ### `GET /api/v1/documents/{id}/export/markdown`
 Returns raw compiled Markdown text with `Content-Type: text/markdown`.

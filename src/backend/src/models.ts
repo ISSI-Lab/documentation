@@ -239,10 +239,13 @@ export interface Document {
   project_association_type?: ProjectAssociationType | null;
   organization_id: string | null;
   team_id?: string | null;
+  assigned_team_id?: string | null;
+  assigned_team_name?: string | null;
   template_id: string;
   template_title: string;
   document_type: DocumentType;
   is_submittable: boolean;
+  copied_from_id?: string | null;
   status: DocumentStatus;
   author: string;
   created_by: string | null;
