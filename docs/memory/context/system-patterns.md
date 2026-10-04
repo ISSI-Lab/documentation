@@ -54,6 +54,16 @@ This document specifies reusable engineering patterns and code standards across 
   - **Project Shared Document Submissions**: When a project shared document is submittable, submissions are strictly **according to team** (`document_submissions.submission_type = 'team'`). Members of the assigned team collaborate on a shared draft and submit on behalf of the team.
   - **Prompt Pre-Population Strategy**: When a participant or team accesses their submission (`GET /api/v1/documents/:id/my-submission`), the draft is auto-initialized and pre-populated with the creator's prompt and element defaults rather than starting blank.
   - **Creator Review & Bidirectional Feedback**: Project creators and organization managers can inspect all submissions, update review statuses (`reviewed`, request revisions via `draft`, `submitted`), and exchange timestamped feedback comments (`submission_comments`) with participants.
+- **Document Elements & Grouped Iterations Architecture**:
+  - **Pure Markdown View-Only Elements**:
+    - `view_markdown` property on any element and dedicated `pure_markdown` element type render formatted markdown strictly for viewing without editing inputs.
+  - **Grouped Iteration Elements (`iteration_group`)**:
+    - Mechanism to group a list of fixed key-value items per iteration cycle (e.g. Iteration #1, #2, ... #N with fixed keys `Reason`, `Todo`, `Response`).
+    - The template creator defines the list of fixed keys via `iteration_fields` (`IterationFieldConfig[]`).
+    - Fixed keys are non-editable labels/badges for the document writer, who only fills in the values for each key and dynamically adds or removes entire iteration cycles.
+    - Markdown compiler renders each cycle under subheadings (`### Iteration #{N}`) with itemized list entries (`- **{Key}:** {Value}`).
+  - **Iterative Arrays & Repeatable Lists**:
+    - Legacy dynamic lists (`interactive_list` / `repeatable_list`) allow adding dynamic single items (description - value pairs) via `+` buttons.
 
 ---
 

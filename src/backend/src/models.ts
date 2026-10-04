@@ -156,6 +156,7 @@ export type DocumentElementType =
   | 'markdown'
   | 'pure_markdown'
   | 'interactive_field'
+  | 'iteration_group'
   | 'interactive_list'
   | 'repeatable_list'
   | 'short_text'
@@ -163,6 +164,15 @@ export type DocumentElementType =
   | 'callout'
   | 'code'
   | 'checklist';
+
+export interface IterationFieldConfig {
+  id?: string;
+  key: string; // e.g. "Reason", "Todo", "Response"
+  label?: string;
+  description?: string;
+  placeholder?: string;
+  default_value?: string;
+}
 
 export interface DocumentElementConfig {
   id: string;
@@ -176,6 +186,7 @@ export interface DocumentElementConfig {
   order: number;
   options?: string[] | null;
   view_markdown?: string | null;
+  iteration_fields?: IterationFieldConfig[] | null;
 }
 
 export interface EditableItem {
@@ -184,6 +195,14 @@ export interface EditableItem {
   value: string;
   title?: string;
   content?: string;
+}
+
+export interface IterationGroupItem {
+  id: string;
+  iteration_number?: number;
+  title?: string;
+  values?: Record<string, string>;
+  fields?: Array<{ key: string; value: string }>;
 }
 
 export type RepeatableSubItem = EditableItem;

@@ -105,7 +105,13 @@ This file tracks the current sprint state, active workstreams, and recent change
   1. Pure Markdown View-Only: Added `pure_markdown` element type and `view_markdown` property on any element in `DocumentElementConfig`. In `DocumentEditor` and `ParticipantSubmissionWorkspace`, pure markdown is rendered strictly for viewing without an editable textarea, protecting specifications and guidelines.
   2. Interactive / Iterative Element: Added `interactive_field` element type containing a description portion (key) and an input (editing) part for author response.
   3. Iterative Array of Editable Elements: Enhanced `interactive_list` and `repeatable_list` so that each editable element is structured as a `description - value` pair (key is description and value is editable), supporting dynamic item additions, key editing, and value responses.
-  4. Full-Stack Alignment: Updated backend models, template routes, compiler (`compiler.ts`), frontend `DocumentEditor.tsx`, `ParticipantSubmissionWorkspace.tsx`, and `TemplateBuilder.tsx` with seamless backwards compatibility.
+- Grouped Iteration Elements with Predefined Keys per Iteration ([ADR-0010](../decisions/0010-grouped-iteration-elements-with-predefined-keys.md)):
+  1. Grouped Iteration Element Type: Added `iteration_group` type and `iteration_fields` property (`IterationFieldConfig[]`) to `DocumentElementConfig`.
+  2. Template Creator Governance: Template creators specify the exact number of key-value list items per iteration and define the fixed keys (e.g., `Reason`, `Todo`, `Response`). Document writers cannot rename or delete these keys.
+  3. Document Writer Experience: In `DocumentEditor` and `ParticipantSubmissionWorkspace`, writers view each iteration cycle (Iteration #1, #2, ... #N) with predefined keys as fixed badges and editable textareas for values, and can dynamically click `+ Add Iteration` to spawn a new cycle pre-populated with all template keys.
+  4. Markdown Compiler: Deterministically compiles iterations into Markdown subheadings (`### Iteration #1`, `### Iteration #2`) with itemized entries (`- **Reason:** ...`, `- **Todo:** ...`, `- **Response:** ...`).
+  5. Template Builder UX: Added creator configurator for key list editing, preset configurations (`Reason, Todo, Response` and 4-step plans), quick add buttons, and outline hierarchy preview.
+  6. Demo Seeds: Seeded `investigation_iterations` into `tpl-postmortem` template to showcase grouped iterations out-of-the-box.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

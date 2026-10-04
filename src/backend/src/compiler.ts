@@ -108,8 +108,91 @@ export function compileDocumentMarkdown(
         break;
       }
 
+      case 'iteration_group': {
+        // Grouped iteration: Iteration #1, #2, ... with fixed keys configured in template
+        const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
+        if (Array.isArray(val) && val.length > 0) {
+          val.forEach((iterItem: any, iterIdx: number) => {
+            const iterNum = iterItem.iteration_number || (iterIdx + 1);
+            const iterTitle = iterItem.title || `Iteration #${iterNum}`;
+            lines.push(`${subHeadingPrefix} ${iterTitle}`);
+            lines.push('');
+
+            const configuredFields = elem.iteration_fields && elem.iteration_fields.length > 0
+              ? elem.iteration_fields
+              : null;
+
+            if (configuredFields) {
+              for (const f of configuredFields) {
+                const itemVal = iterItem.values?.[f.key] !== undefined
+                  ? iterItem.values[f.key]
+                  : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ?? iterItem[f.key] ?? '');
+                const textVal = String(itemVal || '').trim();
+                if (textVal.includes('\n')) {
+                  lines.push(`- **${f.key}:**`);
+                  for (const subLine of textVal.split('\n')) {
+                    lines.push(`  ${subLine}`);
+                  }
+                } else {
+                  lines.push(`- **${f.key}:** ${textVal || '_No content provided._'}`);
+                }
+              }
+            } else if (iterItem.values && typeof iterItem.values === 'object') {
+              for (const [k, v] of Object.entries(iterItem.values)) {
+                const textVal = String(v || '').trim();
+                if (textVal.includes('\n')) {
+                  lines.push(`- **${k}:**`);
+                  for (const subLine of textVal.split('\n')) {
+                    lines.push(`  ${subLine}`);
+                  }
+                } else {
+                  lines.push(`- **${k}:** ${textVal || '_No content provided._'}`);
+                }
+              }
+            } else if (Array.isArray(iterItem.fields)) {
+              for (const f of iterItem.fields) {
+                const textVal = String(f.value || '').trim();
+                lines.push(`- **${f.key || 'Item'}:** ${textVal || '_No content provided._'}`);
+              }
+            }
+            lines.push('');
+          });
+        } else {
+          lines.push('_No iterations recorded._');
+          lines.push('');
+        }
+        break;
+      }
+
       case 'interactive_list':
       case 'repeatable_list': {
+        // If element has configured iteration_fields, format as grouped iterations
+        if (elem.iteration_fields && elem.iteration_fields.length > 0 && Array.isArray(val) && val.length > 0 && (val[0]?.values || val[0]?.fields)) {
+          const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
+          val.forEach((iterItem: any, iterIdx: number) => {
+            const iterNum = iterItem.iteration_number || (iterIdx + 1);
+            const iterTitle = iterItem.title || `Iteration #${iterNum}`;
+            lines.push(`${subHeadingPrefix} ${iterTitle}`);
+            lines.push('');
+            for (const f of elem.iteration_fields!) {
+              const itemVal = iterItem.values?.[f.key] !== undefined
+                ? iterItem.values[f.key]
+                : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ?? iterItem[f.key] ?? '');
+              const textVal = String(itemVal || '').trim();
+              if (textVal.includes('\n')) {
+                lines.push(`- **${f.key}:**`);
+                for (const subLine of textVal.split('\n')) {
+                  lines.push(`  ${subLine}`);
+                }
+              } else {
+                lines.push(`- **${f.key}:** ${textVal || '_No content provided._'}`);
+              }
+            }
+            lines.push('');
+          });
+          break;
+        }
+
         // Iterative array of editable elements (each element is description - value)
         const subHeadingPrefix = getHeadingPrefix((elem.level || 1) + 1);
         if (Array.isArray(val) && val.length > 0) {

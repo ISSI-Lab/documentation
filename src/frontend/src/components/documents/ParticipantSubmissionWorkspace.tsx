@@ -18,7 +18,16 @@ import {
   Trash2,
 } from 'lucide-react';
 import { marked } from 'marked';
-import { Document, DocumentSubmission, RepeatableSubItem, SubmissionComment, Template, User as UserModel } from '../../types';
+import {
+  Document,
+  DocumentSubmission,
+  IterationFieldConfig,
+  IterationGroupItem,
+  RepeatableSubItem,
+  SubmissionComment,
+  Template,
+  User as UserModel,
+} from '../../types';
 import { api } from '../../api/client';
 
 interface ParticipantSubmissionWorkspaceProps {
@@ -126,6 +135,77 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       : [];
     const updated = currentList.filter((item) => item.id !== subItemId);
     updateElementValue(elemId, updated);
+  };
+
+  // Grouped Iteration Handlers (Iteration #1, #2... with fixed keys like Reason, Todo, Response)
+  const handleAddIteration = (elemId: string, configuredFields?: IterationFieldConfig[] | null) => {
+    const currentList: any[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const nextNum = currentList.length + 1;
+    const fieldsToUse = configuredFields && configuredFields.length > 0
+      ? configuredFields
+      : [
+          { key: 'Reason', description: 'Reason' },
+          { key: 'Todo', description: 'Todo' },
+          { key: 'Response', description: 'Response' },
+        ];
+    const initialValues: Record<string, string> = {};
+    for (const f of fieldsToUse) {
+      initialValues[f.key] = f.default_value || '';
+    }
+    const newIteration: IterationGroupItem = {
+      id: `iter_${Date.now()}_${nextNum}`,
+      iteration_number: nextNum,
+      title: `Iteration #${nextNum}`,
+      values: initialValues,
+      fields: fieldsToUse.map((f) => ({ key: f.key, value: f.default_value || '' })),
+    };
+    updateElementValue(elemId, [...currentList, newIteration]);
+  };
+
+  const handleUpdateIterationValue = (
+    elemId: string,
+    iterId: string,
+    fieldKey: string,
+    value: string
+  ) => {
+    const currentList: any[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const updated = currentList.map((item) => {
+      if (item.id !== iterId) return item;
+      const currentValues = { ...(item.values || {}) };
+      currentValues[fieldKey] = value;
+      let updatedFields = item.fields;
+      if (Array.isArray(item.fields)) {
+        const found = item.fields.some((f: any) => f.key === fieldKey);
+        if (found) {
+          updatedFields = item.fields.map((f: any) => (f.key === fieldKey ? { ...f, value } : f));
+        } else {
+          updatedFields = [...item.fields, { key: fieldKey, value }];
+        }
+      }
+      return {
+        ...item,
+        values: currentValues,
+        fields: updatedFields,
+      };
+    });
+    updateElementValue(elemId, updated);
+  };
+
+  const handleRemoveIteration = (elemId: string, iterId: string) => {
+    const currentList: any[] = Array.isArray(elementsData[elemId])
+      ? [...elementsData[elemId]]
+      : [];
+    const filtered = currentList.filter((item) => item.id !== iterId);
+    const renumbered = filtered.map((item, idx) => ({
+      ...item,
+      iteration_number: idx + 1,
+      title: `Iteration #${idx + 1}`,
+    }));
+    updateElementValue(elemId, renumbered);
   };
 
   const handleSaveDraft = async () => {
@@ -473,6 +553,146 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                               className="w-full p-2.5 font-mono text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
                             />
                           </div>
+                        </div>
+                      ) : (elem.field_type === 'iteration_group' ||
+                        (elem.iteration_fields && elem.iteration_fields.length > 0)) ? (
+                        <div className="space-y-4 pt-1">
+                          {(() => {
+                            const configuredFields =
+                              elem.iteration_fields && elem.iteration_fields.length > 0
+                                ? elem.iteration_fields
+                                : [
+                                    { key: 'Reason', description: 'Reason for this iteration' },
+                                    { key: 'Todo', description: 'Action items to do' },
+                                    { key: 'Response', description: 'Outcome or response' },
+                                  ];
+
+                            const iterations: any[] = Array.isArray(val) ? val : [];
+
+                            return (
+                              <>
+                                <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 flex items-start justify-between gap-3">
+                                  <div>
+                                    <span className="font-bold flex items-center gap-1.5 text-blue-950 mb-0.5">
+                                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                                      Grouped Iterations • {configuredFields.length} Fixed Keys
+                                    </span>
+                                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                                      Predefined keys: {configuredFields.map((f) => (
+                                        <span
+                                          key={f.key}
+                                          className="inline-block bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-900 mx-0.5 border border-blue-200"
+                                        >
+                                          {f.key}
+                                        </span>
+                                      ))}. Fill in the values for each iteration below.
+                                    </p>
+                                  </div>
+                                  <span className="text-[11px] font-bold bg-white text-blue-700 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0">
+                                    {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
+                                  </span>
+                                </div>
+
+                                {iterations.length > 0 ? (
+                                  iterations.map((iterItem: any, subIdx: number) => {
+                                    const iterNum = iterItem.iteration_number || subIdx + 1;
+                                    return (
+                                      <div
+                                        key={iterItem.id || subIdx}
+                                        className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs"
+                                      >
+                                        <div className="bg-slate-50/90 px-4 py-2.5 flex items-center justify-between border-b border-slate-200">
+                                          <div className="flex items-center gap-2">
+                                            <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                              Iteration #{iterNum}
+                                            </span>
+                                            <span className="text-xs font-semibold text-slate-700">
+                                              Group of {configuredFields.length} Items
+                                            </span>
+                                          </div>
+
+                                          {!isSubmitted && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveIteration(elem.id, iterItem.id)}
+                                              title={`Delete Iteration #${iterNum}`}
+                                              className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        <div className="p-4 space-y-3.5 bg-white">
+                                          {configuredFields.map((f: any) => {
+                                            const fieldVal =
+                                              iterItem.values?.[f.key] !== undefined
+                                                ? iterItem.values[f.key]
+                                                : (iterItem.fields?.find((x: any) => x.key === f.key)?.value ??
+                                                   iterItem[f.key] ??
+                                                   '');
+
+                                            return (
+                                              <div key={f.key} className="space-y-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 font-mono">
+                                                      {f.key}:
+                                                    </span>
+                                                    {f.description && (
+                                                      <span className="text-[11px] text-slate-500 italic">
+                                                        {f.description}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                                                    Predefined Key
+                                                  </span>
+                                                </div>
+
+                                                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white focus-within:ring-1 focus-within:ring-blue-500">
+                                                  <textarea
+                                                    rows={2}
+                                                    disabled={isSubmitted}
+                                                    value={fieldVal}
+                                                    onChange={(e) =>
+                                                      handleUpdateIterationValue(
+                                                        elem.id,
+                                                        iterItem.id,
+                                                        f.key,
+                                                        e.target.value
+                                                      )
+                                                    }
+                                                    placeholder={f.placeholder || `Enter value for ${f.key}...`}
+                                                    className="w-full p-2.5 font-mono text-xs text-slate-800 outline-none resize-y disabled:bg-slate-50 disabled:text-slate-600"
+                                                  />
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-500">
+                                    No iterations recorded yet.
+                                  </div>
+                                )}
+
+                                {!isSubmitted && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddIteration(elem.id, configuredFields)}
+                                    className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-blue-700 hover:text-blue-800 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-2xs cursor-pointer"
+                                  >
+                                    <Plus className="w-4 h-4 text-blue-600" />
+                                    <span>+ Add Iteration (Iteration #{iterations.length + 1})</span>
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
                         <div className="space-y-3 pt-1">

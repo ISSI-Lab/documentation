@@ -130,6 +130,77 @@ templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
   }
 });
 
+function sanitizeDocumentElements(rawElements: any): DocumentElementConfig[] {
+  if (!Array.isArray(rawElements)) return [];
+  return rawElements.map((elem: any, idx: number) => {
+    let cleanIterationFields: any = null;
+    if (Array.isArray(elem.iteration_fields)) {
+      cleanIterationFields = elem.iteration_fields
+        .filter((f: any) => f && (f.key || f.label))
+        .map((f: any, fIdx: number) => ({
+          id: f.id || `field_${fIdx + 1}`,
+          key: String(f.key || f.label || `Field ${fIdx + 1}`).trim(),
+          label: f.label ? String(f.label).trim() : undefined,
+          description: f.description ? String(f.description).trim() : undefined,
+          placeholder: f.placeholder ? String(f.placeholder).trim() : undefined,
+          default_value: f.default_value !== undefined ? String(f.default_value) : undefined,
+        }));
+    }
+
+    let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
+    if (Array.isArray(defaultValue)) {
+      if (elem.field_type === 'iteration_group' || cleanIterationFields) {
+        defaultValue = defaultValue.map((iterItem: any, iterIdx: number) => {
+          const iterId = iterItem.id || `iter_${iterIdx + 1}`;
+          const iterNum = iterItem.iteration_number || (iterIdx + 1);
+          const iterTitle = iterItem.title || `Iteration #${iterNum}`;
+          const values: Record<string, string> = { ...(iterItem.values || {}) };
+          if (Array.isArray(iterItem.fields)) {
+            for (const f of iterItem.fields) {
+              if (f && f.key && values[f.key] === undefined) {
+                values[f.key] = String(f.value || '');
+              }
+            }
+          }
+          return {
+            id: iterId,
+            iteration_number: iterNum,
+            title: iterTitle,
+            values,
+          };
+        });
+      } else {
+        defaultValue = defaultValue.map((item: any, itemIdx: number) => {
+          const desc = item.description || item.title || `Item ${itemIdx + 1}`;
+          const val = item.value !== undefined ? item.value : (item.content || '');
+          return {
+            id: item.id || `item_${itemIdx + 1}`,
+            description: desc,
+            value: val,
+            title: desc,
+            content: val,
+          };
+        });
+      }
+    }
+
+    return {
+      id: elem.id || `elem_${idx + 1}`,
+      label: elem.label || `Section ${idx + 1}`,
+      description: elem.description || '',
+      field_type: elem.field_type || 'markdown',
+      level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
+      placeholder: elem.placeholder || '',
+      default_value: defaultValue,
+      required: Boolean(elem.required),
+      order: idx,
+      options: Array.isArray(elem.options) ? elem.options : null,
+      view_markdown: elem.view_markdown || elem.view_only_markdown || null,
+      iteration_fields: cleanIterationFields,
+    };
+  });
+}
+
 // POST /api/v1/templates - Create template (Personal, Organization, or Public)
 templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -166,37 +237,7 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
     }
 
     const id = `tpl-${crypto.randomBytes(4).toString('hex')}`;
-    const cleanElements: DocumentElementConfig[] = Array.isArray(document_elements)
-      ? document_elements.map((elem: any, idx: number) => {
-          let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
-          if (Array.isArray(defaultValue)) {
-            defaultValue = defaultValue.map((item: any, itemIdx: number) => {
-              const desc = item.description || item.title || `Item ${itemIdx + 1}`;
-              const val = item.value !== undefined ? item.value : (item.content || '');
-              return {
-                id: item.id || `item_${itemIdx + 1}`,
-                description: desc,
-                value: val,
-                title: desc,
-                content: val,
-              };
-            });
-          }
-          return {
-            id: elem.id || `elem_${idx + 1}`,
-            label: elem.label || `Section ${idx + 1}`,
-            description: elem.description || '',
-            field_type: elem.field_type || 'markdown',
-            level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
-            placeholder: elem.placeholder || '',
-            default_value: defaultValue,
-            required: Boolean(elem.required),
-            order: idx,
-            options: Array.isArray(elem.options) ? elem.options : null,
-            view_markdown: elem.view_markdown || elem.view_only_markdown || null,
-          };
-        })
-      : [];
+    const cleanElements: DocumentElementConfig[] = sanitizeDocumentElements(document_elements);
 
     const cleanTags = Array.isArray(tags)
       ? tags.map((t: any) => String(t).trim()).filter(Boolean)
@@ -253,37 +294,7 @@ templatesRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     let elementsJson = current.document_elements;
     if (document_elements !== undefined) {
-      const cleanElements = Array.isArray(document_elements)
-        ? document_elements.map((elem: any, idx: number) => {
-            let defaultValue = elem.default_value !== undefined ? elem.default_value : '';
-            if (Array.isArray(defaultValue)) {
-              defaultValue = defaultValue.map((item: any, itemIdx: number) => {
-                const desc = item.description || item.title || `Item ${itemIdx + 1}`;
-                const val = item.value !== undefined ? item.value : (item.content || '');
-                return {
-                  id: item.id || `item_${itemIdx + 1}`,
-                  description: desc,
-                  value: val,
-                  title: desc,
-                  content: val,
-                };
-              });
-            }
-            return {
-              id: elem.id || `elem_${idx + 1}`,
-              label: elem.label || `Section ${idx + 1}`,
-              description: elem.description || '',
-              field_type: elem.field_type || 'markdown',
-              level: typeof elem.level === 'number' ? Math.max(1, Math.min(elem.level, 4)) : 1,
-              placeholder: elem.placeholder || '',
-              default_value: defaultValue,
-              required: Boolean(elem.required),
-              order: idx,
-              options: Array.isArray(elem.options) ? elem.options : null,
-              view_markdown: elem.view_markdown || elem.view_only_markdown || null,
-            };
-          })
-        : [];
+      const cleanElements = sanitizeDocumentElements(document_elements);
       elementsJson = JSON.stringify(cleanElements);
     } else if (typeof elementsJson !== 'string') {
       elementsJson = JSON.stringify(elementsJson);

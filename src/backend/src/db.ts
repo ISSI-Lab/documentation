@@ -958,8 +958,47 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
         options: null,
       },
       {
+        id: 'investigation_iterations',
+        label: '5. Root Cause & Investigation Iterations',
+        description: 'Document debugging iterations. Each iteration groups Reason (hypothesis), Todo (action taken), and Response (findings).',
+        view_markdown: '> **Postmortem Guidance**: Record each cycle of investigative troubleshooting to trace the debugging process.',
+        field_type: 'iteration_group',
+        level: 1,
+        placeholder: 'Click + Add Iteration to log an investigation cycle',
+        iteration_fields: [
+          { key: 'Reason', description: 'Hypothesis or symptom investigated', placeholder: 'Enter reason or hypothesis...' },
+          { key: 'Todo', description: 'Action item or diagnostic command executed', placeholder: 'Enter investigative action...' },
+          { key: 'Response', description: 'Observed outcome or diagnostic finding', placeholder: 'Enter observed response...' },
+        ],
+        default_value: [
+          {
+            id: 'iter-1',
+            iteration_number: 1,
+            title: 'Iteration #1',
+            values: {
+              Reason: 'High 500 error rate observed on API gateway',
+              Todo: 'Check upstream microservice latency metrics and thread pool health',
+              Response: 'Auth service latency spike correlated with peak traffic window',
+            },
+          },
+          {
+            id: 'iter-2',
+            iteration_number: 2,
+            title: 'Iteration #2',
+            values: {
+              Reason: 'Auth service connection pool saturation suspected',
+              Todo: 'Inspect database slow query log and active thread count',
+              Response: 'Unindexed query on user sessions table holding row locks',
+            },
+          },
+        ],
+        required: false,
+        order: 4,
+        options: null,
+      },
+      {
         id: 'action_items',
-        label: '5. Action Items & Remediation Roadmap',
+        label: '6. Action Items & Remediation Roadmap',
         description: 'Remediation tasks. Click "+" to add specific remediation items.',
         field_type: 'repeatable_list',
         level: 1,
@@ -977,7 +1016,7 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
           },
         ],
         required: true,
-        order: 4,
+        order: 5,
         options: null,
       },
     ];

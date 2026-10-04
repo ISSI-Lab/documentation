@@ -23,6 +23,7 @@ import {
 import {
   DocumentElementConfig,
   DocumentElementType,
+  IterationFieldConfig,
   Organization,
   Team,
   Template,
@@ -135,6 +136,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       markdown: `Section ${nextOrder + 1}: Details`,
       pure_markdown: `Section ${nextOrder + 1}: Reference & Background (View Only)`,
       interactive_field: `Section ${nextOrder + 1}: Interactive Field`,
+      iteration_group: `Section ${nextOrder + 1}: Iterative Root Cause & Resolution (Grouped Iterations)`,
       interactive_list: `Section ${nextOrder + 1}: Iterative Editable List`,
       repeatable_list: `Section ${nextOrder + 1}: Repeatable Items List`,
       short_text: `Field ${nextOrder + 1}: Note`,
@@ -148,6 +150,18 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       markdown: '### Section Heading\n- Item 1\n- Item 2',
       pure_markdown: '### Reference & Context\nThis content is rendered as pure markdown for viewing only.',
       interactive_field: '',
+      iteration_group: [
+        {
+          id: 'iter-1',
+          iteration_number: 1,
+          title: 'Iteration #1',
+          values: {
+            Reason: '',
+            Todo: '',
+            Response: '',
+          },
+        },
+      ],
       interactive_list: [
         {
           id: 'item-1',
@@ -177,6 +191,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       markdown: 'Guidance text for the author writing in this section.',
       pure_markdown: 'Pure markdown text element strictly for viewing. Authors view rendered markdown without editing.',
       interactive_field: 'Key / Description for this interactive editing field.',
+      iteration_group: 'Grouped iterations: Each iteration contains predefined key items (Reason, Todo, Response) for the document writer to fill.',
       interactive_list: 'Iterative array of editable elements. Each editable element is description (key) - value (editable).',
       repeatable_list: 'Special item: Authors can click "+" to add new items while writing.',
       short_text: 'Short note guidance.',
@@ -198,6 +213,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
       order: nextOrder,
       options: fieldType === 'select' ? ['Option 1', 'Option 2', 'Option 3'] : null,
       view_markdown: fieldType === 'pure_markdown' ? defaultContent[fieldType] : null,
+      iteration_fields:
+        fieldType === 'iteration_group'
+          ? [
+              { key: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+              { key: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+              { key: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+            ]
+          : null,
     };
 
     const updated = [...elements, newElem];
@@ -209,6 +232,54 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
     const updated = [...elements];
     updated[index] = { ...updated[index], ...patch };
     setElements(updated);
+  };
+
+  const handleAddIterationField = (elementIndex: number) => {
+    const elem = elements[elementIndex];
+    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
+      ? [...elem.iteration_fields]
+      : [];
+    const nextIdx = currentFields.length + 1;
+    const newField: IterationFieldConfig = {
+      id: `field_${Date.now()}_${nextIdx}`,
+      key: `Key${nextIdx}`,
+      description: '',
+      placeholder: `Enter value for Key${nextIdx}...`,
+    };
+    handleUpdateElement(elementIndex, {
+      iteration_fields: [...currentFields, newField],
+    });
+  };
+
+  const handleUpdateIterationField = (
+    elementIndex: number,
+    fieldIndex: number,
+    patch: Partial<IterationFieldConfig>
+  ) => {
+    const elem = elements[elementIndex];
+    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
+      ? [...elem.iteration_fields]
+      : [];
+    if (!currentFields[fieldIndex]) return;
+    const updated = [...currentFields];
+    updated[fieldIndex] = { ...updated[fieldIndex], ...patch };
+    handleUpdateElement(elementIndex, { iteration_fields: updated });
+  };
+
+  const handleRemoveIterationField = (elementIndex: number, fieldIndex: number) => {
+    const elem = elements[elementIndex];
+    const currentFields: IterationFieldConfig[] = Array.isArray(elem.iteration_fields)
+      ? [...elem.iteration_fields]
+      : [];
+    const updated = currentFields.filter((_, i) => i !== fieldIndex);
+    handleUpdateElement(elementIndex, { iteration_fields: updated });
+  };
+
+  const handleSetIterationPreset = (
+    elementIndex: number,
+    presetFields: IterationFieldConfig[]
+  ) => {
+    handleUpdateElement(elementIndex, { iteration_fields: presetFields });
   };
 
   const handleIndent = (index: number, delta: number) => {
@@ -719,13 +790,24 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                               </label>
                               <select
                                 value={elem.field_type}
-                                onChange={(e) =>
-                                  handleUpdateElement(idx, {
-                                    field_type: e.target.value as DocumentElementType,
-                                  })
-                                }
+                                onChange={(e) => {
+                                  const newType = e.target.value as DocumentElementType;
+                                  const patch: Partial<DocumentElementConfig> = { field_type: newType };
+                                  if (
+                                    newType === 'iteration_group' &&
+                                    (!elem.iteration_fields || elem.iteration_fields.length === 0)
+                                  ) {
+                                    patch.iteration_fields = [
+                                      { key: 'Reason', description: 'Explanation or root cause', placeholder: 'Enter reason...' },
+                                      { key: 'Todo', description: 'Action items to be taken', placeholder: 'Enter action items...' },
+                                      { key: 'Response', description: 'Observed outcome or system response', placeholder: 'Enter response...' },
+                                    ];
+                                  }
+                                  handleUpdateElement(idx, patch);
+                                }}
                                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                               >
+                                <option value="iteration_group">🔄 Grouped Iteration (Predefined Keys per Iteration)</option>
                                 <option value="pure_markdown">📖 Pure Markdown (View Only)</option>
                                 <option value="interactive_field">✏️ Interactive Element (Description & Input)</option>
                                 <option value="interactive_list">📋 Iterative Array (Description - Value List)</option>
@@ -833,6 +915,137 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                                 Contains a description portion (the key) and an input (editing) part for the author's response.
                               </p>
                             </div>
+                          ) : (elem.field_type === 'iteration_group' || (elem.iteration_fields && elem.iteration_fields.length > 0)) ? (
+                            <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl space-y-3.5">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200 pb-2.5">
+                                <div>
+                                  <span className="font-bold text-xs text-blue-950 flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                                    Grouped Iteration Keys ({(elem.iteration_fields || []).length} List Items per Iteration)
+                                  </span>
+                                  <p className="text-[11px] text-blue-800">
+                                    Specify the fixed keys for each iteration. Document writers cannot change these keys; they will fill in the values for each key when adding an iteration.
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSetIterationPreset(idx, [
+                                        { key: 'Reason', description: 'Root cause or motivation', placeholder: 'Enter reason...' },
+                                        { key: 'Todo', description: 'Action items to be executed', placeholder: 'Enter todo tasks...' },
+                                        { key: 'Response', description: 'Observed response or result', placeholder: 'Enter response...' },
+                                      ])
+                                    }
+                                    className="px-2 py-0.5 text-[10px] font-semibold bg-white text-blue-800 border border-blue-300 rounded hover:bg-blue-100 transition-colors"
+                                  >
+                                    Preset: Reason, Todo, Response
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSetIterationPreset(idx, [
+                                        { key: 'Observation', description: 'What did we observe?', placeholder: 'Observed behavior...' },
+                                        { key: 'Hypothesis', description: 'Why did it occur?', placeholder: 'Hypothesis...' },
+                                        { key: 'Action', description: 'What did we do?', placeholder: 'Steps taken...' },
+                                        { key: 'Outcome', description: 'What was the result?', placeholder: 'Measured outcome...' },
+                                      ])
+                                    }
+                                    className="px-2 py-0.5 text-[10px] font-semibold bg-white text-blue-800 border border-blue-300 rounded hover:bg-blue-100 transition-colors"
+                                  >
+                                    Preset: 4-Step Plan
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Configured Keys List */}
+                              <div className="space-y-2">
+                                {Array.isArray(elem.iteration_fields) && elem.iteration_fields.length > 0 ? (
+                                  elem.iteration_fields.map((f, fIdx) => (
+                                    <div
+                                      key={f.id || fIdx}
+                                      className="p-3 bg-white border border-blue-200 rounded-lg shadow-2xs space-y-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 flex-1">
+                                          <span className="text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                                            #{fIdx + 1}
+                                          </span>
+                                          <div className="flex-1">
+                                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                                              Fixed Key (Label) *
+                                            </label>
+                                            <input
+                                              type="text"
+                                              value={f.key}
+                                              onChange={(e) =>
+                                                handleUpdateIterationField(idx, fIdx, { key: e.target.value })
+                                              }
+                                              placeholder="e.g. Reason, Todo, Response"
+                                              className="w-full px-2.5 py-1 text-xs font-bold text-slate-900 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none font-mono"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          disabled={elem.iteration_fields!.length <= 1}
+                                          onClick={() => handleRemoveIterationField(idx, fIdx)}
+                                          title="Delete Key"
+                                          className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 disabled:opacity-30 transition-colors"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                                        <div>
+                                          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                            Guidance / Description for Writer
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={f.description || ''}
+                                            onChange={(e) =>
+                                              handleUpdateIterationField(idx, fIdx, { description: e.target.value })
+                                            }
+                                            placeholder="Instructions for document writer..."
+                                            className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                                            Placeholder Hint
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={f.placeholder || ''}
+                                            onChange={(e) =>
+                                              handleUpdateIterationField(idx, fIdx, { placeholder: e.target.value })
+                                            }
+                                            placeholder="e.g. Enter reason..."
+                                            className="w-full px-2.5 py-1 text-xs text-slate-700 border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-3 bg-white rounded-lg border border-dashed border-blue-300 text-xs text-blue-700">
+                                    No keys configured yet. Click the button below to add your first key.
+                                  </div>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddIterationField(idx)}
+                                  className="w-full py-2 px-3 rounded-lg border-2 border-dashed border-blue-300 bg-white hover:bg-blue-100/60 text-blue-700 font-semibold text-xs flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>+ Add Key / Field to Iteration</span>
+                                </button>
+                              </div>
+                            </div>
                           ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
                             <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs text-emerald-900 space-y-1">
                               <span className="font-semibold flex items-center gap-1">
@@ -902,6 +1115,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
                   + Interactive Field
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddElement('iteration_group', 1)}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg text-blue-900 bg-blue-100 hover:bg-blue-200 border border-blue-400 transition-colors shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-600" />
+                  + Grouped Iteration (Reason, Todo, Response)
                 </button>
                 <button
                   type="button"
@@ -1017,7 +1238,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
                         </div>
                         <div className="h-4 bg-white rounded border border-purple-200" />
                       </div>
-                    ) : (elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list') ? (
+                    ) : elem.field_type === 'iteration_group' ||
+                      (elem.iteration_fields && elem.iteration_fields.length > 0) ? (
+                      <div className="mt-1 pt-1 border-t border-dashed border-slate-200 text-[11px] text-blue-700 bg-blue-50/50 p-1.5 rounded space-y-1">
+                        <div className="flex items-center justify-between font-semibold text-blue-900 text-[10px]">
+                          <span>🔄 Grouped Iteration</span>
+                          <span>{(elem.iteration_fields || []).length} Keys</span>
+                        </div>
+                        <div className="text-[10px] text-blue-800 font-mono truncate">
+                          {(elem.iteration_fields || []).map((f) => f.key).join(' • ') ||
+                            'Reason • Todo • Response'}
+                        </div>
+                      </div>
+                    ) : elem.field_type === 'interactive_list' || elem.field_type === 'repeatable_list' ? (
                       <div className="mt-1 pt-1 border-t border-dashed border-slate-200 flex items-center justify-between text-[11px] text-emerald-700 bg-emerald-50/50 p-1 rounded">
                         <span>Iterative Array: Description - Value</span>
                         <span className="font-bold flex items-center gap-0.5 text-emerald-800">

@@ -10,6 +10,7 @@ class DocumentElementType(str, Enum):
     MARKDOWN = "markdown"
     PURE_MARKDOWN = "pure_markdown"
     INTERACTIVE_FIELD = "interactive_field"
+    ITERATION_GROUP = "iteration_group"
     INTERACTIVE_LIST = "interactive_list"
     REPEATABLE_LIST = "repeatable_list"
     SHORT_TEXT = "short_text"
@@ -17,6 +18,15 @@ class DocumentElementType(str, Enum):
     CALLOUT = "callout"
     CODE = "code"
     CHECKLIST = "checklist"
+
+
+class IterationFieldConfig(BaseModel):
+    id: Optional[str] = None
+    key: str = Field(..., description="Field key name, e.g. Reason, Todo, Response")
+    label: Optional[str] = None
+    description: Optional[str] = None
+    placeholder: Optional[str] = None
+    default_value: Optional[str] = None
 
 
 class DocumentElementConfig(BaseModel):
@@ -30,6 +40,7 @@ class DocumentElementConfig(BaseModel):
     order: int = Field(default=0, description="Display order index")
     options: Optional[List[str]] = Field(default=None, description="Choices for select dropdowns")
     view_markdown: Optional[str] = Field(default=None, description="Pure markdown text part strictly for viewing")
+    iteration_fields: Optional[List[IterationFieldConfig]] = Field(default=None, description="Configured list of keys for iteration groups")
 
 
 class TemplateBase(BaseModel):

@@ -13,17 +13,53 @@ Each template defines an ordered collection of `DocumentElementConfig` items:
 | `id` | `string` | Unique identifier within the template (slug format, e.g. `elem_summary`). |
 | `label` | `string` | User-facing section title (e.g. "Executive Summary"). |
 | `description` | `string` | Guidance and instructions for the author when writing in this section (or Key in interactive field). |
-| `field_type` | `string` | Type of field: `pure_markdown` (view-only), `interactive_field` (description & input), `interactive_list` / `repeatable_list` (array of editable elements), `markdown`, `short_text`, `select`, `callout`, `code`, `checklist`. |
+| `field_type` | `string` | Type of field: `pure_markdown` (view-only), `interactive_field` (description & input), `iteration_group` (grouped list of items per iteration), `interactive_list` / `repeatable_list` (array of editable elements), `markdown`, `short_text`, `select`, `callout`, `code`, `checklist`. |
 | `level` | `integer` | Hierarchy level: `1` (H2 Section), `2` (H3 Subsection), `3` (H4 Sub-item). |
 | `placeholder` | `string` | Hint text displayed inside the editor when empty. |
-| `default_value` | `any` | Initial markdown text, or array of `EditableItem` objects for `interactive_list` / `repeatable_list`. |
+| `default_value` | `any` | Initial markdown text, array of `IterationGroupItem` objects for `iteration_group`, or array of `EditableItem` objects for `interactive_list` / `repeatable_list`. |
 | `required` | `boolean` | Whether the author must supply content before publishing. |
 | `order` | `integer` | Sequence order for rendering in edit mode and view preview. |
 | `options` | `list[string]` | Available choices when `field_type` is `select`. |
 | `view_markdown` | `string` | Optional pure markdown text part strictly for viewing (rendered read-only in editor). |
+| `iteration_fields` | `list[IterationFieldConfig]` | Configured list of fixed keys for `iteration_group` elements (e.g. Reason, Todo, Response). |
+
+### Grouped Iteration Element Schema (`iteration_group`)
+For elements with `field_type: "iteration_group"`, the template creator configures a fixed set of keys per iteration via `iteration_fields`:
+```json
+"iteration_fields": [
+  { "key": "Reason", "description": "Explanation or root cause", "placeholder": "Enter reason..." },
+  { "key": "Todo", "description": "Action items to be taken", "placeholder": "Enter action items..." },
+  { "key": "Response", "description": "Observed outcome or system response", "placeholder": "Enter response..." }
+]
+```
+The document writer cannot rename or change these keys; for each iteration (Iteration #1, Iteration #2, ... Iteration #N), they only fill in the values for the predefined keys:
+```json
+[
+  {
+    "id": "iter_1726058400_1",
+    "iteration_number": 1,
+    "title": "Iteration #1",
+    "values": {
+      "Reason": "High 500 error rate on API Gateway",
+      "Todo": "Inspect upstream connection pool metrics",
+      "Response": "Connection pool was saturated during peak traffic"
+    }
+  },
+  {
+    "id": "iter_1726058400_2",
+    "iteration_number": 2,
+    "title": "Iteration #2",
+    "values": {
+      "Reason": "Slow database queries holding pool connections",
+      "Todo": "Add composite index on sessions table",
+      "Response": "Query latency dropped to <5ms, errors eliminated"
+    }
+  }
+]
+```
 
 ### Iterative Editable Element Schema (`EditableItem` / `RepeatableSubItem`)
-For elements with `field_type: "interactive_list"` or `"repeatable_list"`, items added dynamically via the `+` button represent an iterative array of editable elements where each editable element is a `description - value` pair (key is description and value is editable):
+For legacy dynamic lists (`interactive_list` / `repeatable_list`), items added dynamically via the `+` button represent an iterative array of editable elements where each element is a `description - value` pair:
 ```json
 {
   "id": "sub_1726058400_1",
