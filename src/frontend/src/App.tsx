@@ -3,6 +3,7 @@ import { Navigation } from './components/Navigation';
 import { PersonalHomepage } from './components/home/PersonalHomepage';
 import { TemplateList } from './components/templates/TemplateList';
 import { TemplateBuilder } from './components/templates/TemplateBuilder';
+import { CopyTemplateModal } from './components/templates/CopyTemplateModal';
 import { DocumentList } from './components/documents/DocumentList';
 import { DocumentEditor } from './components/documents/DocumentEditor';
 import { DocumentViewer } from './components/documents/DocumentViewer';
@@ -251,6 +252,16 @@ export const App: React.FC = () => {
     } catch (err: any) {
       showToast(err.message || 'Failed to reset seeds', 'error');
     }
+  };
+
+  // Template Copy state and handler
+  const [templatePendingCopy, setTemplatePendingCopy] = useState<Template | null>(null);
+
+  const handleSuccessCopyTemplate = async (copiedTemplate: Template, targetOrg: Organization) => {
+    showToast(`Template "${copiedTemplate.title}" copied to "${targetOrg.name}" successfully!`);
+    await loadTemplates();
+    setActiveOrganizationId(targetOrg.id);
+    setTemplatePendingCopy(null);
   };
 
   // Document Handlers
@@ -618,6 +629,7 @@ export const App: React.FC = () => {
               setCurrentView('edit_template');
             }}
             onDeleteTemplate={handleDeleteTemplate}
+            onCopyTemplate={(tpl) => setTemplatePendingCopy(tpl)}
             onResetSeeds={handleResetSeeds}
             onOpenAccountModal={() => setIsAccountModalOpen(true)}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
@@ -754,6 +766,7 @@ export const App: React.FC = () => {
             organizations={organizations}
             teams={teams}
             onSave={handleSaveTemplate}
+            onCopyTemplate={(tpl) => setTemplatePendingCopy(tpl)}
             onCancel={() => {
               setActiveTemplateId(null);
               setCurrentView('templates');
@@ -809,6 +822,21 @@ export const App: React.FC = () => {
         document={documentPendingDelete}
         onClose={() => setDocumentPendingDelete(null)}
         onConfirm={handleConfirmDeleteDocument}
+      />
+
+      {/* Modal: Copy Template to Creator Organization */}
+      <CopyTemplateModal
+        isOpen={Boolean(templatePendingCopy)}
+        template={templatePendingCopy}
+        currentUser={currentUser}
+        organizations={organizations}
+        teams={teams}
+        onClose={() => setTemplatePendingCopy(null)}
+        onSuccess={handleSuccessCopyTemplate}
+        onCreateOrganizationClick={() => {
+          setTemplatePendingCopy(null);
+          setCurrentView('create_organization');
+        }}
       />
 
       {/* Modal: Create Document */}

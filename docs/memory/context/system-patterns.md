@@ -64,6 +64,12 @@ This document specifies reusable engineering patterns and code standards across 
     - Markdown compiler renders each cycle under subheadings (`### Iteration #{N}`) with itemized list entries (`- **{Key}:** {Value}`).
   - **Iterative Arrays & Repeatable Lists**:
     - Legacy dynamic lists (`interactive_list` / `repeatable_list`) allow adding dynamic single items (description - value pairs) via `+` buttons.
+- **Template Copying Across Creator Organizations Pattern**:
+  - **Cross-Organization Duplication**: Enables users to duplicate established templates from one organization to another organization where the user is the creator ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)).
+  - **Creator-Bound Destination**: Target organization must be an organization created by the caller (`isOrganizationCreator(user.id, targetOrgId)`). Self-copy to the same organization is forbidden (`400 Bad Request`).
+  - **Source Access Protection**: Non-creators cannot copy proprietary organization templates; only the template creator or organization creator/manager can initiate copies.
+  - **Deep-Cloning & Attribution**: Deeply sanitizes and duplicates document elements (including interactive fields, repeatable lists, and iterative containers), preserves tags/metadata, sets `created_by` to caller, and enriches template payloads with creator attribution (`creator_name`, `creator_username`).
+  - **Reactive Switcher Alignment**: Upon successful duplication, the frontend seamlessly pivots active organization selection to the target organization so the copied blueprint appears immediately in-situ.
 
 ---
 

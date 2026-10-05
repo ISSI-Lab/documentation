@@ -424,6 +424,19 @@ export const api = {
     });
   },
 
+  async copyTemplate(
+    id: string,
+    payload: { target_organization_id?: string; target_team_id?: string; title?: string }
+  ): Promise<Template> {
+    return request<Template>(`/templates/${encodeURIComponent(id)}/copy`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...payload,
+        target_organization_id: payload.target_organization_id || payload.target_team_id,
+      }),
+    });
+  },
+
   async resetSeedTemplates(): Promise<Template[]> {
     return request<Template[]>('/templates/actions/reset-seeds', {
       method: 'POST',

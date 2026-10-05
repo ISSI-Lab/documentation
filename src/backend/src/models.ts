@@ -234,6 +234,8 @@ export interface Template {
   organization_id: string | null;
   team_id?: string | null;
   created_by: string | null;
+  creator_name?: string;
+  creator_username?: string;
   tags: string[];
   document_elements: DocumentElementConfig[];
   created_at: string;

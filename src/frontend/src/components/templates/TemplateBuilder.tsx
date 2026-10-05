@@ -19,6 +19,7 @@ import {
   Layers,
   Sparkles,
   ListPlus,
+  Copy,
 } from 'lucide-react';
 import {
   ContainerChildElement,
@@ -42,6 +43,7 @@ interface TemplateBuilderProps {
   teams?: Team[]; // compatibility alias
   onSave: (payload: TemplateCreatePayload) => Promise<void>;
   onCancel: () => void;
+  onCopyTemplate?: (template: Template) => void;
 }
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
@@ -52,6 +54,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
   teams: propTeams,
   onSave,
   onCancel,
+  onCopyTemplate,
 }) => {
   const organizations = propOrganizations || propTeams || [];
   const initialActiveOrgId = activeOrganizationId || activeTeamId || null;
@@ -585,6 +588,16 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
+          {initialTemplate && (initialTemplate.organization_id || initialTemplate.team_id) && onCopyTemplate && (
+            <button
+              type="button"
+              onClick={() => onCopyTemplate(initialTemplate)}
+              className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 cursor-pointer shadow-xs transition-colors"
+            >
+              <Copy className="w-4 h-4 mr-1.5 text-indigo-600" />
+              Copy to Another Org
+            </button>
+          )}
           <button
             type="button"
             onClick={onCancel}

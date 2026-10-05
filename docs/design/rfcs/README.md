@@ -12,4 +12,5 @@ RFCs are design proposals for major features, cross-cutting concerns, or archite
 ## Index of RFCs
 - [`0001-rfc-process.md`](0001-rfc-process.md): Definition of the RFC lifecycle and governance.
 - [`0002-document-templating-and-authoring-engine.md`](0002-document-templating-and-authoring-engine.md): Document Templating, Dynamic Element Configuration & Markdown Authoring Engine.
+- [`0003-template-copy-across-organizations.md`](0003-template-copy-across-organizations.md): Template Copy Across Creator Organizations.
 

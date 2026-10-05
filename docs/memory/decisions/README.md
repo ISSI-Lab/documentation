@@ -27,4 +27,5 @@ python3 scripts/new_record.py adr "decision-title"
 | [0009](0009-pure-markdown-and-iterative-editable-elements.md) | Pure Markdown View-Only and Iterative Editable Document Elements | Accepted | 2026-10-04 |
 | [0010](0010-grouped-iteration-elements-with-predefined-keys.md) | Grouped Iteration Elements with Predefined Keys per Iteration | Accepted | 2026-10-04 |
 | [0011](0011-iterative-container-architecture.md) | Iterative Container Architecture | Accepted | 2026-10-04 |
+| [0012](0012-template-copy-between-creator-organizations.md) | Template Copy Between Creator Organizations | Accepted | 2026-10-04 |
 

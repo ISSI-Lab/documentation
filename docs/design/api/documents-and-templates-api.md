@@ -76,6 +76,25 @@ Update an existing template and its elements.
 ### `DELETE /api/v1/templates/{id}`
 Delete a template by ID.
 
+### `POST /api/v1/templates/{id}/copy`
+Copy an organization template to another organization created by the user.
+
+**Authorization**:
+- Caller must be authenticated (`requireAuth`).
+- Caller must be the template's creator or source organization creator/manager.
+- Caller must be the creator of the target organization (`isOrganizationCreator`).
+- Target organization cannot be identical to source organization.
+
+**Request Body**:
+```json
+{
+  "target_organization_id": "org-target-uuid",
+  "title": "Architecture Decision Record (Custom Title)"
+}
+```
+
+**Response `201 Created`**: Returns the duplicated template object scoped to the target organization with creator attribution (`creator_name`, `creator_username`).
+
 ### `POST /api/v1/templates/reset-seeds`
 Resets the template store with default industry-standard templates (ADR, PRD, Technical Design, Postmortem).
 

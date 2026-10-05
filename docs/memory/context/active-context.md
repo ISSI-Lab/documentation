@@ -38,6 +38,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Pure Markdown View-Only & Iterative Editable Elements | AI Agent | Completed | Implemented pure markdown text elements (view-only), interactive elements with description & input parts, and iterative arrays of editable elements with description (key) and value (editable) pairs ([ADR-0009](../decisions/0009-pure-markdown-and-iterative-editable-elements.md)) |
 | Unified Whole-List Iteration Addition & Predefined Keys | AI Agent | Completed | Unified iterative elements (`iteration_group`, `interactive_list`, `repeatable_list`) so document writers can only add the entire whole list of template-defined keys (e.g. Reason, Todo, Response) together as an iteration cycle, eliminating single key-value additions ([ADR-0010](../decisions/0010-grouped-iteration-elements-with-predefined-keys.md)) |
 | Iterative Container Architecture (`iteration_container`) | AI Agent | Completed | Implemented container paradigm where template creators can configure arbitrary child elements (key-value, editable markdown text, and view-only markdown), and document writers add the whole container child group together per iteration cycle ([ADR-0011](../decisions/0011-iterative-container-architecture.md)) |
+| Template Copy Across Creator Organizations | AI Agent | Completed | Implemented template copying from one organization to the creator's other organization with role validation, deep-cloning of elements, creator attribution, and interactive UI modals ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)) |
 
 ---
 
@@ -114,6 +115,12 @@ This file tracks the current sprint state, active workstreams, and recent change
   4. Markdown Compiler: Deterministically compiles iterations into Markdown subheadings (`### Iteration #1`, `### Iteration #2`) with itemized entries (`- **Reason:** ...`, `- **Todo:** ...`, `- **Response:** ...`).
   5. Template Builder UX: Added creator configurator for key list editing, preset configurations (`Reason, Todo, Response` and 4-step plans), quick add buttons, and outline hierarchy preview.
   6. Demo Seeds: Seeded `investigation_iterations` into `tpl-postmortem` template to showcase grouped iterations out-of-the-box.
+- Template Copying Between Creator Organizations ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)):
+  1. Cross-Organization Reusability: Enabled users to duplicate templates from one organization to another organization created by the user via `POST /api/v1/templates/:id/copy`.
+  2. Role & Security Enforcement: Strictly required the caller to be the creator of the target organization (`isOrganizationCreator`). Restricted source copy authority to template creators and organization creators/managers. Prevented self-copy to the same organization.
+  3. Deep Element Cloning: Deep-cloned and sanitized document elements across all field types (including nested iterative containers, repeatable lists, interactive fields, and markdown).
+  4. Template Creator Attribution: Added SQL joins to retrieve `creator_name` and `creator_username`, and rendered creator badges on template cards.
+  5. Interactive UI Experience: Built `CopyTemplateModal.tsx` filtering destinations strictly to the creator's other organizations, added `Copy` buttons on template cards in `TemplateList.tsx` and in `TemplateBuilder.tsx`, and reactive switcher realignment upon copy completion.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

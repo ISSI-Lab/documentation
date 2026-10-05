@@ -14,6 +14,8 @@ import {
   Lock,
   Users,
   Building2,
+  Copy,
+  User as UserIcon,
 } from 'lucide-react';
 import { Organization, Team, Template, User } from '../../types';
 
@@ -28,6 +30,7 @@ interface TemplateListProps {
   onSelectTemplateToCreate: (template: Template) => void;
   onEditTemplate: (templateId: string) => void;
   onDeleteTemplate: (templateId: string) => void;
+  onCopyTemplate?: (template: Template) => void;
   onCreateNewTemplate: () => void;
   onResetSeeds: () => void;
   onOpenAccountModal: () => void;
@@ -45,6 +48,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   onSelectTemplateToCreate,
   onEditTemplate,
   onDeleteTemplate,
+  onCopyTemplate,
   onCreateNewTemplate,
   onResetSeeds,
   onOpenAccountModal,
@@ -359,6 +363,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
             const tplOrgId = template.organization_id || template.team_id || null;
             const isPersonal = template.visibility === 'private' && !tplOrgId;
             const orgName = !isPublic && !isPersonal ? getOrganizationName(tplOrgId) : null;
+            const sourceOrg = organizations.find((o) => o.id === tplOrgId) || null;
+            const isTemplateCreator = Boolean(currentUser && template.created_by && template.created_by === currentUser.id);
+            const isSourceOrgCreator = Boolean(
+              currentUser &&
+              sourceOrg &&
+              (sourceOrg.is_creator || (sourceOrg.created_by && sourceOrg.created_by === currentUser.id) || sourceOrg.user_role === 'owner')
+            );
+            const canCopyTemplate = Boolean(currentUser && (isTemplateCreator || isSourceOrgCreator));
 
             return (
               <div
@@ -400,6 +412,12 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                               </>
                             )}
                           </span>
+                          {(template.creator_name || template.creator_username) && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded">
+                              <UserIcon className="w-2.5 h-2.5 text-slate-500" />
+                              {template.creator_name || template.creator_username}
+                            </span>
+                          )}
                         </div>
                         <h3 className="text-base font-bold text-slate-900 mt-1">
                           {template.title}
@@ -472,6 +490,16 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
+                        {tplOrgId && onCopyTemplate && canCopyTemplate && (
+                          <button
+                            type="button"
+                            onClick={() => onCopyTemplate(template)}
+                            title="Copy template to creator's other organization"
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200 transition-colors cursor-pointer border border-transparent hover:border-slate-300"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onDeleteTemplate(template.id)}

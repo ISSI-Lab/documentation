@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { pool, seedDefaultTemplates } from '../db';
 import { DocumentElementConfig, Template, TemplateVisibility } from '../models';
-import { AuthenticatedRequest, isOrganizationManager, optionalAuth, requireAuth } from '../auth';
+import { AuthenticatedRequest, isOrganizationCreator, isOrganizationManager, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
 
 export const templatesRouter = Router();
 
@@ -48,6 +48,8 @@ function formatTemplateRow(row: any): Template {
     organization_id: orgId,
     team_id: orgId, // compatibility
     created_by: row.created_by || null,
+    creator_name: row.creator_name || undefined,
+    creator_username: row.creator_username || undefined,
     tags,
     document_elements: elements,
     created_at: new Date(row.created_at).toISOString(),
@@ -62,7 +64,12 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
     const { organization_id, team_id, visibility, tag, search, scope } = req.query;
     const targetOrgId = (organization_id || team_id) as string | undefined;
 
-    let query = 'SELECT * FROM templates WHERE ';
+    let query = `
+      SELECT t.*, u.name as creator_name, u.username as creator_username
+      FROM templates t
+      LEFT JOIN users u ON t.created_by = u.id
+      WHERE 
+    `;
     const conditions: string[] = [];
     const params: any[] = [];
 
@@ -70,36 +77,36 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
     if (userId) {
       // Authenticated: can see public templates OR their own personal templates OR private templates of organizations they belong to
       conditions.push(
-        `(visibility = 'public' OR created_by = ? OR (organization_id IS NOT NULL AND organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
+        `(t.visibility = 'public' OR t.created_by = ? OR (t.organization_id IS NOT NULL AND t.organization_id IN (SELECT organization_id FROM organization_members WHERE user_id = ?)))`
       );
       params.push(userId, userId);
     } else {
       // Unauthenticated: only public templates
-      conditions.push(`visibility = 'public'`);
+      conditions.push(`t.visibility = 'public'`);
     }
 
     if (scope === 'personal' || targetOrgId === 'personal' || targetOrgId === 'null') {
       if (userId) {
-        conditions.push('created_by = ? AND organization_id IS NULL');
+        conditions.push('t.created_by = ? AND t.organization_id IS NULL');
         params.push(userId);
       }
     } else if (targetOrgId && typeof targetOrgId === 'string') {
-      conditions.push('organization_id = ?');
+      conditions.push('t.organization_id = ?');
       params.push(targetOrgId);
     }
 
     if (visibility && (visibility === 'public' || visibility === 'private')) {
-      conditions.push('visibility = ?');
+      conditions.push('t.visibility = ?');
       params.push(visibility);
     }
 
     if (search && typeof search === 'string' && search.trim()) {
       const q = `%${search.trim().toLowerCase()}%`;
-      conditions.push('(LOWER(title) LIKE ? OR LOWER(description) LIKE ? OR LOWER(category) LIKE ?)');
+      conditions.push('(LOWER(t.title) LIKE ? OR LOWER(t.description) LIKE ? OR LOWER(t.category) LIKE ?)');
       params.push(q, q, q);
     }
 
-    query += conditions.join(' AND ') + ' ORDER BY created_at ASC';
+    query += conditions.join(' AND ') + ' ORDER BY t.created_at ASC';
 
     const [rows] = await pool.query<any[]>(query, params);
     let templates = rows.map(formatTemplateRow);
@@ -119,7 +126,13 @@ templatesRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
 // GET /api/v1/templates/:id
 templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const [rows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query<any[]>(
+      `SELECT t.*, u.name as creator_name, u.username as creator_username
+       FROM templates t
+       LEFT JOIN users u ON t.created_by = u.id
+       WHERE t.id = ?`,
+      [req.params.id]
+    );
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'Template not found' });
     }
@@ -359,7 +372,13 @@ templatesRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       ]
     );
 
-    const [createdRows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [id]);
+    const [createdRows] = await pool.query<any[]>(
+      `SELECT t.*, u.name as creator_name, u.username as creator_username
+       FROM templates t
+       LEFT JOIN users u ON t.created_by = u.id
+       WHERE t.id = ?`,
+      [id]
+    );
     res.status(201).json(formatTemplateRow(createdRows[0]));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to create template', detail: err.message });
@@ -425,7 +444,13 @@ templatesRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
       ]
     );
 
-    const [updatedRows] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [id]);
+    const [updatedRows] = await pool.query<any[]>(
+      `SELECT t.*, u.name as creator_name, u.username as creator_username
+       FROM templates t
+       LEFT JOIN users u ON t.created_by = u.id
+       WHERE t.id = ?`,
+      [id]
+    );
     res.json(formatTemplateRow(updatedRows[0]));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update template', detail: err.message });
@@ -459,11 +484,134 @@ templatesRouter.delete('/:id', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
+// POST /api/v1/templates/:id/copy - Copy template from one organization to the creator's other organization
+templatesRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { id } = req.params;
+
+    const [existing] = await pool.query<any[]>('SELECT * FROM templates WHERE id = ?', [id]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const sourceTemplate = existing[0];
+    const sourceOrgId = sourceTemplate.organization_id || sourceTemplate.team_id || null;
+
+    const rawTargetOrgId = req.body.target_organization_id || req.body.target_team_id;
+    if (!rawTargetOrgId || typeof rawTargetOrgId !== 'string' || !rawTargetOrgId.trim()) {
+      return res.status(400).json({ error: 'Target organization ID is required' });
+    }
+    const targetOrgId = rawTargetOrgId.trim();
+
+    if (sourceOrgId && sourceOrgId === targetOrgId) {
+      return res.status(400).json({
+        error: 'Cannot copy template to the same organization. Please select a different organization.',
+      });
+    }
+
+    // Verify target organization exists
+    const [targetOrgRows] = await pool.query<any[]>('SELECT * FROM organizations WHERE id = ?', [targetOrgId]);
+    if (!targetOrgRows || targetOrgRows.length === 0) {
+      return res.status(404).json({ error: 'Target organization not found' });
+    }
+
+    // Permission check for target organization:
+    // "to the creator's other organization" -> user must be the creator of the target organization
+    const isTargetCreator = await isOrganizationCreator(user.id, targetOrgId);
+    if (!isTargetCreator && user.user_type !== 'organizer') {
+      return res.status(403).json({
+        error: 'Permission denied: You can only copy templates to organizations where you are the creator.',
+      });
+    }
+
+    // Permission check for source template:
+    // If source template is in an organization, only the template creator or organization creator/manager can copy it
+    if (sourceOrgId) {
+      const isTemplateCreator = sourceTemplate.created_by === user.id;
+      const isSourceOrgCreator = await isOrganizationCreator(user.id, sourceOrgId);
+      const isSourceOrgManager = await isOrganizationManager(user.id, sourceOrgId);
+      if (!isTemplateCreator && !isSourceOrgCreator && !isSourceOrgManager && user.user_type !== 'organizer') {
+        return res.status(403).json({
+          error: 'Permission denied: Only the template creator or organization creator can copy this organization template.',
+        });
+      }
+    } else if (sourceTemplate.visibility === 'private' && sourceTemplate.created_by !== user.id && user.user_type !== 'organizer') {
+      return res.status(403).json({
+        error: 'Permission denied: Only the creator can copy this private template.',
+      });
+    }
+
+    const newId = `tpl-${crypto.randomBytes(4).toString('hex')}`;
+    const newTitle =
+      req.body.title && typeof req.body.title === 'string' && req.body.title.trim()
+        ? req.body.title.trim()
+        : sourceTemplate.title;
+
+    let elements = [];
+    if (typeof sourceTemplate.document_elements === 'string') {
+      try {
+        elements = JSON.parse(sourceTemplate.document_elements);
+      } catch {
+        elements = [];
+      }
+    } else if (Array.isArray(sourceTemplate.document_elements)) {
+      elements = sourceTemplate.document_elements;
+    }
+    const cleanElements = sanitizeDocumentElements(elements);
+
+    let tags: string[] = [];
+    if (typeof sourceTemplate.tags === 'string') {
+      try {
+        tags = JSON.parse(sourceTemplate.tags);
+      } catch {
+        tags = [];
+      }
+    } else if (Array.isArray(sourceTemplate.tags)) {
+      tags = sourceTemplate.tags;
+    }
+    const cleanTags = tags.map((t: any) => String(t).trim()).filter(Boolean);
+
+    await pool.query(
+      `INSERT INTO templates (id, title, description, category, icon, visibility, organization_id, created_by, tags, document_elements, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'private', ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        newId,
+        newTitle,
+        sourceTemplate.description || '',
+        sourceTemplate.category || 'General',
+        sourceTemplate.icon || 'file-text',
+        targetOrgId,
+        user.id,
+        JSON.stringify(cleanTags),
+        JSON.stringify(cleanElements),
+      ]
+    );
+
+    const [createdRows] = await pool.query<any[]>(
+      `SELECT t.*, u.name as creator_name, u.username as creator_username
+       FROM templates t
+       LEFT JOIN users u ON t.created_by = u.id
+       WHERE t.id = ?`,
+      [newId]
+    );
+
+    res.status(201).json(formatTemplateRow(createdRows[0]));
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to copy template', detail: err.message });
+  }
+});
+
 // POST /api/v1/templates/actions/reset-seeds
 templatesRouter.post('/actions/reset-seeds', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await seedDefaultTemplates();
-    const [rows] = await pool.query<any[]>('SELECT * FROM templates ORDER BY created_at ASC');
+    const [rows] = await pool.query<any[]>(
+      `SELECT t.*, u.name as creator_name, u.username as creator_username
+       FROM templates t
+       LEFT JOIN users u ON t.created_by = u.id
+       ORDER BY t.created_at ASC`
+    );
     res.json(rows.map(formatTemplateRow));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to reset seed templates', detail: err.message });
