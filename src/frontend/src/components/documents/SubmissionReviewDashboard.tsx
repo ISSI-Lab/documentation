@@ -46,6 +46,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const isPersonal = document.document_type === 'personal';
+  const isPlaceholderId = (id?: string | null) => Boolean(id && (id.startsWith('placeholder-') || id.startsWith('unsubm-')));
 
   const loadSubmissions = async () => {
     try {
@@ -74,7 +75,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
   const handleSelectSubmission = async (subm: DocumentSubmission) => {
     setSelectedSubmissionId(subm.id);
     setSelectedSubmission(subm);
-    if (!subm.id.startsWith('placeholder-')) {
+    if (!isPlaceholderId(subm.id)) {
       try {
         setLoadingDetail(true);
         const detailed = await api.getSubmission(document.id, subm.id);
@@ -91,7 +92,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
   };
 
   const handleUpdateStatus = async (newStatus: 'draft' | 'submitted' | 'reviewed') => {
-    if (!selectedSubmission || selectedSubmission.id.startsWith('placeholder-')) return;
+    if (!selectedSubmission || isPlaceholderId(selectedSubmission.id)) return;
     try {
       setUpdatingStatus(true);
       const updated = await api.updateSubmissionStatus(document.id, selectedSubmission.id, newStatus);
@@ -109,7 +110,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
 
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentInput.trim() || !selectedSubmission || selectedSubmission.id.startsWith('placeholder-')) {
+    if (!commentInput.trim() || !selectedSubmission || isPlaceholderId(selectedSubmission.id)) {
       return;
     }
     try {
@@ -286,7 +287,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
             <div className="space-y-2">
               {submissions.map((subm) => {
                 const isSelected = selectedSubmissionId === subm.id;
-                const isPlaceholder = subm.id.startsWith('placeholder-');
+                const isPlaceholder = isPlaceholderId(subm.id);
 
                 return (
                   <div
@@ -398,7 +399,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
                 <div className="flex flex-col items-start sm:items-end gap-2">
                   <div>{renderStatusBadge(selectedSubmission.status)}</div>
 
-                  {!selectedSubmission.id.startsWith('placeholder-') && (
+                  {!isPlaceholderId(selectedSubmission.id) && (
                     <div className="flex items-center gap-1.5 mt-1">
                       <button
                         type="button"
@@ -431,7 +432,7 @@ export const SubmissionReviewDashboard: React.FC<SubmissionReviewDashboardProps>
               </div>
 
               {/* Submission Content Body */}
-              {selectedSubmission.id.startsWith('placeholder-') ? (
+              {isPlaceholderId(selectedSubmission.id) ? (
                 <div className="py-12 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300 p-8">
                   <Clock className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   <h4 className="text-sm font-semibold text-slate-800">No Submission Started Yet</h4>

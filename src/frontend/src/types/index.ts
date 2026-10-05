@@ -250,7 +250,7 @@ export interface TemplateCreatePayload {
   document_elements: DocumentElementConfig[];
 }
 
-export type DocumentStatus = 'draft' | 'in_review' | 'approved' | 'published';
+export type DocumentStatus = 'draft' | 'in_review' | 'submitted' | 'approved' | 'published';
 export type DocumentType = 'personal' | 'project_shared';
 export type SubmissionType = 'personal' | 'team';
 export type SubmissionStatus = 'draft' | 'submitted' | 'reviewed' | 'not_started';

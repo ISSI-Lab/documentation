@@ -932,6 +932,8 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
 
     const template = await fetchTemplateById(sourceDoc.template_id);
 
+    const masterDocId = sourceDoc.copied_from_id || sourceDoc.id;
+
     // =========================================================================
     // BRANCH A: Personal Document Copy
     // =========================================================================
@@ -948,7 +950,7 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
          LEFT JOIN users u ON d.created_by = u.id
          LEFT JOIN projects p ON d.project_id = p.id
          WHERE d.copied_from_id = ? AND d.created_by = ?`,
-        [sourceDoc.id, user.id]
+        [masterDocId, user.id]
       );
 
       if (existingCopies && existingCopies.length > 0) {
@@ -982,14 +984,14 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
           JSON.stringify(sourceTags),
           JSON.stringify(sourceElementsData),
           compiledMd,
-          sourceDoc.id,
+          masterDocId,
         ]
       );
 
       // Ensure document_submissions row exists for creator's review roster
       const [submExists] = await pool.query<any[]>(
         'SELECT id FROM document_submissions WHERE document_id = ? AND user_id = ?',
-        [sourceDoc.id, user.id]
+        [masterDocId, user.id]
       );
       if (!submExists || submExists.length === 0) {
         const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
@@ -998,7 +1000,7 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
            VALUES (?, ?, ?, 'personal', ?, NULL, 'draft', ?, ?, NOW(), NOW())`,
           [
             submId,
-            sourceDoc.id,
+            masterDocId,
             sourceDoc.project_id || '',
             user.id,
             JSON.stringify(sourceElementsData),
@@ -1127,7 +1129,7 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
         JSON.stringify(sourceTags),
         JSON.stringify(sourceElementsData),
         compiledMd,
-        sourceDoc.id,
+        masterDocId,
         targetTeamId,
       ]
     );
@@ -1135,7 +1137,7 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
     // Also ensure team submission draft exists in document_submissions
     const [submExists] = await pool.query<any[]>(
       'SELECT id FROM document_submissions WHERE document_id = ? AND team_id = ?',
-      [sourceDoc.id, targetTeamId]
+      [masterDocId, targetTeamId]
     );
     if (!submExists || submExists.length === 0) {
       const submId = `subm-${crypto.randomBytes(4).toString('hex')}`;
@@ -1144,7 +1146,7 @@ documentsRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
          VALUES (?, ?, ?, 'team', ?, ?, 'draft', ?, ?, NOW(), NOW())`,
         [
           submId,
-          sourceDoc.id,
+          masterDocId,
           sourceDoc.project_id,
           user.id,
           targetTeamId,
@@ -1310,14 +1312,14 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
             results.push(formatSubmissionRow(s));
           } else {
             results.push({
-              id: `unsubm-${uId}`,
+              id: `placeholder-${uId}`,
               document_id: docId,
               project_id: doc.project_id || '',
               submission_type: 'personal',
               user_id: uId,
               user_name: uInfo.user_name,
               user_email: uInfo.user_email,
-              status: 'draft',
+              status: 'not_started',
               elements_data: {},
               compiled_markdown: '',
               submitted_at: null,
@@ -1381,13 +1383,13 @@ documentsRouter.get('/:id/submissions', requireAuth, async (req: AuthenticatedRe
             results.push(formatSubmissionRow(s));
           } else {
             results.push({
-              id: `unsubm-${tId}`,
+              id: `placeholder-${tId}`,
               document_id: docId,
               project_id: doc.project_id || '',
               submission_type: 'team',
               team_id: tId,
               team_name: tInfo.team_name,
-              status: 'draft',
+              status: 'not_started',
               elements_data: {},
               compiled_markdown: '',
               submitted_at: null,
@@ -1754,10 +1756,21 @@ documentsRouter.put('/:id/submissions/:submissionId', requireAuth, async (req: A
     }
     const subm = existing[0];
 
+    let docObj: any = null;
+    let projObj: any = null;
+    if (subm.document_id) {
+      const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+      if (dRows && dRows.length > 0) docObj = dRows[0];
+    }
+    if (subm.project_id) {
+      const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+      if (pRows && pRows.length > 0) projObj = pRows[0];
+    }
+
     // Verify permission: author of personal submission, or member of team submission
     if (subm.submission_type === 'personal') {
       if (subm.user_id !== user.id) {
-        const isMgr = await canReviewSubmissions(user.id, subm, null);
+        const isMgr = await canReviewSubmissions(user.id, docObj || subm, projObj);
         if (!isMgr) {
           return res.status(403).json({ error: 'You do not have permission to edit this personal submission' });
         }
@@ -1769,7 +1782,7 @@ documentsRouter.put('/:id/submissions/:submissionId', requireAuth, async (req: A
         [subm.team_id, user.id]
       );
       if (inTeam[0]?.cnt === 0) {
-        const isMgr = await canReviewSubmissions(user.id, subm, null);
+        const isMgr = await canReviewSubmissions(user.id, docObj || subm, projObj);
         if (!isMgr) {
           return res.status(403).json({ error: 'You are not a member of the assigned team for this submission' });
         }
@@ -1856,19 +1869,21 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
     }
     const subm = existing[0];
 
+    // Fetch document and project metadata
+    let docObj: any = null;
+    let projObj: any = null;
+    if (subm.document_id) {
+      const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
+      if (dRows && dRows.length > 0) docObj = dRows[0];
+    }
+    if (subm.project_id) {
+      const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
+      if (pRows && pRows.length > 0) projObj = pRows[0];
+    }
+
     // Permission check
     if (subm.submission_type === 'personal') {
       if (subm.user_id !== user.id) {
-        let docObj: any = null;
-        let projObj: any = null;
-        if (subm.document_id) {
-          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
-          if (dRows && dRows.length > 0) docObj = dRows[0];
-        }
-        if (subm.project_id) {
-          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
-          if (pRows && pRows.length > 0) projObj = pRows[0];
-        }
         const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
         if (!isReviewer) {
           return res.status(403).json({ error: 'Only the author can submit this personal submission' });
@@ -1880,16 +1895,6 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
         [subm.team_id, user.id]
       );
       if (inTeam[0]?.cnt === 0) {
-        let docObj: any = null;
-        let projObj: any = null;
-        if (subm.document_id) {
-          const [dRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [subm.document_id]);
-          if (dRows && dRows.length > 0) docObj = dRows[0];
-        }
-        if (subm.project_id) {
-          const [pRows] = await pool.query<any[]>('SELECT * FROM projects WHERE id = ?', [subm.project_id]);
-          if (pRows && pRows.length > 0) projObj = pRows[0];
-        }
         const isReviewer = await canReviewSubmissions(user.id, docObj || subm, projObj);
         if (!isReviewer) {
           return res.status(403).json({ error: 'Only team members can submit on behalf of the team' });
@@ -1897,26 +1902,80 @@ documentsRouter.post('/:id/submissions/:submissionId/submit', requireAuth, async
       }
     }
 
-    await pool.query(
-      `UPDATE document_submissions
-       SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
-       WHERE id = ?`,
-      [submissionId]
-    );
+    // Optional atomic update of elements_data if provided in request body
+    let finalElementsData: Record<string, any> | null = null;
+    let compiledMd: string | null = null;
+    if (req.body && req.body.elements_data !== undefined) {
+      let currentData: Record<string, any> = {};
+      if (typeof subm.elements_data === 'string') {
+        try {
+          currentData = JSON.parse(subm.elements_data);
+        } catch {
+          currentData = {};
+        }
+      } else if (typeof subm.elements_data === 'object' && subm.elements_data !== null) {
+        currentData = subm.elements_data;
+      }
+      const elementsToUse: Record<string, any> = { ...currentData, ...req.body.elements_data };
+      finalElementsData = elementsToUse;
+      const template = await fetchTemplateById(subm.template_id || (docObj ? docObj.template_id : null));
+      const authorLabel = subm.submission_type === 'personal' ? (user.name || user.username) : (subm.team_name || 'Team');
+      const docTitle = subm.doc_title || (docObj ? docObj.title : 'Document');
+      compiledMd = compileDocumentMarkdown(
+        docTitle,
+        'submitted',
+        authorLabel,
+        [],
+        template,
+        elementsToUse
+      );
+    }
 
-    // Also synchronize status to document copy in documents table (only copy documents)
-    if (subm.submission_type === 'personal') {
+    if (finalElementsData !== null) {
       await pool.query(
-        `UPDATE documents SET status = 'submitted', updated_at = NOW()
-         WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
-        [subm.document_id, subm.user_id, docId]
+        `UPDATE document_submissions
+         SET status = 'submitted', elements_data = ?, compiled_markdown = ?, submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW()
+         WHERE id = ?`,
+        [JSON.stringify(finalElementsData), compiledMd, submissionId]
       );
     } else {
       await pool.query(
-        `UPDATE documents SET status = 'submitted', updated_at = NOW()
-         WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
-        [subm.document_id, subm.team_id, docId]
+        `UPDATE document_submissions
+         SET status = 'submitted', submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW()
+         WHERE id = ?`,
+        [submissionId]
       );
+    }
+
+    // Synchronize status to document copy in documents table
+    if (subm.submission_type === 'personal') {
+      if (finalElementsData !== null) {
+        await pool.query(
+          `UPDATE documents SET status = 'in_review', elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+           WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [JSON.stringify(finalElementsData), compiledMd, subm.document_id, subm.user_id, docId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE documents SET status = 'in_review', updated_at = NOW()
+           WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [subm.document_id, subm.user_id, docId]
+        );
+      }
+    } else {
+      if (finalElementsData !== null) {
+        await pool.query(
+          `UPDATE documents SET status = 'in_review', elements_data = ?, compiled_markdown = ?, updated_at = NOW()
+           WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [JSON.stringify(finalElementsData), compiledMd, subm.document_id, subm.team_id, docId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE documents SET status = 'in_review', updated_at = NOW()
+           WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
+          [subm.document_id, subm.team_id, docId]
+        );
+      }
     }
 
     const [updated] = await pool.query<any[]>(
@@ -2072,7 +2131,7 @@ documentsRouter.put('/:id/submissions/:submissionId/status', requireAuth, async 
     const [submExisting] = await pool.query<any[]>('SELECT * FROM document_submissions WHERE id = ?', [submissionId]);
     if (submExisting && submExisting.length > 0) {
       const subm = submExisting[0];
-      const targetDocStatus = status === 'reviewed' ? 'approved' : status;
+      const targetDocStatus = status === 'reviewed' ? 'approved' : (status === 'submitted' ? 'in_review' : 'draft');
       if (subm.submission_type === 'personal') {
         await pool.query(
           `UPDATE documents SET status = ?, updated_at = NOW()

@@ -242,10 +242,10 @@ export interface Template {
   updated_at: string;
 }
 
-export type DocumentStatus = 'draft' | 'in_review' | 'approved' | 'published';
+export type DocumentStatus = 'draft' | 'in_review' | 'submitted' | 'approved' | 'published';
 export type DocumentType = 'personal' | 'project_shared';
 export type SubmissionType = 'personal' | 'team';
-export type SubmissionStatus = 'draft' | 'submitted' | 'reviewed';
+export type SubmissionStatus = 'draft' | 'submitted' | 'reviewed' | 'not_started';
 
 export interface SubmissionComment {
   id: string;

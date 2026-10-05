@@ -536,12 +536,14 @@ export const api = {
 
   async submitDocument(
     documentId: string,
-    submissionId: string
+    submissionId: string,
+    payload?: { elements_data?: Record<string, any> }
   ): Promise<{ message: string; submission: DocumentSubmission }> {
     return request<any>(
       `/documents/${encodeURIComponent(documentId)}/submissions/${encodeURIComponent(submissionId)}/submit`,
       {
         method: 'POST',
+        body: payload ? JSON.stringify(payload) : undefined,
       }
     );
   },

@@ -57,6 +57,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   const [submission, setSubmission] = useState<DocumentSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Form editing state
   const [elementsData, setElementsData] = useState<Record<string, any>>({});
@@ -219,10 +220,11 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   };
 
   const handleSaveDraft = async () => {
-    if (!submission) return;
+    if (!submission || saving || submitting) return;
     try {
       setSaving(true);
       setError(null);
+      setSuccessMessage(null);
       const updated = await api.updateSubmission(targetDocId, submission.id, {
         elements_data: elementsData,
       });
@@ -230,6 +232,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       setLastSavedTime(
         new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       );
+      setSuccessMessage('Draft saved successfully!');
     } catch (err: any) {
       setError(err.message || 'Failed to save submission draft');
     } finally {
@@ -238,7 +241,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   };
 
   const handleSubmit = async () => {
-    if (!submission) return;
+    if (!submission || saving || submitting) return;
     const confirmMsg = isPersonal
       ? 'Are you ready to submit your personal document for creator review?'
       : 'Are you ready to submit this shared document on behalf of your team?';
@@ -247,12 +250,16 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     try {
       setSubmitting(true);
       setError(null);
-      // Save any pending edits first
-      await api.updateSubmission(targetDocId, submission.id, {
+      setSuccessMessage(null);
+      // Submit atomically with elements_data included
+      const res = await api.submitDocument(targetDocId, submission.id, {
         elements_data: elementsData,
       });
-      const res = await api.submitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
+      setLastSavedTime(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      );
+      setSuccessMessage('Document successfully submitted for creator review!');
       setViewTab('preview');
       if (onRefreshDocument) {
         await onRefreshDocument();
@@ -265,14 +272,16 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   };
 
   const handleUnsubmit = async () => {
-    if (!submission) return;
+    if (!submission || saving || submitting) return;
     if (!window.confirm('Revert submission to draft to make further edits?')) return;
     try {
       setSubmitting(true);
       setError(null);
+      setSuccessMessage(null);
       const res = await api.unsubmitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
       setViewTab('edit');
+      setSuccessMessage('Submission reverted to draft for editing.');
       if (onRefreshDocument) {
         await onRefreshDocument();
       }
@@ -452,9 +461,34 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-800 font-bold ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-600 hover:text-emerald-900 font-bold ml-2"
+          >
+            ✕
+          </button>
         </div>
       )}
 

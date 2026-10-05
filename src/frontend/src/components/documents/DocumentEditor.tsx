@@ -183,6 +183,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   };
 
+  const handleOpenSubmissionsView = async () => {
+    if (!isPersonalMasterNonCreator && !isTeamMasterNonCreator) {
+      try {
+        await handleSave();
+      } catch (err) {
+        console.warn('Failed to auto-save before opening submissions:', err);
+      }
+    }
+    if (onOpenSubmissions) {
+      onOpenSubmissions();
+    } else if (onSwitchToView) {
+      onSwitchToView();
+    }
+  };
+
   const updateElementValue = (elemId: string, value: any) => {
     setElementsData((prev) => ({
       ...prev,
@@ -558,7 +573,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             {(isSubmittable || document.is_submittable) && (
               <button
                 type="button"
-                onClick={onOpenSubmissions || onSwitchToView}
+                onClick={handleOpenSubmissionsView}
                 className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors shadow-2xs"
                 title="View Document Submissions"
               >

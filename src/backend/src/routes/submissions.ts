@@ -258,17 +258,18 @@ submissionsRouter.put('/:id/status', requireAuth, async (req: AuthenticatedReque
     );
 
     // Synchronize status back to corresponding document instances in documents table (preserve master doc)
+    const targetDocStatus = status === 'reviewed' ? 'approved' : (status === 'submitted' ? 'in_review' : 'draft');
     if (subm.submission_type === 'personal') {
       await pool.query(
         `UPDATE documents SET status = ?, updated_at = NOW()
          WHERE (copied_from_id = ? AND created_by = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
-        [status === 'reviewed' ? 'approved' : status, subm.document_id, subm.user_id, subm.document_id]
+        [targetDocStatus, subm.document_id, subm.user_id, subm.document_id]
       );
     } else {
       await pool.query(
         `UPDATE documents SET status = ?, updated_at = NOW()
          WHERE (copied_from_id = ? AND assigned_team_id = ?) OR (id = ? AND copied_from_id IS NOT NULL)`,
-        [status === 'reviewed' ? 'approved' : status, subm.document_id, subm.team_id, subm.document_id]
+        [targetDocStatus, subm.document_id, subm.team_id, subm.document_id]
       );
     }
 

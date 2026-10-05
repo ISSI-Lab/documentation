@@ -39,6 +39,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Unified Whole-List Iteration Addition & Predefined Keys | AI Agent | Completed | Unified iterative elements (`iteration_group`, `interactive_list`, `repeatable_list`) so document writers can only add the entire whole list of template-defined keys (e.g. Reason, Todo, Response) together as an iteration cycle, eliminating single key-value additions ([ADR-0010](../decisions/0010-grouped-iteration-elements-with-predefined-keys.md)) |
 | Iterative Container Architecture (`iteration_container`) | AI Agent | Completed | Implemented container paradigm where template creators can configure arbitrary child elements (key-value, editable markdown text, and view-only markdown), and document writers add the whole container child group together per iteration cycle ([ADR-0011](../decisions/0011-iterative-container-architecture.md)) |
 | Template Copy Across Creator Organizations | AI Agent | Completed | Implemented template copying from one organization to the creator's other organization with role validation, deep-cloning of elements, creator attribution, and interactive UI modals ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)) |
+| Submittable Document Submission Workflow Fix | AI Agent | Completed | Fixed first-time submission errors, atomic submission with elements data, database status enum compatibility, idempotent submissions, reviewer roster placeholder handling, and auto-save on submission navigation |
 
 ---
 
@@ -121,6 +122,12 @@ This file tracks the current sprint state, active workstreams, and recent change
   3. Deep Element Cloning: Deep-cloned and sanitized document elements across all field types (including nested iterative containers, repeatable lists, interactive fields, and markdown).
   4. Template Creator Attribution: Added SQL joins to retrieve `creator_name` and `creator_username`, and rendered creator badges on template cards.
   5. Interactive UI Experience: Built `CopyTemplateModal.tsx` filtering destinations strictly to the creator's other organizations, added `Copy` buttons on template cards in `TemplateList.tsx` and in `TemplateBuilder.tsx`, and reactive switcher realignment upon copy completion.
+- Submittable Document Submission Workflow Cleanup & Error Resolution:
+  1. Atomic Submission: Enhanced `POST /api/v1/documents/:id/submissions/:submissionId/submit` to accept optional `elements_data` payload directly in the request body, merging form responses, re-compiling Markdown, setting `status = 'submitted'`, and updating timestamps in a single atomic database operation.
+  2. Database Status Enum Compatibility: Updated `documents` table DDL and added migration in `db.ts` to include `'submitted'` in the `status` enum, and synchronized document copy instances to `status = 'in_review'` on submit and `status = 'draft'` on unsubmit to prevent enum truncation errors.
+  3. Idempotent Submission Handling: Made the submission endpoint idempotent so re-clicking submit or submitting an already submitted record updates timestamp and elements safely without throwing errors.
+  4. Reviewer Roster Placeholder Alignment: Standardized unstarted participant and team IDs in `GET /api/v1/documents/:id/submissions` to `placeholder-${id}` with `status = 'not_started'`, and added `isPlaceholderId` helper in `SubmissionReviewDashboard.tsx` to prevent 404 detail fetches on unstarted items and cleanly render empty-state placeholders.
+  5. In-Editor Auto-Save on Submission Navigation: In `DocumentEditor.tsx`, clicking the "Submission" header button now auto-saves any pending document changes before transitioning to the submission workspace.
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
 
 ---

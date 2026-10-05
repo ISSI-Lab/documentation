@@ -318,7 +318,7 @@ export async function initDatabase(): Promise<void> {
           is_submittable BOOLEAN NOT NULL DEFAULT FALSE,
           copied_from_id VARCHAR(64) NULL,
           assigned_team_id VARCHAR(64) NULL,
-          status ENUM('draft', 'in_review', 'approved', 'published') NOT NULL DEFAULT 'draft',
+          status ENUM('draft', 'in_review', 'submitted', 'approved', 'published') NOT NULL DEFAULT 'draft',
           author VARCHAR(255) DEFAULT 'Anonymous',
           created_by VARCHAR(64) NULL,
           last_edited_by VARCHAR(64) NULL,
@@ -384,6 +384,11 @@ export async function initDatabase(): Promise<void> {
       }
       try {
         await conn.query(`ALTER TABLE \`projects\` MODIFY COLUMN organization_id VARCHAR(64) NULL`);
+      } catch {
+        // ignore
+      }
+      try {
+        await conn.query(`ALTER TABLE \`documents\` MODIFY COLUMN status ENUM('draft', 'in_review', 'submitted', 'approved', 'published') NOT NULL DEFAULT 'draft'`);
       } catch {
         // ignore
       }
