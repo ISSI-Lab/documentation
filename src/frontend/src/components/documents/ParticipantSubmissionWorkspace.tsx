@@ -46,6 +46,7 @@ interface ParticipantSubmissionWorkspaceProps {
   template: Template | null;
   currentUser: UserModel | null;
   onRefreshDocument?: () => Promise<void>;
+  onSwitchToEdit?: () => void;
 }
 
 export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorkspaceProps> = ({
@@ -53,18 +54,17 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   template,
   currentUser,
   onRefreshDocument,
+  onSwitchToEdit,
 }) => {
   const [submission, setSubmission] = useState<DocumentSubmission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Form editing state
+  // Form responses state
   const [elementsData, setElementsData] = useState<Record<string, any>>({});
-  const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-  const [viewTab, setViewTab] = useState<'edit' | 'preview'>('edit');
+  const [viewTab, setViewTab] = useState<'preview' | 'edit'>('preview');
 
   // Comments thread state
   const [comments, setComments] = useState<SubmissionComment[]>([]);
@@ -219,29 +219,8 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
     updateElementValue(elemId, renumbered);
   };
 
-  const handleSaveDraft = async () => {
-    if (!submission || saving || submitting) return;
-    try {
-      setSaving(true);
-      setError(null);
-      setSuccessMessage(null);
-      const updated = await api.updateSubmission(targetDocId, submission.id, {
-        elements_data: elementsData,
-      });
-      setSubmission(updated);
-      setLastSavedTime(
-        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
-      setSuccessMessage('Draft saved successfully!');
-    } catch (err: any) {
-      setError(err.message || 'Failed to save submission draft');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSubmit = async () => {
-    if (!submission || saving || submitting) return;
+    if (!submission || submitting) return;
     const confirmMsg = isPersonal
       ? 'Are you ready to submit your personal document for creator review?'
       : 'Are you ready to submit this shared document on behalf of your team?';
@@ -256,9 +235,6 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
         elements_data: elementsData,
       });
       setSubmission(res.submission);
-      setLastSavedTime(
-        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
       setSuccessMessage('Document successfully submitted for creator review!');
       setViewTab('preview');
       if (onRefreshDocument) {
@@ -272,7 +248,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
   };
 
   const handleUnsubmit = async () => {
-    if (!submission || saving || submitting) return;
+    if (!submission || submitting) return;
     if (!window.confirm('Revert submission to draft to make further edits?')) return;
     try {
       setSubmitting(true);
@@ -280,8 +256,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
       setSuccessMessage(null);
       const res = await api.unsubmitDocument(targetDocId, submission.id);
       setSubmission(res.submission);
-      setViewTab('edit');
-      setSuccessMessage('Submission reverted to draft for editing.');
+      setSuccessMessage('Submission reverted to draft. You can now edit your document in Document Editor.');
       if (onRefreshDocument) {
         await onRefreshDocument();
       }
@@ -363,9 +338,9 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
                 : `${submission?.team_name || 'Team'} Deliverable Submission`}
             </h2>
 
-            {lastSavedTime && (
-              <p className="text-xs text-emerald-600 font-medium mt-1">
-                Draft auto-saved at {lastSavedTime}
+            {submission?.submitted_at && (
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                Submitted on {new Date(submission.submitted_at).toLocaleString()}
               </p>
             )}
           </div>
@@ -384,42 +359,43 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
               </span>
             )}
 
-            {submission?.status === 'draft' && (
+            {(!submission || submission?.status === 'draft') && (
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-                <RotateCcw className="w-4 h-4" /> In Progress (Draft)
+                <Clock className="w-4 h-4" /> Draft (Not Yet Submitted)
               </span>
             )}
 
-            {/* Actions for draft mode */}
+            {/* Actions for draft mode vs submitted mode */}
             {!isSubmitted ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  disabled={saving || submitting}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {saving ? 'Saving...' : 'Save Draft'}
-                </button>
+              <div className="flex items-center gap-2">
+                {onSwitchToEdit && (
+                  <button
+                    type="button"
+                    onClick={onSwitchToEdit}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    Edit in Editor
+                  </button>
+                )}
 
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={saving || submitting}
+                  disabled={submitting}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   {submitting ? 'Submitting...' : 'Submit Document'}
                 </button>
-              </>
+              </div>
             ) : (
               submission?.status === 'submitted' && (
                 <button
                   type="button"
                   onClick={handleUnsubmit}
                   disabled={submitting}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors"
                   title="Revert back to draft to edit your submission"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -430,21 +406,8 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
           </div>
         </div>
 
-        {/* View Switcher: Edit vs Preview */}
+        {/* View Switcher: Preview vs Form Answers */}
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => setViewTab('edit')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-              viewTab === 'edit'
-                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            {isSubmitted ? 'View Form Answers' : 'Edit Submission Form'}
-          </button>
-
           <button
             type="button"
             onClick={() => setViewTab('preview')}
@@ -455,7 +418,20 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            Compiled Document Preview
+            Compiled Deliverable Preview
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewTab('edit')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              viewTab === 'edit'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            Form Responses
           </button>
         </div>
       </div>
@@ -929,7 +905,7 @@ export const ParticipantSubmissionWorkspace: React.FC<ParticipantSubmissionWorks
               <div
                 className="prose-custom text-xs text-slate-800"
                 dangerouslySetInnerHTML={{
-                  __html: marked.parse(submission?.compiled_markdown || '_No content compiled._') as string,
+                  __html: marked.parse(submission?.compiled_markdown || document.compiled_markdown || '_No content compiled._') as string,
                 }}
               />
             </div>

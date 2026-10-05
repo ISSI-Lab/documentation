@@ -35,6 +35,7 @@ import {
   Template,
   User as UserModel,
 } from '../../types';
+import { api } from '../../api/client';
 import { MarkdownToolbar } from './MarkdownToolbar';
 import {
   DEFAULT_CONTAINER_CHILDREN,
@@ -108,11 +109,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   // Active section tracking
   const [activeSectionId, setActiveSectionId] = useState<string>('');
   const elementRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+  // Whether current user is a writer eligible to directly submit this deliverable
+  const canSubmit = Boolean(
+    (document.is_submittable || isSubmittable) &&
+    !isPersonalMasterNonCreator &&
+    !isTeamMasterNonCreator &&
+    !(isMasterDeliverable && isCreator && !isIndividualProject)
+  );
 
   // Ensure default values are populated if missing and normalize iterative elements
   useEffect(() => {
@@ -158,6 +169,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     try {
       setSaving(true);
       setSaveError(null);
+      setSubmitSuccess(null);
       const tags = tagsInput
         .split(',')
         .map((t) => t.trim().replace(/^#/, ''))
@@ -183,18 +195,65 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   };
 
-  const handleOpenSubmissionsView = async () => {
-    if (!isPersonalMasterNonCreator && !isTeamMasterNonCreator) {
-      try {
-        await handleSave();
-      } catch (err) {
-        console.warn('Failed to auto-save before opening submissions:', err);
-      }
+  const handleSubmit = async () => {
+    if (isPersonalMasterNonCreator) {
+      setSaveError('Personal documents can only be edited by their creator. Please copy a new document instance to make your edits.');
+      return;
     }
-    if (onOpenSubmissions) {
-      onOpenSubmissions();
-    } else if (onSwitchToView) {
-      onSwitchToView();
+    if (isTeamMasterNonCreator) {
+      setSaveError('Master deliverables can only be edited by their creator. Please work on your team copy.');
+      return;
+    }
+
+    const confirmMsg = document.assigned_team_id
+      ? 'Are you ready to submit this shared document on behalf of your team for creator review?'
+      : 'Are you ready to submit this document for creator review?';
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setSubmitting(true);
+      setSaveError(null);
+      setSubmitSuccess(null);
+
+      const tags = tagsInput
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, ''))
+        .filter(Boolean);
+
+      // 1. Save document with in_review status
+      await onSave(document.id, {
+        title: title.trim(),
+        status: 'in_review',
+        author: author.trim(),
+        tags,
+        document_type: isCreator ? documentType : document.document_type,
+        is_submittable: isCreator ? isSubmittable : document.is_submittable,
+        elements_data: elementsData,
+      });
+
+      setStatus('in_review');
+
+      // 2. Fetch or initialize the submission record and submit atomically
+      const targetDocId = document.copied_from_id || document.id;
+      const mySubm = await api.getMySubmission(targetDocId);
+      await api.submitDocument(targetDocId, mySubm.id, {
+        elements_data: elementsData,
+      });
+
+      setLastSavedTime(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      );
+
+      setSubmitSuccess('Document successfully submitted for review!');
+
+      setTimeout(() => {
+        onSwitchToView();
+      }, 600);
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to submit document.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -569,29 +628,35 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
               Preview Mode
             </button>
 
-            {/* Submission button when document is submittable */}
-            {(isSubmittable || document.is_submittable) && (
-              <button
-                type="button"
-                onClick={handleOpenSubmissionsView}
-                className="inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors shadow-2xs"
-                title="View Document Submissions"
-              >
-                <Send className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                Submission
-              </button>
-            )}
-
-            {/* Save button */}
+            {/* Save (Draft) button */}
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center px-4 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
+              disabled={saving || submitting}
+              className={`inline-flex items-center px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 ${
+                canSubmit
+                  ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300'
+                  : 'text-white bg-blue-600 hover:bg-blue-700 shadow-sm'
+              }`}
+              title="Save current state as draft"
             >
               <Save className="w-3.5 h-3.5 mr-1" />
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Saving...' : canSubmit ? 'Save Draft' : 'Save'}
             </button>
+
+            {/* Direct Submit button for deliverable writers */}
+            {canSubmit && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={saving || submitting}
+                className="inline-flex items-center px-4 py-1.5 text-xs font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors disabled:opacity-50"
+                title="Directly submit document for creator review"
+              >
+                <Send className="w-3.5 h-3.5 mr-1" />
+                {submitting ? 'Submitting...' : 'Submit'}
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -642,6 +707,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
             <span>{saveError}</span>
+          </div>
+        </div>
+      )}
+
+      {submitSuccess && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 w-full mt-4">
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center justify-between gap-2 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>{submitSuccess}</span>
+            </div>
           </div>
         </div>
       )}

@@ -279,6 +279,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
             template={template}
             currentUser={currentUser}
             onRefreshDocument={onRefreshDocument}
+            onSwitchToEdit={onSwitchToEdit}
           />
         )}
 
