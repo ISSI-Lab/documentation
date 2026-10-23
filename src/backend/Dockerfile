@@ -26,6 +26,9 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=5000
 
+# Install TeX Live compiler toolchain and zip utility for native LaTeX PDF compilation and source bundling
+RUN apk add --no-cache texlive texlive-latexrecommended texlive-pictures texlive-latexextra zip
+
 COPY src/backend/package*.json ./
 RUN npm install --only=production
 

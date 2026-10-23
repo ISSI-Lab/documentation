@@ -17,10 +17,13 @@ import { TeamManagement } from './components/teams/TeamManagement';
 import { CreatorSubmissionsPage } from './components/submissions/CreatorSubmissionsPage';
 import { AlertTriangle, Check } from 'lucide-react';
 import { DeleteDocumentModal } from './components/documents/DeleteDocumentModal';
+import { LatexDocumentEditor } from './components/documents/latex/LatexDocumentEditor';
+import { CreateLatexDocumentModal } from './components/documents/latex/CreateLatexDocumentModal';
 import { api, getStoredToken } from './api/client';
 import {
   Document,
   DocumentCreatePayload,
+  LatexTemplate,
   Organization,
   Project,
   Team,
@@ -58,6 +61,7 @@ export const App: React.FC = () => {
   const activeTeamId = activeOrganizationId;
 
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [latexTemplates, setLatexTemplates] = useState<LatexTemplate[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
 
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
@@ -73,6 +77,8 @@ export const App: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [modalInitialTemplateId, setModalInitialTemplateId] = useState<string | null>(null);
   const [modalInitialProjectId, setModalInitialProjectId] = useState<string | null>(null);
+  const [isCreateLatexModalOpen, setIsCreateLatexModalOpen] = useState(false);
+  const [modalInitialLatexTemplateId, setModalInitialLatexTemplateId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -161,6 +167,15 @@ export const App: React.FC = () => {
     }
   };
 
+  const loadLatexTemplates = async () => {
+    try {
+      const list = await api.listLatexTemplates();
+      setLatexTemplates(list);
+    } catch (err: any) {
+      console.warn('Could not load LaTeX templates:', err.message);
+    }
+  };
+
   const loadDocuments = async () => {
     try {
       setLoadingDocs(true);
@@ -188,6 +203,7 @@ export const App: React.FC = () => {
       loadAllProjects();
     }
     loadTemplates();
+    loadLatexTemplates();
     loadDocuments();
   }, [activeOrganizationId, activeProjectId, currentUser]);
 
@@ -198,6 +214,7 @@ export const App: React.FC = () => {
     await checkSession();
     await loadAllProjects();
     await loadTemplates();
+    await loadLatexTemplates();
     await loadDocuments();
   };
 
@@ -591,6 +608,10 @@ export const App: React.FC = () => {
             }}
             onDeleteDocument={handleRequestDeleteDocument}
             onExportMarkdown={handleExportMarkdown}
+            onOpenCreateLatexModal={() => {
+              setModalInitialLatexTemplateId('blank');
+              setIsCreateLatexModalOpen(true);
+            }}
           />
         )}
 
@@ -614,6 +635,7 @@ export const App: React.FC = () => {
         {(currentView === 'templates' || (currentView === 'home' && !currentUser)) && (
           <TemplateList
             templates={templates}
+            latexTemplates={latexTemplates}
             currentUser={currentUser}
             organizations={organizations}
             teams={teams}
@@ -640,6 +662,22 @@ export const App: React.FC = () => {
                 setModalInitialTemplateId(tpl.id);
                 setModalInitialProjectId(activeProjectId);
                 setIsCreateModalOpen(true);
+              }
+            }}
+            onSelectLatexTemplateToCreate={(latexTpl) => {
+              if (!currentUser) {
+                setIsAuthModalOpen(true);
+              } else {
+                setModalInitialLatexTemplateId(latexTpl.id);
+                setIsCreateLatexModalOpen(true);
+              }
+            }}
+            onCreateBlankLatexDocument={() => {
+              if (!currentUser) {
+                setIsAuthModalOpen(true);
+              } else {
+                setModalInitialLatexTemplateId('blank');
+                setIsCreateLatexModalOpen(true);
               }
             }}
           />
@@ -775,44 +813,68 @@ export const App: React.FC = () => {
         )}
 
         {currentView === 'edit_document' && activeDoc && (
-          <DocumentEditor
-            document={activeDoc}
-            template={activeTemplate}
-            currentUser={currentUser}
-            onSave={handleSaveDocument}
-            onBack={() => {
-              setCurrentView('documents');
-              loadDocuments();
-            }}
-            onSwitchToView={() => {
-              setDocViewerInitialTab('overview');
-              setCurrentView('view_document');
-            }}
-            onOpenSubmissions={() => {
-              const isMaster = !activeDoc.copied_from_id;
-              const isCreator = isMaster && (!activeDoc.created_by || (currentUser && currentUser.id === activeDoc.created_by));
-              setDocViewerInitialTab(isCreator ? 'submissions' : 'my_submission');
-              setCurrentView('view_document');
-            }}
-            onExportMarkdown={handleExportMarkdown}
-          />
+          activeDoc.format === 'latex' ? (
+            <LatexDocumentEditor
+              document={activeDoc}
+              currentUser={currentUser}
+              onBack={() => {
+                setCurrentView('documents');
+                loadDocuments();
+              }}
+              showToast={showToast}
+            />
+          ) : (
+            <DocumentEditor
+              document={activeDoc}
+              template={activeTemplate}
+              currentUser={currentUser}
+              onSave={handleSaveDocument}
+              onBack={() => {
+                setCurrentView('documents');
+                loadDocuments();
+              }}
+              onSwitchToView={() => {
+                setDocViewerInitialTab('overview');
+                setCurrentView('view_document');
+              }}
+              onOpenSubmissions={() => {
+                const isMaster = !activeDoc.copied_from_id;
+                const isCreator = isMaster && (!activeDoc.created_by || (currentUser && currentUser.id === activeDoc.created_by));
+                setDocViewerInitialTab(isCreator ? 'submissions' : 'my_submission');
+                setCurrentView('view_document');
+              }}
+              onExportMarkdown={handleExportMarkdown}
+            />
+          )
         )}
 
         {currentView === 'view_document' && activeDoc && (
-          <DocumentViewer
-            document={activeDoc}
-            template={activeTemplate}
-            currentUser={currentUser}
-            initialTab={docViewerInitialTab}
-            onSwitchToEdit={() => handleOpenEditDocument(activeDoc.id)}
-            onBack={() => {
-              setCurrentView('documents');
-              loadDocuments();
-            }}
-            onExportMarkdown={handleExportMarkdown}
-            onDeleteDocument={handleRequestDeleteDocument}
-            onRefreshDocument={loadDocuments}
-          />
+          activeDoc.format === 'latex' ? (
+            <LatexDocumentEditor
+              document={activeDoc}
+              currentUser={currentUser}
+              onBack={() => {
+                setCurrentView('documents');
+                loadDocuments();
+              }}
+              showToast={showToast}
+            />
+          ) : (
+            <DocumentViewer
+              document={activeDoc}
+              template={activeTemplate}
+              currentUser={currentUser}
+              initialTab={docViewerInitialTab}
+              onSwitchToEdit={() => handleOpenEditDocument(activeDoc.id)}
+              onBack={() => {
+                setCurrentView('documents');
+                loadDocuments();
+              }}
+              onExportMarkdown={handleExportMarkdown}
+              onDeleteDocument={handleRequestDeleteDocument}
+              onRefreshDocument={loadDocuments}
+            />
+          )
         )}
       </div>
 
@@ -853,6 +915,23 @@ export const App: React.FC = () => {
         initialSelectedTeamId={activeOrganizationId}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateDocument}
+      />
+
+      {/* Modal: Create LaTeX Document */}
+      <CreateLatexDocumentModal
+        isOpen={isCreateLatexModalOpen}
+        projects={allProjects}
+        organizations={organizations}
+        currentUser={currentUser}
+        initialTemplateId={modalInitialLatexTemplateId}
+        initialProjectId={activeProjectId}
+        onClose={() => setIsCreateLatexModalOpen(false)}
+        onCreated={(newDocId) => {
+          loadDocuments();
+          setActiveDocId(newDocId);
+          setCurrentView('edit_document');
+        }}
+        showToast={showToast}
       />
 
       {/* Modal: Auth (Login/Register) */}

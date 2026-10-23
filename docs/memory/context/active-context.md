@@ -40,6 +40,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Iterative Container Architecture (`iteration_container`) | AI Agent | Completed | Implemented container paradigm where template creators can configure arbitrary child elements (key-value, editable markdown text, and view-only markdown), and document writers add the whole container child group together per iteration cycle ([ADR-0011](../decisions/0011-iterative-container-architecture.md)) |
 | Template Copy Across Creator Organizations | AI Agent | Completed | Implemented template copying from one organization to the creator's other organization with role validation, deep-cloning of elements, creator attribution, and interactive UI modals ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)) |
 | Submittable Document Submission Workflow | AI Agent | Completed | Fixed first-time submission errors, atomic submission with elements data, database status enum compatibility, direct in-editor "Submit" and "Save Draft" actions, external "Submission" viewer button in document list, and eliminated redundant draft saving in submission workspace |
+| LaTeX Multi-File Editing & Compilation | AI Agent | Completed | Ported LaTeX editing, multi-file hierarchy, TeX Live compiler, and live PDF preview from latex_tool into DocForge with MySQL 8.0 backend ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
 
 ---
 

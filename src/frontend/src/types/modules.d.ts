@@ -86,6 +86,22 @@ declare module 'lucide-react' {
   export const MessageSquare: IconComponent;
   export const Share2: IconComponent;
   export const ChevronRight: IconComponent;
+  export const Play: IconComponent;
+  export const Folder: IconComponent;
+  export const Upload: IconComponent;
+  export const Star: IconComponent;
+  export const CheckCircle: IconComponent;
+  export const Terminal: IconComponent;
+  export const Maximize2: IconComponent;
+  export const Minimize2: IconComponent;
+  export const BookOpen: IconComponent;
+  export const Presentation: IconComponent;
+  export const Image: IconComponent;
+  export const ZoomIn: IconComponent;
+  export const ZoomOut: IconComponent;
+  export const Archive: IconComponent;
+  export const Code2: IconComponent;
+  export const Sigma: IconComponent;
 }
 
 declare module 'marked' {

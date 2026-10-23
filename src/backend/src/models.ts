@@ -307,8 +307,113 @@ export interface Document {
   tags: string[];
   elements_data: Record<string, any>;
   compiled_markdown: string;
+  format?: DocumentFormat;
+  latex_project?: LatexProject;
   submissions_count?: number;
   copies_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type DocumentFormat = 'markdown' | 'latex';
+export type CompilerType = 'pdflatex' | 'xelatex' | 'lualatex';
+
+export interface LatexProject {
+  id: string;
+  document_id: string;
+  name: string;
+  description?: string;
+  compiler: CompilerType;
+  root_doc_id?: string | null;
+  spell_check_language?: string;
+  brand_variation_id?: string | null;
+  image_name?: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  folders?: LatexFolder[];
+  docs?: LatexDoc[];
+  files?: LatexFile[];
+  main_doc?: LatexDoc;
+}
+
+export interface LatexFolder {
+  id: string;
+  project_id: string;
+  parent_folder_id?: string | null;
+  name: string;
+  path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LatexDoc {
+  id: string;
+  project_id: string;
+  folder_id?: string | null;
+  name: string;
+  path: string;
+  content: string;
+  rev: number;
+  version: number;
+  is_main?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LatexFile {
+  id: string;
+  project_id: string;
+  folder_id?: string | null;
+  name: string;
+  path: string;
+  size: number;
+  mime_type: string;
+  data?: string | Buffer | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LatexCompilationError {
+  line: number;
+  message: string;
+  file: string;
+  type?: 'error' | 'warning';
+}
+
+export interface LatexCompilation {
+  id: string;
+  project_id: string;
+  status: 'success' | 'error' | 'compiling';
+  compiler: CompilerType;
+  logs?: string | null;
+  errors?: LatexCompilationError[] | null;
+  pdf_size?: number | null;
+  created_at: string;
+}
+
+export interface LatexTemplateFileEntry {
+  name: string;
+  path: string;
+  content?: string;
+  is_main?: boolean;
+  folder?: string;
+}
+
+export interface LatexTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  compiler: CompilerType;
+  main_file: string;
+  icon: string;
+  visibility: TemplateVisibility;
+  organization_id: string | null;
+  created_by: string | null;
+  tags: string[];
+  template_files: LatexTemplateFileEntry[];
+  thumbnail_url?: string | null;
   created_at: string;
   updated_at: string;
 }

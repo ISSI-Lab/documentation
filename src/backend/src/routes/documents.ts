@@ -64,6 +64,7 @@ function formatDocumentRow(row: any): Document {
     tags,
     elements_data: elementsData,
     compiled_markdown: row.compiled_markdown || '',
+    format: row.format || 'markdown',
     submissions_count: Number(row.submissions_count || 0),
     copies_count: Number(row.copies_count || 0),
     created_at: new Date(row.created_at).toISOString(),
@@ -376,7 +377,119 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       }
     }
 
-    // Fetch template details
+    // Check if creating a LaTeX document (either explicitly format === 'latex' or from a LaTeX template)
+    const [latexTplRows] = await pool.query<any[]>('SELECT * FROM latex_templates WHERE id = ?', [template_id]);
+    const isLatex = req.body.format === 'latex' || (latexTplRows && latexTplRows.length > 0) || String(template_id).startsWith('tpl-latex-');
+
+    if (isLatex) {
+      const docId = `doc-${crypto.randomBytes(4).toString('hex')}`;
+      const cleanAuthor = (author && typeof author === 'string' && author.trim()) || user.name || user.username;
+      const cleanTags = Array.isArray(tags) ? tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
+      const status = 'draft';
+
+      let templateTitle = 'Blank LaTeX Document';
+      let latexTpl: any = null;
+      if (latexTplRows && latexTplRows.length > 0) {
+        latexTpl = latexTplRows[0];
+        templateTitle = latexTpl.title;
+      }
+
+      const docType = (project_id && projAssociationType === 'individual') || !project_id
+        ? 'personal'
+        : (document_type === 'personal' ? 'personal' : 'project_shared');
+
+      // 1. Insert into documents table
+      await pool.query(
+        `INSERT INTO documents (
+          id, title, project_id, organization_id, template_id, template_title,
+          document_type, format, is_submittable, status, author, created_by, last_edited_by,
+          tags, elements_data, compiled_markdown, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'latex', ?, ?, ?, ?, ?, ?, '{}', '', NOW(), NOW())`,
+        [
+          docId,
+          title.trim(),
+          project_id || null,
+          resolvedOrgId,
+          template_id,
+          templateTitle,
+          docType,
+          Boolean(is_submittable),
+          status,
+          cleanAuthor,
+          user.id,
+          user.id,
+          JSON.stringify(cleanTags),
+        ]
+      );
+
+      // 2. Insert into latex_projects
+      const projectIdForLatex = `proj-${crypto.randomUUID()}`;
+      const compiler = (latexTpl && latexTpl.compiler) || req.body.compiler || 'pdflatex';
+      await pool.query(
+        `INSERT INTO latex_projects (id, document_id, name, description, compiler, root_doc_id, active, created_at, updated_at)
+         VALUES (?, ?, ?, '', ?, NULL, TRUE, NOW(), NOW())`,
+        [projectIdForLatex, docId, title.trim(), compiler]
+      );
+
+      // 3. Populate template files into latex_docs
+      let rootDocId: string | null = null;
+      if (latexTpl) {
+        let tplFiles: any[] = [];
+        try {
+          tplFiles = typeof latexTpl.template_files === 'string' ? JSON.parse(latexTpl.template_files) : latexTpl.template_files;
+        } catch {
+          tplFiles = [];
+        }
+
+        for (const tf of tplFiles) {
+          const fileId = `doc-${crypto.randomUUID()}`;
+          const isMain = Boolean(tf.is_main || tf.name === latexTpl.main_file || tf.name === 'main.tex');
+          await pool.query(
+            `INSERT INTO latex_docs (id, project_id, folder_id, name, path, content, rev, version, created_at, updated_at)
+             VALUES (?, ?, NULL, ?, ?, ?, 0, 1, NOW(), NOW())`,
+            [fileId, projectIdForLatex, tf.name, tf.path || tf.name, tf.content || '']
+          );
+          if (isMain && !rootDocId) {
+            rootDocId = fileId;
+          }
+        }
+      } else {
+        // Default starter main.tex
+        const defaultDocId = `doc-${crypto.randomUUID()}`;
+        rootDocId = defaultDocId;
+        const starterContent = `\\documentclass{article}
+\\usepackage{amsmath}
+\\usepackage{graphicx}
+
+\\title{${title.trim()}}
+\\author{${cleanAuthor}}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\section{Introduction}
+Start typing your LaTeX document here...
+
+\\end{document}
+`;
+        await pool.query(
+          `INSERT INTO latex_docs (id, project_id, folder_id, name, path, content, rev, version, created_at, updated_at)
+           VALUES (?, ?, NULL, 'main.tex', 'main.tex', ?, 0, 1, NOW(), NOW())`,
+          [defaultDocId, projectIdForLatex, starterContent]
+        );
+      }
+
+      if (rootDocId) {
+        await pool.query('UPDATE latex_projects SET root_doc_id = ? WHERE id = ?', [rootDocId, projectIdForLatex]);
+      }
+
+      const [createdDocRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
+      return res.status(201).json(formatDocumentRow(createdDocRows[0]));
+    }
+
+    // Markdown Path: Fetch template details
     const template = await fetchTemplateById(template_id);
     if (!template) {
       return res.status(400).json({ error: `Template with ID '${template_id}' not found` });

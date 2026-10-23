@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS documents (
     template_id VARCHAR(64) NOT NULL,
     template_title VARCHAR(255) NOT NULL,
     document_type ENUM('personal', 'project_shared') NOT NULL DEFAULT 'project_shared',
+    format ENUM('markdown', 'latex') NOT NULL DEFAULT 'markdown',
     is_submittable BOOLEAN NOT NULL DEFAULT FALSE,
     copied_from_id VARCHAR(64) NULL,
     assigned_team_id VARCHAR(64) NULL,
@@ -448,6 +449,201 @@ VALUES
       'required', true,
       'order', 4,
       'options', NULL
+    )
+  ),
+  NOW(),
+  NOW()
+)
+ON DUPLICATE KEY UPDATE title=VALUES(title);
+
+-- ==============================================================================
+-- 8. LaTeX Tooling & Multi-File Project Architecture (MySQL 8.0)
+-- ==============================================================================
+
+-- 8.1 LaTeX Templates Table
+CREATE TABLE IF NOT EXISTS latex_templates (
+    id VARCHAR(64) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    category VARCHAR(100) NOT NULL DEFAULT 'Academic',
+    compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+    main_file VARCHAR(255) NOT NULL DEFAULT 'main.tex',
+    icon VARCHAR(50) NOT NULL DEFAULT 'file-code-2',
+    visibility ENUM('private', 'public') NOT NULL DEFAULT 'public',
+    organization_id VARCHAR(64) NULL,
+    created_by VARCHAR(64) NULL,
+    tags JSON NULL,
+    template_files JSON NOT NULL,
+    thumbnail_url VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_org_id (organization_id),
+    INDEX idx_visibility (visibility)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.2 LaTeX Projects Table (1-to-1 extension of documents table for latex format)
+CREATE TABLE IF NOT EXISTS latex_projects (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+    root_doc_id VARCHAR(64) NULL,
+    spell_check_language VARCHAR(10) NOT NULL DEFAULT 'en',
+    brand_variation_id VARCHAR(64) NULL,
+    image_name VARCHAR(100) NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_doc_id (document_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.3 LaTeX Project Folders Table
+CREATE TABLE IF NOT EXISTS latex_folders (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    parent_folder_id VARCHAR(64) NULL,
+    name VARCHAR(255) NOT NULL,
+    path VARCHAR(500) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id),
+    INDEX idx_parent_folder_id (parent_folder_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.4 LaTeX Project Documents Table (text files: .tex, .bib, .sty, .cls, .txt)
+CREATE TABLE IF NOT EXISTS latex_docs (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    folder_id VARCHAR(64) NULL,
+    name VARCHAR(255) NOT NULL,
+    path VARCHAR(500) NOT NULL,
+    content LONGTEXT NULL,
+    rev INT NOT NULL DEFAULT 0,
+    version INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id),
+    INDEX idx_folder_id (folder_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.5 LaTeX Project Files Table (binary assets: .png, .jpg, .pdf, .eps)
+CREATE TABLE IF NOT EXISTS latex_files (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    folder_id VARCHAR(64) NULL,
+    name VARCHAR(255) NOT NULL,
+    path VARCHAR(500) NOT NULL,
+    size BIGINT NOT NULL DEFAULT 0,
+    mime_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+    data LONGBLOB NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.6 LaTeX Compilations Table (history, logs, parsed errors, and output PDF)
+CREATE TABLE IF NOT EXISTS latex_compilations (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    status ENUM('success', 'error', 'compiling') NOT NULL,
+    compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+    logs LONGTEXT NULL,
+    errors JSON NULL,
+    pdf_data LONGBLOB NULL,
+    pdf_size BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.7 LaTeX Document Snapshots Table (version checkpoints)
+CREATE TABLE IF NOT EXISTS latex_doc_snapshots (
+    id VARCHAR(64) PRIMARY KEY,
+    project_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NULL,
+    label VARCHAR(255) NULL,
+    version INT NOT NULL DEFAULT 1,
+    comment TEXT NULL,
+    snapshot_data JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_project_id (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8.8 Seed Default LaTeX Templates
+INSERT INTO latex_templates (id, title, description, category, compiler, main_file, icon, visibility, tags, template_files, created_at, updated_at)
+VALUES
+(
+  'tpl-latex-ieee',
+  'IEEE Conference Article (LaTeX)',
+  'Standard two-column IEEE Conference template with abstract, keywords, equations, figure support, and BibTeX citations.',
+  'Conference',
+  'pdflatex',
+  'main.tex',
+  'file-code-2',
+  'public',
+  JSON_ARRAY('ieee', 'conference', 'two-column', 'latex', 'academic'),
+  JSON_ARRAY(
+    JSON_OBJECT(
+      'name', 'main.tex',
+      'path', 'main.tex',
+      'is_main', true,
+      'content', '\\documentclass[twocolumn]{article}\n\\usepackage{amsmath,amsfonts}\n\\usepackage{graphicx}\n\\usepackage{xcolor}\n\n\\title{Adaptive System Framework for High-Performance Distributed Workflows}\n\\author{First Author\\\\\\textit{Research Institute} \\and Second Author\\\\\\textit{Innovation Lab}}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\n\\begin{abstract}\nThis paper introduces a novel architectural methodology for coordinating decoupled microservices under intense throughput demands. We evaluate performance across heterogeneous cloud nodes and show consistent improvements in tail latency.\n\\end{abstract}\n\n\\section{Introduction}\nDistributed modern architectures require real-time synchronization with minimal overhead. The trade-offs between strong consistency and low latency have motivated hybrid data stores combining relational models with unstructured document representations \\cite{smith2024distributed}.\n\n\\section{Theoretical Model}\nConsider a distributed network represented by graph $G = (V, E)$, where $V$ represents processing nodes and $E$ signifies network links. The latency function $L(u, v)$ for any edge $(u,v) \\in E$ is given by:\n\n\\begin{equation}\nL(u, v) = \\alpha \\cdot \\frac{D_{packet}}{B(u, v)} + \\delta_{propagation}\n\\end{equation}\n\nwhere $D_{packet}$ is packet size, $B(u, v)$ denotes bandwidth, and $\\delta_{propagation}$ represents link propagation delay.\n\n\\section{Evaluation}\n\\begin{itemize}\n\\item \\textbf{Setup}: Benchmarked with 100 concurrent workers against an enterprise cluster.\n\\item \\textbf{Throughput}: Sustained over 15,000 queries per second with sub-5ms response time.\n\\item \\textbf{Resilience}: Automated failover succeeded within 350 milliseconds.\n\\end{itemize}\n\n\\section{Conclusion}\nThe demonstrated distributed framework delivers predictable performance and robust fault isolation.\n\n\\bibliographystyle{plain}\n\\bibliography{references}\n\n\\end{document}\n'
+    ),
+    JSON_OBJECT(
+      'name', 'references.bib',
+      'path', 'references.bib',
+      'is_main', false,
+      'content', '@article{smith2024distributed,\n  author = {Smith, John and Doe, Jane},\n  title = {Scalable Transactional Topologies in Enterprise Clusters},\n  journal = {IEEE Transactions on Cloud Computing},\n  volume = {12},\n  number = {3},\n  pages = {450--462},\n  year = {2024}\n}\n'
+    )
+  ),
+  NOW(),
+  NOW()
+)
+ON DUPLICATE KEY UPDATE title=VALUES(title);
+
+INSERT INTO latex_templates (id, title, description, category, compiler, main_file, icon, visibility, tags, template_files, created_at, updated_at)
+VALUES
+(
+  'tpl-latex-report',
+  'Technical & Academic Report (LaTeX)',
+  'Formal report layout with title page, executive summary, table of contents, chapters, and mathematical environments.',
+  'Technical Report',
+  'pdflatex',
+  'main.tex',
+  'book-open',
+  'public',
+  JSON_ARRAY('report', 'technical', 'thesis', 'latex', 'chapters'),
+  JSON_ARRAY(
+    JSON_OBJECT(
+      'name', 'main.tex',
+      'path', 'main.tex',
+      'is_main', true,
+      'content', '\\documentclass[11pt,a4paper]{report}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amsmath,amssymb}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{geometry}\n\\geometry{margin=1in}\n\n\\title{\\textbf{Technical Architecture \\& System Specification}\\\\\\large Comprehensive Engineering Report}\n\\author{Architecture Review Board}\n\\date{\\today}\n\n\\begin{document}\n\n\\maketitle\n\\tableofcontents\n\\newpage\n\n\\chapter{Executive Summary}\nThis document outlines the end-to-end technical specification for our core platform services, detailing the data contracts, storage topologies, and verification criteria.\n\n\\section{Scope and Objectives}\nThe platform provides resilient technical documentation management, multi-format export, and integrated compiling toolchains.\n\n\\chapter{System Architecture}\n\\section{Service Decomposition}\nThe system utilizes decoupled container services communicating via structured REST and binary payload bridges.\n\n\\begin{equation}\nT_{total} = T_{compile} + T_{sync} + T_{render}\n\\end{equation}\n\n\\section{Data Persistence}\nMySQL 8.0 serves as the primary system of record, leveraging relational integrity and ACID guarantees.\n\n\\end{document}\n'
+    )
+  ),
+  NOW(),
+  NOW()
+)
+ON DUPLICATE KEY UPDATE title=VALUES(title);
+
+INSERT INTO latex_templates (id, title, description, category, compiler, main_file, icon, visibility, tags, template_files, created_at, updated_at)
+VALUES
+(
+  'tpl-latex-beamer',
+  'Presentation Slides (Beamer LaTeX)',
+  'Modern Beamer slide deck with Madrid theme, title page, outline, highlight blocks, and clean typography.',
+  'Presentation',
+  'pdflatex',
+  'main.tex',
+  'presentation',
+  'public',
+  JSON_ARRAY('beamer', 'presentation', 'slides', 'latex'),
+  JSON_ARRAY(
+    JSON_OBJECT(
+      'name', 'main.tex',
+      'path', 'main.tex',
+      'is_main', true,
+      'content', '\\documentclass{beamer}\n\\usetheme{Madrid}\n\\usecolortheme{whale}\n\n\\title[Platform Architecture]{Next-Generation Engineering Platform}\n\\subtitle{Architecture, Workflows \\& Verification}\n\\author{Engineering Team}\n\\institute{DocForge Engineering}\n\\date{\\today}\n\n\\begin{document}\n\n\\begin{frame}\n  \\titlepage\n\\end{frame}\n\n\\begin{frame}{Table of Contents}\n  \\tableofcontents\n\\end{frame}\n\n\\section{Overview}\n\\begin{frame}{Platform Vision \\& Goals}\n  \\begin{itemize}\n    \\item Unified documentation authoring for engineers.\n    \\item Seamless multi-tenant project management.\n    \\item Dual-path execution: Markdown and LaTeX workflows.\n    \\item Integrated live PDF compilation and preview.\n  \\end{itemize}\n\\end{frame}\n\n\\section{Technical Highlights}\n\\begin{frame}{Core Performance Metrics}\n  \\begin{block}{Throughput}\n    Compiled in under 1 second with native Alpine TeX Live.\n  \\end{block}\n  \\begin{alertblock}{Reliability}\n    Strict isolation and automated error line detection.\n  \\end{alertblock}\n\\end{frame}\n\n\\begin{frame}{Summary}\n  \\centering\n  \\textbf{Thank You!}\\\\\n  \\vspace{0.5cm}\n  Questions \\& Discussion\n\\end{frame}\n\n\\end{document}\n'
     )
   ),
   NOW(),

@@ -413,6 +413,126 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'documents', 'is_submittable', 'BOOLEAN NOT NULL DEFAULT FALSE');
       await ensureColumnExists(conn, 'documents', 'copied_from_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'assigned_team_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'documents', 'format', "ENUM('markdown', 'latex') NOT NULL DEFAULT 'markdown'");
+
+      // ==============================================================================
+      // LaTeX Tooling & Multi-File Project Architecture (MySQL 8.0)
+      // ==============================================================================
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_templates (
+          id VARCHAR(64) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          description TEXT,
+          category VARCHAR(100) NOT NULL DEFAULT 'Academic',
+          compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+          main_file VARCHAR(255) NOT NULL DEFAULT 'main.tex',
+          icon VARCHAR(50) NOT NULL DEFAULT 'file-code-2',
+          visibility ENUM('private', 'public') NOT NULL DEFAULT 'public',
+          organization_id VARCHAR(64) NULL,
+          created_by VARCHAR(64) NULL,
+          tags JSON NULL,
+          template_files JSON NOT NULL,
+          thumbnail_url VARCHAR(255) NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_org_id (organization_id),
+          INDEX idx_visibility (visibility)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_projects (
+          id VARCHAR(64) PRIMARY KEY,
+          document_id VARCHAR(64) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          description TEXT,
+          compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+          root_doc_id VARCHAR(64) NULL,
+          spell_check_language VARCHAR(10) NOT NULL DEFAULT 'en',
+          brand_variation_id VARCHAR(64) NULL,
+          image_name VARCHAR(100) NULL,
+          active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_doc_id (document_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_folders (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          parent_folder_id VARCHAR(64) NULL,
+          name VARCHAR(255) NOT NULL,
+          path VARCHAR(500) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id),
+          INDEX idx_parent_folder_id (parent_folder_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_docs (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          folder_id VARCHAR(64) NULL,
+          name VARCHAR(255) NOT NULL,
+          path VARCHAR(500) NOT NULL,
+          content LONGTEXT NULL,
+          rev INT NOT NULL DEFAULT 0,
+          version INT NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id),
+          INDEX idx_folder_id (folder_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_files (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          folder_id VARCHAR(64) NULL,
+          name VARCHAR(255) NOT NULL,
+          path VARCHAR(500) NOT NULL,
+          size BIGINT NOT NULL DEFAULT 0,
+          mime_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+          data LONGBLOB NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_compilations (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          status ENUM('success', 'error', 'compiling') NOT NULL,
+          compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
+          logs LONGTEXT NULL,
+          errors JSON NULL,
+          pdf_data LONGBLOB NULL,
+          pdf_size BIGINT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS latex_doc_snapshots (
+          id VARCHAR(64) PRIMARY KEY,
+          project_id VARCHAR(64) NOT NULL,
+          user_id VARCHAR(64) NULL,
+          label VARCHAR(255) NULL,
+          version INT NOT NULL DEFAULT 1,
+          comment TEXT NULL,
+          snapshot_data JSON NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_project_id (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
 
       // Auto-repair: Enforce that documents under projects with individual association are strictly personal
       try {
@@ -429,6 +549,7 @@ export async function initDatabase(): Promise<void> {
       // Seed config demo users, organizations, projects, and templates
       await seedConfigData(conn);
       await seedDefaultTemplates(conn);
+      await seedDefaultLatexTemplates(conn);
 
       conn.release();
       connected = true;
@@ -1075,6 +1196,238 @@ export async function seedDefaultTemplates(conn?: mysql.PoolConnection): Promise
         [t.id, t.title, t.description, t.category, t.icon, t.visibility, JSON.stringify(t.tags), JSON.stringify(t.elements)]
       );
     }
+  } finally {
+    if (!conn) {
+      runner.release();
+    }
+  }
+}
+
+export async function seedDefaultLatexTemplates(conn?: mysql.PoolConnection): Promise<void> {
+  const runner = conn || (await pool.getConnection());
+  try {
+    const latexTemplatesToSeed = [
+      {
+        id: 'tpl-latex-ieee',
+        title: 'IEEE Conference Article (LaTeX)',
+        description: 'Standard two-column IEEE Conference template with abstract, keywords, equations, figure support, and BibTeX citations.',
+        category: 'Conference',
+        compiler: 'pdflatex',
+        main_file: 'main.tex',
+        icon: 'file-code-2',
+        visibility: 'public',
+        tags: ['ieee', 'conference', 'two-column', 'latex', 'academic'],
+        template_files: [
+          {
+            name: 'main.tex',
+            path: 'main.tex',
+            is_main: true,
+            content: `\\documentclass[twocolumn]{article}
+\\usepackage{amsmath,amsfonts}
+\\usepackage{graphicx}
+\\usepackage{xcolor}
+
+\\title{Adaptive System Framework for High-Performance Distributed Workflows}
+\\author{First Author\\\\\\textit{Research Institute} \\and Second Author\\\\\\textit{Innovation Lab}}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\begin{abstract}
+This paper introduces a novel architectural methodology for coordinating decoupled microservices under intense throughput demands. We evaluate performance across heterogeneous cloud nodes and show consistent improvements in tail latency.
+\\end{abstract}
+
+\\section{Introduction}
+Distributed modern architectures require real-time synchronization with minimal overhead. The trade-offs between strong consistency and low latency have motivated hybrid data stores combining relational models with unstructured document representations \\cite{smith2024distributed}.
+
+\\section{Theoretical Model}
+Consider a distributed network represented by graph $G = (V, E)$, where $V$ represents processing nodes and $E$ signifies network links. The latency function $L(u, v)$ for any edge $(u,v) \\in E$ is given by:
+
+\\begin{equation}
+L(u, v) = \\alpha \\cdot \\frac{D_{packet}}{B(u, v)} + \\delta_{propagation}
+\\end{equation}
+
+where $D_{packet}$ is packet size, $B(u, v)$ denotes bandwidth, and $\\delta_{propagation}$ represents link propagation delay.
+
+\\section{Evaluation}
+\\begin{itemize}
+\\item \\textbf{Setup}: Benchmarked with 100 concurrent workers against an enterprise cluster.
+\\item \\textbf{Throughput}: Sustained over 15,000 queries per second with sub-5ms response time.
+\\item \\textbf{Resilience}: Automated failover succeeded within 350 milliseconds.
+\\end{itemize}
+
+\\section{Conclusion}
+The demonstrated distributed framework delivers predictable performance and robust fault isolation.
+
+\\bibliographystyle{plain}
+\\bibliography{references}
+
+\\end{document}
+`,
+          },
+          {
+            name: 'references.bib',
+            path: 'references.bib',
+            is_main: false,
+            content: `@article{smith2024distributed,
+  author = {Smith, John and Doe, Jane},
+  title = {Scalable Transactional Topologies in Enterprise Clusters},
+  journal = {IEEE Transactions on Cloud Computing},
+  volume = {12},
+  number = {3},
+  pages = {450--462},
+  year = {2024}
+}
+`,
+          },
+        ],
+      },
+      {
+        id: 'tpl-latex-report',
+        title: 'Technical & Academic Report (LaTeX)',
+        description: 'Formal report layout with title page, executive summary, table of contents, chapters, and mathematical environments.',
+        category: 'Technical Report',
+        compiler: 'pdflatex',
+        main_file: 'main.tex',
+        icon: 'book-open',
+        visibility: 'public',
+        tags: ['report', 'technical', 'thesis', 'latex', 'chapters'],
+        template_files: [
+          {
+            name: 'main.tex',
+            path: 'main.tex',
+            is_main: true,
+            content: `\\documentclass[11pt,a4paper]{report}
+\\usepackage[utf8]{inputenc}
+\\usepackage{amsmath,amssymb}
+\\usepackage{graphicx}
+\\usepackage{hyperref}
+\\usepackage{geometry}
+\\geometry{margin=1in}
+
+\\title{\\textbf{Technical Architecture \\& System Specification}\\\\\\large Comprehensive Engineering Report}
+\\author{Architecture Review Board}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+\\tableofcontents
+\\newpage
+
+\\chapter{Executive Summary}
+This document outlines the end-to-end technical specification for our core platform services, detailing the data contracts, storage topologies, and verification criteria.
+
+\\section{Scope and Objectives}
+The platform provides resilient technical documentation management, multi-format export, and integrated compiling toolchains.
+
+\\chapter{System Architecture}
+\\section{Service Decomposition}
+The system utilizes decoupled container services communicating via structured REST and binary payload bridges.
+
+\\begin{equation}
+T_{total} = T_{compile} + T_{sync} + T_{render}
+\\end{equation}
+
+\\section{Data Persistence}
+MySQL 8.0 serves as the primary system of record, leveraging relational integrity and ACID guarantees.
+
+\\end{document}
+`,
+          },
+        ],
+      },
+      {
+        id: 'tpl-latex-beamer',
+        title: 'Presentation Slides (Beamer LaTeX)',
+        description: 'Modern Beamer slide deck with Madrid theme, title page, outline, highlight blocks, and clean typography.',
+        category: 'Presentation',
+        compiler: 'pdflatex',
+        main_file: 'main.tex',
+        icon: 'presentation',
+        visibility: 'public',
+        tags: ['beamer', 'presentation', 'slides', 'latex'],
+        template_files: [
+          {
+            name: 'main.tex',
+            path: 'main.tex',
+            is_main: true,
+            content: `\\documentclass{beamer}
+\\usetheme{Madrid}
+\\usecolortheme{whale}
+
+\\title[Platform Architecture]{Next-Generation Engineering Platform}
+\\subtitle{Architecture, Workflows \\& Verification}
+\\author{Engineering Team}
+\\institute{DocForge Engineering}
+\\date{\\today}
+
+\\begin{document}
+
+\\begin{frame}
+  \\titlepage
+\\end{frame}
+
+\\begin{frame}{Table of Contents}
+  \\tableofcontents
+\\end{frame}
+
+\\section{Overview}
+\\begin{frame}{Platform Vision \\& Goals}
+  \\begin{itemize}
+    \\item Unified documentation authoring for engineers.
+    \\item Seamless multi-tenant project management.
+    \\item Dual-path execution: Markdown and LaTeX workflows.
+    \\item Integrated live PDF compilation and preview.
+  \\end{itemize}
+\\end{frame}
+
+\\section{Technical Highlights}
+\\begin{frame}{Core Performance Metrics}
+  \\begin{block}{Throughput}
+    Compiled in under 1 second with native Alpine TeX Live.
+  \\end{block}
+  \\begin{alertblock}{Reliability}
+    Strict isolation and automated error line detection.
+  \\end{alertblock}
+\\end{frame}
+
+\\begin{frame}{Summary}
+  \\centering
+  \\textbf{Thank You!}\\\\
+  \\vspace{0.5cm}
+  Questions \\& Discussion
+\\end{frame}
+
+\\end{document}
+`,
+          },
+        ],
+      },
+    ];
+
+    for (const t of latexTemplatesToSeed) {
+      await runner.query(
+        `INSERT INTO latex_templates (id, title, description, category, compiler, main_file, icon, visibility, organization_id, created_by, tags, template_files, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'usr-demo-organizer', ?, ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE 
+           title = VALUES(title),
+           description = VALUES(description),
+           category = VALUES(category),
+           compiler = VALUES(compiler),
+           main_file = VALUES(main_file),
+           icon = VALUES(icon),
+           visibility = VALUES(visibility),
+           tags = VALUES(tags),
+           template_files = VALUES(template_files),
+           updated_at = NOW()`,
+        [t.id, t.title, t.description, t.category, t.compiler, t.main_file, t.icon, t.visibility, JSON.stringify(t.tags), JSON.stringify(t.template_files)]
+      );
+    }
+  } catch (err: any) {
+    console.warn('[Database] Notice seeding LaTeX templates:', err.message);
   } finally {
     if (!conn) {
       runner.release();

@@ -20,6 +20,13 @@ import {
   TemplateCreatePayload,
   User,
   UserType,
+  CompilerType,
+  LatexCompilationError,
+  LatexDoc,
+  LatexFile,
+  LatexFolder,
+  LatexTemplate,
+  LatexWorkspaceData,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -912,6 +919,149 @@ export const api = {
         method: 'DELETE',
       }
     );
+  },
+
+  // ==============================================================================
+  // LaTeX Tooling & Workspace APIs
+  // ==============================================================================
+
+  async listLatexTemplates(params?: { category?: string; search?: string }): Promise<LatexTemplate[]> {
+    const query = new URLSearchParams();
+    if (params?.category) query.append('category', params.category);
+    if (params?.search) query.append('search', params.search);
+    const qs = query.toString();
+    return request<LatexTemplate[]>(`/latex/templates${qs ? `?${qs}` : ''}`);
+  },
+
+  async getLatexTemplate(id: string): Promise<LatexTemplate> {
+    return request<LatexTemplate>(`/latex/templates/${encodeURIComponent(id)}`);
+  },
+
+  async createLatexTemplate(payload: Partial<LatexTemplate>): Promise<LatexTemplate> {
+    return request<LatexTemplate>('/latex/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getLatexWorkspace(documentId: string): Promise<LatexWorkspaceData> {
+    return request<LatexWorkspaceData>(`/documents/${encodeURIComponent(documentId)}/latex`);
+  },
+
+  async createLatexDoc(
+    documentId: string,
+    payload: { name: string; folder_id?: string | null; content?: string }
+  ): Promise<LatexDoc> {
+    return request<LatexDoc>(`/documents/${encodeURIComponent(documentId)}/latex/doc`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateLatexDoc(
+    documentId: string,
+    docId: string,
+    payload: { content?: string; name?: string }
+  ): Promise<LatexDoc> {
+    return request<LatexDoc>(`/documents/${encodeURIComponent(documentId)}/latex/doc/${encodeURIComponent(docId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteLatexDoc(documentId: string, docId: string): Promise<void> {
+    await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/doc/${encodeURIComponent(docId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async createLatexFolder(
+    documentId: string,
+    payload: { name: string; parent_folder_id?: string | null }
+  ): Promise<LatexFolder> {
+    return request<LatexFolder>(`/documents/${encodeURIComponent(documentId)}/latex/folder`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteLatexFolder(documentId: string, folderId: string): Promise<void> {
+    await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/folder/${encodeURIComponent(folderId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async uploadLatexFile(
+    documentId: string,
+    payload: { name: string; folder_id?: string | null; data_base64: string; mime_type?: string }
+  ): Promise<LatexFile> {
+    return request<LatexFile>(`/documents/${encodeURIComponent(documentId)}/latex/upload`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteLatexFile(documentId: string, fileId: string): Promise<void> {
+    await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/file/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async renameLatexEntity(
+    documentId: string,
+    payload: { entity_id: string; entity_type: 'doc' | 'file' | 'folder'; new_name: string }
+  ): Promise<{ success: boolean; name: string }> {
+    return request<{ success: boolean; name: string }>(`/documents/${encodeURIComponent(documentId)}/latex/rename`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async setLatexRootDoc(documentId: string, docId: string): Promise<void> {
+    await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/root-doc`, {
+      method: 'POST',
+      body: JSON.stringify({ doc_id: docId }),
+    });
+  },
+
+  async updateLatexCompiler(documentId: string, compiler: CompilerType): Promise<void> {
+    await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/compiler`, {
+      method: 'POST',
+      body: JSON.stringify({ compiler }),
+    });
+  },
+
+  async compileLatexProject(
+    documentId: string,
+    payload?: { compiler?: CompilerType; main_file?: string }
+  ): Promise<{
+    success: boolean;
+    compilation_id: string;
+    status: string;
+    logs: string;
+    errors: LatexCompilationError[];
+    has_pdf: boolean;
+    pdf_url?: string | null;
+    pdf_size?: number;
+  }> {
+    return request<any>(`/documents/${encodeURIComponent(documentId)}/latex/compile`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  async getLatexLogs(
+    documentId: string
+  ): Promise<{ status: string; compiler: string; logs: string; errors: LatexCompilationError[]; created_at: string }> {
+    return request<any>(`/documents/${encodeURIComponent(documentId)}/latex/logs`);
+  },
+
+  getLatexPdfUrl(documentId: string): string {
+    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/pdf`;
+  },
+
+  getLatexZipDownloadUrl(documentId: string): string {
+    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/export/zip`;
   },
 };
 
