@@ -41,6 +41,9 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Template Copy Across Creator Organizations | AI Agent | Completed | Implemented template copying from one organization to the creator's other organization with role validation, deep-cloning of elements, creator attribution, and interactive UI modals ([ADR-0012](../decisions/0012-template-copy-between-creator-organizations.md)) |
 | Submittable Document Submission Workflow | AI Agent | Completed | Fixed first-time submission errors, atomic submission with elements data, database status enum compatibility, direct in-editor "Submit" and "Save Draft" actions, external "Submission" viewer button in document list, and eliminated redundant draft saving in submission workspace |
 | LaTeX Multi-File Editing & Compilation | AI Agent | Completed | Ported LaTeX editing, multi-file hierarchy, TeX Live compiler, and live PDF preview from latex_tool into DocForge with MySQL 8.0 backend ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
+| Public & Private LaTeX Template Scoping | AI Agent | Completed | Implemented Public, Personal, and Organization scopes for LaTeX templates with strict unauthenticated public-only filtering, full CRUD (`LatexTemplateBuilder.tsx`), cross-organization copy, and unified category filtering ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
+| LaTeX Document Version Control (Commit & Version Page) | AI Agent | Completed | Added version tag display, Commit button (with version input popup modal), and Version button on every LaTeX document in the document list, plus a dedicated Version Page (`LatexVersionPage.tsx`) to inspect each version, compare against current working files, and restore any previous version as the current working one ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
+| LaTeX File Move & Folder Management | AI Agent | Completed | Move button modal & HTML5 drag-and-drop to relocate files and binary assets into folders or root, direct file creation and upload buttons on folders, target folder selector in new file modal, hierarchical tree visualization, and backend move/path cascading APIs |
 
 ---
 
@@ -134,6 +137,44 @@ This file tracks the current sprint state, active workstreams, and recent change
      - In `DocumentList.tsx`: Writers can click the **"Submission"** / **"Team Submission"** button outside of the editor on their document cards to view their submitted deliverable, review status, and feedback thread.
      - In `ParticipantSubmissionWorkspace.tsx`: Streamlined into a dedicated Submission & Review Hub defaulting to the compiled document preview alongside reviewer comments. Removed the redundant "Save Draft" button since draft saving belongs in `DocumentEditor.tsx`; replaced ambiguous "In Progress (Draft)" with explicit states (`Draft (Not Yet Submitted)`, `Submitted (Awaiting Review)`, `Reviewed by Creator`) and clean action triggers (`Edit in Editor`, `Submit Document`, `Unsubmit to Edit`).
 - Separated environment blueprints into `docs/ops/config-templates/.env.dev` and `docs/ops/config-templates/.env.prod`.
+- Streamlined LaTeX Document Creation Modal (`CreateLatexDocumentModal.tsx`) & Editor Settings Panel (`LatexDocumentEditor.tsx`):
+  1. Replaced the starter template block grid with a scalable `<select>` dropdown menu (`#latex-template-select`) and compact single-template summary banner to accommodate growing template libraries.
+  2. Passed `latexTemplates` directly from `App.tsx` into `CreateLatexDocumentModal.tsx` and synchronized `initialTemplateId` on open so clicking "Use Template" in the LaTeX templates tab immediately pre-selects the exact template the user clicked, pre-filling the draft title and compiler engine.
+  3. Moved the LaTeX compiler engine (`pdfLaTeX`, `XeLaTeX`, `LuaLaTeX`) and auto-compile options out of the inline toolbar and into a clean **Settings** gear icon button (`[data-testid="latex-settings-btn"]`) that opens a dedicated Project Settings popover panel (`[data-testid="latex-settings-panel"]`) in `LatexDocumentEditor.tsx` (and a collapsible Settings button in `CreateLatexDocumentModal.tsx`).
+  4. Removed redundant external PDF Zoom In / Zoom Out toolbar buttons (`pdfZoom`) from `LatexDocumentEditor.tsx`, relying directly on the embedded PDF viewer's native zoom controls.
+  5. Streamlined LaTeX document cards in `DocumentList.tsx` (and `PersonalHomepage.tsx`): removed the `DRAFT` status tag for LaTeX documents (since LaTeX documents are always in an editing/saved state), consolidated the redundant `Preview` and `LaTeX IDE` buttons into a single **Edit** button that enters the LaTeX editor, and added an **Info** button (`[data-testid="latex-doc-info-btn-{id}"]`) that opens a modal (`[data-testid="latex-doc-info-modal"]`) for editing the document title and adding/managing tags.
+- LaTeX Document Version Control (Commit Modal, Version Tag Display & Version Page):
+  1. Database & Backend Endpoints (`src/backend/src/db.ts`, `src/backend/src/routes/latexRoutes.ts`, `src/backend/src/routes/documents.ts`):
+     - Added `version_tag` and `current_version_id` columns to `documents` and `latex_projects`, and `user_name` to `latex_doc_snapshots`.
+     - Implemented `POST /api/v1/documents/:id/latex/versions` (and `/commit`) to snapshot all current folders, `.tex`/`.bib` text files, and binary assets into `latex_doc_snapshots` under the user-entered version tag and update the document's active `version_tag`.
+     - Implemented `GET /api/v1/documents/:id/latex/versions` and `GET /api/v1/documents/:id/latex/versions/:versionId` to list all committed versions alongside the current working workspace.
+     - Implemented `POST /api/v1/documents/:id/latex/versions/:versionId/restore` (and `/checkout`) to restore a previous version's folders, text documents, and binary files as the current working version and update the active `version_tag`.
+  2. Frontend Document List & Version Page (`DocumentList.tsx`, `LatexVersionPage.tsx`, `App.tsx`):
+     - Displayed the active version tag badge (`[data-testid="latex-doc-version-tag-{id}"]`), **Commit** button (`[data-testid="latex-doc-commit-btn-{id}"]`), and **Version** button (`[data-testid="latex-doc-version-btn-{id}"]`) on each LaTeX document in `DocumentList.tsx`.
+     - Clicking **Commit** opens a popup modal (`[data-testid="latex-doc-commit-modal"]`) with a version input (`[data-testid="latex-commit-version-input"]`) and optional commit note.
+     - Clicking **Version** opens `LatexVersionPage.tsx` (`[data-testid="latex-version-page"]`), allowing users to inspect every committed version's files and source code, compare differences with the current working state, or make any previous version the current working version (`[data-testid="make-current-version-btn"]` / `[data-testid="restore-version-btn-{verId}"]`).
+- LaTeX Document Editor File Panel Expand & Hide (`LatexDocumentEditor.tsx`):
+  1. Header Hide Button: Added a direct hide button (`[data-testid="hide-file-panel-btn"]`) in the file tree header next to folder/file controls to collapse the file panel with a single click.
+  2. Collapsed Left Strip & Expand Button: When hidden, renders a sleek collapsed left vertical strip (`[data-testid="collapsed-file-panel-strip"]`) with an expand button (`[data-testid="expand-file-panel-btn"]`) and interactive file count label (`[data-testid="expand-file-panel-label-btn"]`) to instantly expand the file panel back.
+  3. Header Toolbar Toggle: Added a persistent "Files" toggle button (`[data-testid="toggle-file-panel-btn"]`) on the main editor header toolbar to toggle file panel visibility across all view modes (split, editor, preview).
+  4. Tabs Bar Toggle & Shortcut: Updated the editor tab bar toggle button (`[data-testid="tab-toggle-file-panel-btn"]`) with responsive chevrons and bound `Ctrl+B` / `Cmd+B` keyboard shortcut for seamless IDE-style file panel expansion and hiding.
+- LaTeX Document Editor File Relocation & Folder File Management (`LatexDocumentEditor.tsx`, `latexRoutes.ts`):
+  1. Backend File & Asset Relocation API (`POST /api/v1/documents/:id/latex/move`):
+     - Added endpoint handling both text documents (`doc`) and binary assets (`file`).
+     - Updates `folder_id` and recalculates relative compilation and disk `path` (e.g. `sections/ch1.tex` vs root `ch1.tex`) based on target folder.
+     - Cascading relative path updates: enhanced `POST /api/v1/documents/:id/latex/rename` so renaming a folder recursively recalculates paths across all nested documents and binary assets.
+  2. Move Button & Modal (`[data-testid="move-doc-btn-{id}"]`, `[data-testid="move-file-btn-{id}"]`, `[data-testid="latex-move-modal"]`):
+     - Placed a dedicated Move button (`FolderInputIcon`) on each document and binary asset row in the project files panel.
+     - Clicking opens a destination selection modal (`[data-testid="move-destination-select"]`) listing Root Directory and all available folders with item counts, updating file placement with confirmation (`[data-testid="confirm-move-btn"]`).
+  3. HTML5 Drag-and-Drop:
+     - Enabled HTML5 drag-and-drop (`draggable`, `onDragStart`, `onDragOver`, `onDragLeave`, `onDrop`) across all documents and binary assets.
+     - Files can be dragged directly onto folder rows or onto the root files drop zone with clear visual ring/highlight indicators (`dragOverFolderId`).
+  4. Direct File Creation & Upload Under Folders:
+     - Added direct `+` Add File button (`[data-testid="add-file-to-folder-btn-{id}"]`) on folder rows pre-selecting the target folder in the creation modal.
+     - Added direct Upload Asset button (`[data-testid="upload-to-folder-btn-{id}"]`) on folder rows for instant binary asset upload directly scoped to that folder.
+     - Added Folder target dropdown (`[data-testid="new-file-folder-select"]`) in the New File modal allowing destination folder selection upon creation.
+  5. Hierarchical Tree Rendering:
+     - Replaced flat lists with a structured hierarchy displaying folders with item badges, expand/collapse toggles, indented child documents and assets, and a distinct Root Files section with full move and drop support.
 
 ---
 
@@ -141,7 +182,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 1. Start the application in development mode: `./scripts/start.sh` (or for production: `./scripts/start.sh --prod`).
 2. First-time production Host Nginx SSL setup and deployment: `./scripts/start.sh --prod --init`.
 3. Stop containers: `./scripts/stop.sh` (or `./scripts/stop.sh --volumes` for full wipe).
-4. Run doc validation: `python3 scripts/validate_docs.py`.
+4. Run doc validation: `python3 agent_tool/validate_docs.py`.
 
 
 

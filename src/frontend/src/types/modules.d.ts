@@ -86,6 +86,7 @@ declare module 'lucide-react' {
   export const MessageSquare: IconComponent;
   export const Share2: IconComponent;
   export const ChevronRight: IconComponent;
+  export const ChevronLeft: IconComponent;
   export const Play: IconComponent;
   export const Folder: IconComponent;
   export const Upload: IconComponent;
@@ -102,6 +103,7 @@ declare module 'lucide-react' {
   export const Archive: IconComponent;
   export const Code2: IconComponent;
   export const Sigma: IconComponent;
+  export const Settings: IconComponent;
 }
 
 declare module 'marked' {

@@ -26,6 +26,9 @@ import {
   LatexFile,
   LatexFolder,
   LatexTemplate,
+  LatexTemplateCreatePayload,
+  LatexVersionListResponse,
+  LatexVersionRecord,
   LatexWorkspaceData,
 } from '../types';
 
@@ -925,10 +928,21 @@ export const api = {
   // LaTeX Tooling & Workspace APIs
   // ==============================================================================
 
-  async listLatexTemplates(params?: { category?: string; search?: string }): Promise<LatexTemplate[]> {
+  async listLatexTemplates(params?: {
+    category?: string;
+    search?: string;
+    visibility?: string;
+    organization_id?: string;
+    scope?: string;
+    tag?: string;
+  }): Promise<LatexTemplate[]> {
     const query = new URLSearchParams();
     if (params?.category) query.append('category', params.category);
     if (params?.search) query.append('search', params.search);
+    if (params?.visibility) query.append('visibility', params.visibility);
+    if (params?.organization_id) query.append('organization_id', params.organization_id);
+    if (params?.scope) query.append('scope', params.scope);
+    if (params?.tag) query.append('tag', params.tag);
     const qs = query.toString();
     return request<LatexTemplate[]>(`/latex/templates${qs ? `?${qs}` : ''}`);
   },
@@ -937,15 +951,48 @@ export const api = {
     return request<LatexTemplate>(`/latex/templates/${encodeURIComponent(id)}`);
   },
 
-  async createLatexTemplate(payload: Partial<LatexTemplate>): Promise<LatexTemplate> {
+  async createLatexTemplate(payload: LatexTemplateCreatePayload | Partial<LatexTemplate>): Promise<LatexTemplate> {
     return request<LatexTemplate>('/latex/templates', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
-  async getLatexWorkspace(documentId: string): Promise<LatexWorkspaceData> {
-    return request<LatexWorkspaceData>(`/documents/${encodeURIComponent(documentId)}/latex`);
+  async updateLatexTemplate(
+    id: string,
+    payload: Partial<LatexTemplateCreatePayload> | Partial<LatexTemplate>
+  ): Promise<LatexTemplate> {
+    return request<LatexTemplate>(`/latex/templates/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteLatexTemplate(id: string): Promise<void> {
+    await request<void>(`/latex/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async copyLatexTemplate(
+    id: string,
+    payload: { target_organization_id: string; title?: string }
+  ): Promise<LatexTemplate> {
+    return request<LatexTemplate>(`/latex/templates/${encodeURIComponent(id)}/copy`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async resetLatexSeedTemplates(): Promise<LatexTemplate[]> {
+    return request<LatexTemplate[]>('/latex/templates/actions/reset-seeds', {
+      method: 'POST',
+    });
+  },
+
+  async getLatexWorkspace(documentId: string, versionId?: string): Promise<LatexWorkspaceData> {
+    const qs = versionId && versionId !== 'working' ? `?version_id=${encodeURIComponent(versionId)}` : '';
+    return request<LatexWorkspaceData>(`/documents/${encodeURIComponent(documentId)}/latex${qs}`);
   },
 
   async createLatexDoc(
@@ -1017,6 +1064,19 @@ export const api = {
     });
   },
 
+  async moveLatexEntity(
+    documentId: string,
+    payload: { entity_id: string; entity_type: 'doc' | 'file'; target_folder_id: string | null }
+  ): Promise<{ success: boolean; entity_id: string; entity_type: 'doc' | 'file'; folder_id: string | null; path: string }> {
+    return request<{ success: boolean; entity_id: string; entity_type: 'doc' | 'file'; folder_id: string | null; path: string }>(
+      `/documents/${encodeURIComponent(documentId)}/latex/move`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
   async setLatexRootDoc(documentId: string, docId: string): Promise<void> {
     await request<void>(`/documents/${encodeURIComponent(documentId)}/latex/root-doc`, {
       method: 'POST',
@@ -1033,7 +1093,7 @@ export const api = {
 
   async compileLatexProject(
     documentId: string,
-    payload?: { compiler?: CompilerType; main_file?: string }
+    payload?: { compiler?: CompilerType; main_file?: string; version_id?: string }
   ): Promise<{
     success: boolean;
     compilation_id: string;
@@ -1056,12 +1116,67 @@ export const api = {
     return request<any>(`/documents/${encodeURIComponent(documentId)}/latex/logs`);
   },
 
-  getLatexPdfUrl(documentId: string): string {
-    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/pdf`;
+  getLatexPdfUrl(documentId: string, options?: { versionId?: string; compilationId?: string }): string {
+    const params = new URLSearchParams();
+    if (options?.versionId && options.versionId !== 'working') {
+      params.set('version_id', options.versionId);
+    }
+    if (options?.compilationId) {
+      params.set('compilation_id', options.compilationId);
+    }
+    const qs = params.toString();
+    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/pdf${qs ? `?${qs}` : ''}`;
   },
 
-  getLatexZipDownloadUrl(documentId: string): string {
-    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/export/zip`;
+  getLatexZipDownloadUrl(documentId: string, versionId?: string): string {
+    const params = new URLSearchParams();
+    if (versionId && versionId !== 'working') {
+      params.set('version_id', versionId);
+    }
+    const qs = params.toString();
+    return `${API_BASE}/documents/${encodeURIComponent(documentId)}/latex/export/zip${qs ? `?${qs}` : ''}`;
+  },
+
+  // LaTeX Version Control APIs
+  async listLatexVersions(documentId: string): Promise<LatexVersionListResponse> {
+    return request<LatexVersionListResponse>(`/documents/${encodeURIComponent(documentId)}/latex/versions`);
+  },
+
+  async getLatexVersion(documentId: string, versionId: string): Promise<LatexVersionRecord> {
+    return request<LatexVersionRecord>(
+      `/documents/${encodeURIComponent(documentId)}/latex/versions/${encodeURIComponent(versionId)}`
+    );
+  },
+
+  async commitLatexVersion(
+    documentId: string,
+    payload: { version_tag: string; comment?: string }
+  ): Promise<{ version: LatexVersionRecord; version_tag: string; current_version_id: string }> {
+    return request<{ version: LatexVersionRecord; version_tag: string; current_version_id: string }>(
+      `/documents/${encodeURIComponent(documentId)}/latex/versions`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async restoreLatexVersion(
+    documentId: string,
+    versionId: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    version_tag: string;
+    current_version_id: string;
+    version: LatexVersionRecord;
+  }> {
+    return request<any>(
+      `/documents/${encodeURIComponent(documentId)}/latex/versions/${encodeURIComponent(versionId)}/restore`,
+      {
+        method: 'POST',
+      }
+    );
   },
 };
 

@@ -414,6 +414,8 @@ export async function initDatabase(): Promise<void> {
       await ensureColumnExists(conn, 'documents', 'copied_from_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'assigned_team_id', 'VARCHAR(64) NULL');
       await ensureColumnExists(conn, 'documents', 'format', "ENUM('markdown', 'latex') NOT NULL DEFAULT 'markdown'");
+      await ensureColumnExists(conn, 'documents', 'version_tag', 'VARCHAR(100) NULL');
+      await ensureColumnExists(conn, 'documents', 'current_version_id', 'VARCHAR(64) NULL');
 
       // ==============================================================================
       // LaTeX Tooling & Multi-File Project Architecture (MySQL 8.0)
@@ -427,7 +429,7 @@ export async function initDatabase(): Promise<void> {
           compiler VARCHAR(32) NOT NULL DEFAULT 'pdflatex',
           main_file VARCHAR(255) NOT NULL DEFAULT 'main.tex',
           icon VARCHAR(50) NOT NULL DEFAULT 'file-code-2',
-          visibility ENUM('private', 'public') NOT NULL DEFAULT 'public',
+          visibility ENUM('private', 'public') NOT NULL DEFAULT 'private',
           organization_id VARCHAR(64) NULL,
           created_by VARCHAR(64) NULL,
           tags JSON NULL,
@@ -440,6 +442,11 @@ export async function initDatabase(): Promise<void> {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
+      await ensureColumnExists(conn, 'latex_templates', 'visibility', "ENUM('private', 'public') NOT NULL DEFAULT 'private'");
+      await ensureColumnExists(conn, 'latex_templates', 'organization_id', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'latex_templates', 'created_by', 'VARCHAR(64) NULL');
+      await ensureColumnExists(conn, 'latex_templates', 'tags', 'JSON NULL');
+
       await conn.query(`
         CREATE TABLE IF NOT EXISTS latex_projects (
           id VARCHAR(64) PRIMARY KEY,
@@ -451,12 +458,17 @@ export async function initDatabase(): Promise<void> {
           spell_check_language VARCHAR(10) NOT NULL DEFAULT 'en',
           brand_variation_id VARCHAR(64) NULL,
           image_name VARCHAR(100) NULL,
+          version_tag VARCHAR(100) NULL,
+          current_version_id VARCHAR(64) NULL,
           active BOOLEAN NOT NULL DEFAULT TRUE,
           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_doc_id (document_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      await ensureColumnExists(conn, 'latex_projects', 'version_tag', 'VARCHAR(100) NULL');
+      await ensureColumnExists(conn, 'latex_projects', 'current_version_id', 'VARCHAR(64) NULL');
 
       await conn.query(`
         CREATE TABLE IF NOT EXISTS latex_folders (
@@ -525,6 +537,7 @@ export async function initDatabase(): Promise<void> {
           id VARCHAR(64) PRIMARY KEY,
           project_id VARCHAR(64) NOT NULL,
           user_id VARCHAR(64) NULL,
+          user_name VARCHAR(255) NULL,
           label VARCHAR(255) NULL,
           version INT NOT NULL DEFAULT 1,
           comment TEXT NULL,
@@ -533,6 +546,24 @@ export async function initDatabase(): Promise<void> {
           INDEX idx_project_id (project_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      await ensureColumnExists(conn, 'latex_doc_snapshots', 'user_name', 'VARCHAR(255) NULL');
+
+      // Migration / Default: Ensure all LaTeX documents have version_tag = '0' if unset
+      try {
+        await conn.query(`
+          UPDATE documents
+          SET version_tag = '0'
+          WHERE format = 'latex' AND (version_tag IS NULL OR version_tag = '')
+        `);
+        await conn.query(`
+          UPDATE latex_projects
+          SET version_tag = '0'
+          WHERE (version_tag IS NULL OR version_tag = '')
+        `);
+      } catch (err: any) {
+        console.warn('[Database] LaTeX initial version migration notice:', err.message);
+      }
 
       // Auto-repair: Enforce that documents under projects with individual association are strictly personal
       try {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   FileCode,
@@ -13,7 +13,6 @@ import {
   Search,
   Globe,
   Lock,
-  Users,
   Building2,
   Copy,
   User as UserIcon,
@@ -31,6 +30,7 @@ interface TemplateListProps {
   teams?: Team[]; // compatibility alias
   activeOrganization?: Organization | null;
   activeTeam?: Team | null; // compatibility alias
+  initialFormatTab?: 'markdown' | 'latex';
   loading: boolean;
   onSelectTemplateToCreate: (template: Template) => void;
   onSelectLatexTemplateToCreate?: (template: LatexTemplate) => void;
@@ -39,6 +39,10 @@ interface TemplateListProps {
   onDeleteTemplate: (templateId: string) => void;
   onCopyTemplate?: (template: Template) => void;
   onCreateNewTemplate: () => void;
+  onCreateNewLatexTemplate?: () => void;
+  onEditLatexTemplate?: (templateId: string) => void;
+  onDeleteLatexTemplate?: (templateId: string) => void;
+  onCopyLatexTemplate?: (template: LatexTemplate) => void;
   onResetSeeds: () => void;
   onOpenAccountModal: () => void;
   onOpenAuthModal?: () => void;
@@ -52,6 +56,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   teams: propTeams,
   activeOrganization,
   activeTeam,
+  initialFormatTab,
   loading,
   onSelectTemplateToCreate,
   onSelectLatexTemplateToCreate,
@@ -60,6 +65,10 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   onDeleteTemplate,
   onCopyTemplate,
   onCreateNewTemplate,
+  onCreateNewLatexTemplate,
+  onEditLatexTemplate,
+  onDeleteLatexTemplate,
+  onCopyLatexTemplate,
   onResetSeeds,
   onOpenAccountModal,
   onOpenAuthModal,
@@ -67,20 +76,40 @@ export const TemplateList: React.FC<TemplateListProps> = ({
   const organizations = propOrganizations || propTeams || [];
 
   // Top format tab: 'markdown' | 'latex'
-  const [activeFormatTab, setActiveFormatTab] = useState<'markdown' | 'latex'>('markdown');
+  const [activeFormatTab, setActiveFormatTab] = useState<'markdown' | 'latex'>(initialFormatTab || 'markdown');
 
   // Categories: 'all' | 'public' | 'personal' | 'organizations'
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'public' | 'personal' | 'organizations'>('all');
   const [selectedOrgId, setSelectedOrgId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const prevOrgIdRef = useRef<string | undefined>((activeOrganization || activeTeam)?.id);
+
+  useEffect(() => {
+    if (initialFormatTab) {
+      setActiveFormatTab(initialFormatTab);
+    }
+  }, [initialFormatTab]);
+
   useEffect(() => {
     const org = activeOrganization || activeTeam;
-    if (org?.id) {
+    if (org?.id && prevOrgIdRef.current !== org.id) {
+      prevOrgIdRef.current = org.id;
       setSelectedOrgId(org.id);
       setSelectedCategory('organizations');
+    } else if (!org?.id) {
+      prevOrgIdRef.current = undefined;
     }
   }, [activeOrganization, activeTeam]);
+
+  // Strictly enforce that when unauthenticated (!currentUser), only public templates can be seen
+  const visibleMarkdownTemplates = currentUser
+    ? templates
+    : templates.filter((t) => t.visibility === 'public');
+
+  const visibleLatexTemplates = currentUser
+    ? latexTemplates
+    : latexTemplates.filter((t) => t.visibility === 'public');
 
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -99,15 +128,22 @@ export const TemplateList: React.FC<TemplateListProps> = ({
     return org ? org.name : 'Organization Template';
   };
 
-  const publicCount = templates.filter((t) => t.visibility === 'public').length;
-  const personalCount = templates.filter((t) => t.visibility === 'private' && !t.organization_id && !t.team_id).length;
-  const orgCount = templates.filter((t) => t.visibility === 'private' && Boolean(t.organization_id || t.team_id)).length;
+  const activePool: Array<Template | LatexTemplate> =
+    activeFormatTab === 'markdown' ? visibleMarkdownTemplates : visibleLatexTemplates;
 
-  // Filter templates
-  const filteredTemplates = templates.filter((tpl) => {
+  const publicCount = activePool.filter((t) => t.visibility === 'public').length;
+  const personalCount = activePool.filter(
+    (t) => t.visibility === 'private' && !t.organization_id && !t.team_id
+  ).length;
+  const orgCount = activePool.filter(
+    (t) => t.visibility === 'private' && Boolean(t.organization_id || t.team_id)
+  ).length;
+
+  const matchesCategoryAndOrg = (tpl: Template | LatexTemplate): boolean => {
+    if (!currentUser) {
+      return tpl.visibility === 'public';
+    }
     const tplOrgId = tpl.organization_id || tpl.team_id || null;
-
-    // 1. Category Filter: Public vs Personal vs Organization
     if (selectedCategory === 'public' && tpl.visibility !== 'public') return false;
     if (selectedCategory === 'personal' && (tpl.visibility !== 'private' || tplOrgId !== null)) return false;
     if (selectedCategory === 'organizations') {
@@ -119,8 +155,13 @@ export const TemplateList: React.FC<TemplateListProps> = ({
         return false;
       }
     }
+    return true;
+  };
 
-    // 2. Search Filter
+  // Filter Markdown templates
+  const filteredTemplates = visibleMarkdownTemplates.filter((tpl) => {
+    if (!matchesCategoryAndOrg(tpl)) return false;
+
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       const matchTitle = tpl.title.toLowerCase().includes(q);
@@ -133,14 +174,21 @@ export const TemplateList: React.FC<TemplateListProps> = ({
     return true;
   });
 
-  const filteredLatexTemplates = latexTemplates.filter((tpl) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.trim().toLowerCase();
-    const matchTitle = tpl.title.toLowerCase().includes(q);
-    const matchDesc = (tpl.description || '').toLowerCase().includes(q);
-    const matchCat = (tpl.category || '').toLowerCase().includes(q);
-    const matchCompiler = (tpl.compiler || '').toLowerCase().includes(q);
-    return matchTitle || matchDesc || matchCat || matchCompiler;
+  // Filter LaTeX templates
+  const filteredLatexTemplates = visibleLatexTemplates.filter((tpl) => {
+    if (!matchesCategoryAndOrg(tpl)) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const matchTitle = tpl.title.toLowerCase().includes(q);
+      const matchDesc = (tpl.description || '').toLowerCase().includes(q);
+      const matchCat = (tpl.category || '').toLowerCase().includes(q);
+      const matchCompiler = (tpl.compiler || '').toLowerCase().includes(q);
+      const matchTag = (tpl.tags || []).some((t) => t.toLowerCase().includes(q));
+      if (!matchTitle && !matchDesc && !matchCat && !matchCompiler && !matchTag) return false;
+    }
+
+    return true;
   });
 
   return (
@@ -157,7 +205,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 Public Document Templates & Architectural Blueprints
               </h2>
               <p className="text-slate-300 text-sm mt-2 max-w-2xl leading-relaxed">
-                Explore our public pool of document templates. Inspect the section structures, field types, and markdown generators. Sign in to start authoring documents, creating your own organizations, and building custom templates.
+                Explore our public pool of Markdown and LaTeX document templates. Private personal and organization templates are associated with your user account and become available after you sign in.
               </p>
             </div>
           </div>
@@ -175,14 +223,14 @@ export const TemplateList: React.FC<TemplateListProps> = ({
             Browse structured Markdown schemas and publication-grade multi-file LaTeX templates.
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center space-x-2.5">
+        <div className="mt-4 sm:mt-0 flex items-center flex-wrap gap-2">
           {currentUser ? (
             activeFormatTab === 'markdown' ? (
               <>
                 <button
                   type="button"
                   onClick={onResetSeeds}
-                  title="Restore default ADR, PRD, and Postmortem templates"
+                  title="Restore default ADR, PRD, Postmortem, and LaTeX templates"
                   className="inline-flex items-center px-3 py-2 border border-slate-300 shadow-sm text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
@@ -198,14 +246,35 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={onCreateBlankLatexDocument}
-                className="inline-flex items-center px-4 py-2 border border-indigo-700 text-xs font-semibold shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 mr-1.5" />
-                New Blank LaTeX Project
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onResetSeeds}
+                  title="Restore default LaTeX seed templates"
+                  className="inline-flex items-center px-3 py-2 border border-slate-300 shadow-sm text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                  Restore Seeds
+                </button>
+                {onCreateNewLatexTemplate && (
+                  <button
+                    type="button"
+                    onClick={onCreateNewLatexTemplate}
+                    className="inline-flex items-center px-4 py-2 border border-indigo-700 text-xs font-semibold shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4 mr-1.5" />
+                    Create New LaTeX Template
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onCreateBlankLatexDocument}
+                  className="inline-flex items-center px-3.5 py-2 border border-slate-300 text-xs font-semibold shadow-sm text-slate-800 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+                  New Blank LaTeX Project
+                </button>
+              </>
             )
           ) : (
             <span className="inline-flex items-center text-xs text-slate-500 italic bg-slate-100 px-3 py-1.5 border border-slate-200 rounded">
@@ -227,7 +296,7 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           }`}
         >
           <FileText className="w-4 h-4 text-blue-600" />
-          <span>Markdown Templates ({templates.length})</span>
+          <span>Markdown Templates ({visibleMarkdownTemplates.length})</span>
         </button>
         <button
           type="button"
@@ -239,173 +308,153 @@ export const TemplateList: React.FC<TemplateListProps> = ({
           }`}
         >
           <FileCode className="w-4 h-4 text-indigo-600" />
-          <span>LaTeX Templates ({latexTemplates.length})</span>
+          <span>LaTeX Templates ({visibleLatexTemplates.length})</span>
         </button>
       </div>
 
-      {/* Main Categories & Filters */}
-      {activeFormatTab === 'markdown' ? (
-        <div className="space-y-4 mb-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {/* Category Tabs (Material UI ToggleButtonGroup Style) */}
-            <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap sm:flex-nowrap">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCategory('all');
-                  setSelectedOrgId('all');
-                }}
-                className={`px-3.5 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer ${
-                  selectedCategory === 'all'
-                    ? 'bg-slate-100 text-slate-900 font-bold shadow-inner'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                All ({templates.length})
-              </button>
+      {/* Unified Categories & Filters (Public Pool, Personal, Organization Templates) for BOTH Markdown & LaTeX */}
+      <div className="space-y-4 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Category Tabs */}
+          <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap sm:flex-nowrap">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory('all');
+                setSelectedOrgId('all');
+              }}
+              className={`px-3.5 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer ${
+                selectedCategory === 'all'
+                  ? 'bg-slate-100 text-slate-900 font-bold shadow-inner'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              All ({activePool.length})
+            </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory('public');
+                setSelectedOrgId('all');
+              }}
+              className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
+                selectedCategory === 'public'
+                  ? 'bg-blue-50 text-blue-900 font-bold shadow-inner'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Public Pool ({publicCount})</span>
+            </button>
+
+            {currentUser && (
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedCategory('public');
+                  setSelectedCategory('personal');
                   setSelectedOrgId('all');
                 }}
                 className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
-                  selectedCategory === 'public'
-                    ? 'bg-blue-50 text-blue-900 font-bold shadow-inner'
+                  selectedCategory === 'personal'
+                    ? 'bg-emerald-50 text-emerald-900 font-bold shadow-inner'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Globe className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span>Public Pool ({publicCount})</span>
+                <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Personal ({personalCount})</span>
               </button>
+            )}
 
-              {currentUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory('personal');
+            {currentUser && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('organizations');
+                  if (organizations.length > 0 && selectedOrgId === 'all') {
                     setSelectedOrgId('all');
-                  }}
-                  className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
-                    selectedCategory === 'personal'
-                      ? 'bg-emerald-50 text-emerald-900 font-bold shadow-inner'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Personal ({personalCount})</span>
-                </button>
-              )}
-
-              {currentUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory('organizations');
-                    if (organizations.length > 0 && selectedOrgId === 'all') {
-                      setSelectedOrgId('all');
-                    }
-                  }}
-                  className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
-                    selectedCategory === 'organizations'
-                      ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span>Organization Templates ({orgCount})</span>
-                </button>
-              )}
-            </div>
-
-            {/* Search input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search markdown templates by title, tag, or description..."
-                className="w-full pl-9 pr-4 py-2 text-xs border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              />
-            </div>
+                  }
+                }}
+                className={`px-3.5 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-center sm:min-w-[170px] ${
+                  selectedCategory === 'organizations'
+                    ? 'bg-indigo-50 text-indigo-900 font-bold shadow-inner'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Organization Templates ({orgCount})</span>
+              </button>
+            )}
           </div>
 
-          {/* Sub-Tabs: Each Organization Selector */}
-          {currentUser && (selectedCategory === 'organizations' || selectedCategory === 'all') && organizations.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
-                <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Organizations:
-              </span>
-              <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setSelectedOrgId('all')}
-                  className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer ${
-                    selectedOrgId === 'all'
-                      ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
-                      : 'bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  All My Organizations
-                </button>
-                {organizations.map((t) => {
-                  const orgTpls = templates.filter((tpl) => (tpl.organization_id || tpl.team_id) === t.id).length;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory('organizations');
-                        setSelectedOrgId(t.id);
-                      }}
-                      className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
-                        selectedOrgId === t.id
-                          ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
-                          : 'bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{t.name}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded ${
-                          selectedOrgId === t.id
-                            ? 'bg-indigo-200 text-indigo-900 font-semibold'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {orgTpls}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* LaTeX Search & Overview Header */
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white p-4 border border-slate-300 shadow-xs">
-          <div className="flex items-center space-x-2">
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200">
-              LaTeX Engine: pdfLaTeX / XeLaTeX
-            </span>
-            <span className="text-xs text-slate-500">
-              Pre-configured multi-file document bundles ready to compile
-            </span>
-          </div>
+          {/* Search input */}
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search LaTeX templates by title, category, compiler..."
+              placeholder={
+                activeFormatTab === 'latex'
+                  ? 'Search LaTeX templates by title, category, tag, compiler...'
+                  : 'Search markdown templates by title, tag, or description...'
+              }
               className="w-full pl-9 pr-4 py-2 text-xs border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             />
           </div>
         </div>
-      )}
+
+        {/* Sub-Tabs: Each Organization Selector */}
+        {currentUser && (selectedCategory === 'organizations' || selectedCategory === 'all') && organizations.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-200">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
+              <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Organizations:
+            </span>
+            <div className="inline-flex rounded-md border border-slate-300 bg-white divide-x divide-slate-200 shadow-sm overflow-hidden flex-wrap">
+              <button
+                type="button"
+                onClick={() => setSelectedOrgId('all')}
+                className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer ${
+                  selectedOrgId === 'all'
+                    ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                All My Organizations
+              </button>
+              {organizations.map((t) => {
+                const orgTpls = activePool.filter((tpl) => (tpl.organization_id || tpl.team_id) === t.id).length;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory('organizations');
+                      setSelectedOrgId(t.id);
+                    }}
+                    className={`text-xs px-3 py-1.5 font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      selectedOrgId === t.id
+                        ? 'bg-indigo-50 text-indigo-700 font-bold shadow-inner'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{t.name}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded ${
+                        selectedOrgId === t.id
+                          ? 'bg-indigo-200 text-indigo-900 font-semibold'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {orgTpls}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Grid Rendering */}
       {activeFormatTab === 'latex' ? (
@@ -413,20 +462,34 @@ export const TemplateList: React.FC<TemplateListProps> = ({
         filteredLatexTemplates.length === 0 ? (
           <div className="text-center py-16 bg-white border border-dashed border-slate-300 p-12">
             <FileCode className="mx-auto h-12 w-12 text-slate-400" />
-            <h3 className="mt-3 text-lg font-bold text-slate-900">No LaTeX templates found</h3>
+            <h3 className="mt-3 text-lg font-bold text-slate-900">No matching LaTeX templates found</h3>
             <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
-              {searchQuery ? 'Try adjusting your search query.' : 'No pre-seeded LaTeX templates are available.'}
+              {selectedCategory === 'organizations' && organizations.length === 0
+                ? 'You are not yet a member of any organization. Join or create an organization to access and create organization LaTeX templates.'
+                : 'Try adjusting your search query or category tabs, or create a new custom LaTeX template.'}
             </p>
-            {currentUser && onCreateBlankLatexDocument && (
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={onCreateBlankLatexDocument}
-                  className="inline-flex items-center px-4 py-2 border border-indigo-700 text-xs font-semibold shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 mr-1.5" />
-                  Start Blank LaTeX Document
-                </button>
+            {currentUser && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                {onCreateNewLatexTemplate && (
+                  <button
+                    type="button"
+                    onClick={onCreateNewLatexTemplate}
+                    className="inline-flex items-center px-4 py-2 border border-indigo-700 text-xs font-semibold shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4 mr-1.5" />
+                    Create New LaTeX Template
+                  </button>
+                )}
+                {onCreateBlankLatexDocument && (
+                  <button
+                    type="button"
+                    onClick={onCreateBlankLatexDocument}
+                    className="inline-flex items-center px-4 py-2 border border-slate-300 text-xs font-semibold shadow-sm text-slate-700 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 mr-1.5 text-indigo-600" />
+                    Start Blank LaTeX Document
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -436,6 +499,20 @@ export const TemplateList: React.FC<TemplateListProps> = ({
               const isBeamer = tpl.category === 'Presentation' || tpl.title.includes('Beamer');
               const isReport = tpl.category === 'Technical Report' || tpl.title.includes('Report');
               const files = tpl.template_files || [];
+              const isPublic = tpl.visibility === 'public';
+              const tplOrgId = tpl.organization_id || tpl.team_id || null;
+              const isPersonal = tpl.visibility === 'private' && !tplOrgId;
+              const orgName = !isPublic && !isPersonal ? getOrganizationName(tplOrgId) : null;
+              const sourceOrg = organizations.find((o) => o.id === tplOrgId) || null;
+              const isTemplateCreator = Boolean(currentUser && tpl.created_by && tpl.created_by === currentUser.id);
+              const isSourceOrgCreator = Boolean(
+                currentUser &&
+                  sourceOrg &&
+                  (sourceOrg.is_creator ||
+                    (sourceOrg.created_by && sourceOrg.created_by === currentUser.id) ||
+                    sourceOrg.user_role === 'owner')
+              );
+              const canCopyTemplate = Boolean(currentUser && (isTemplateCreator || isSourceOrgCreator));
 
               return (
                 <div
@@ -462,6 +539,35 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                             <span className="inline-flex items-center uppercase px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 rounded">
                               {tpl.compiler || 'pdflatex'}
                             </span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border rounded ${
+                                isPublic
+                                  ? 'bg-blue-50 text-blue-700 border-blue-300'
+                                  : isPersonal
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                              }`}
+                            >
+                              {isPublic ? (
+                                <>
+                                  <Globe className="w-2.5 h-2.5" /> Public
+                                </>
+                              ) : isPersonal ? (
+                                <>
+                                  <Lock className="w-2.5 h-2.5" /> Personal
+                                </>
+                              ) : (
+                                <>
+                                  <Building2 className="w-2.5 h-2.5" /> {orgName || 'Organization'}
+                                </>
+                              )}
+                            </span>
+                            {(tpl.creator_name || tpl.creator_username) && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded">
+                                <UserIcon className="w-2.5 h-2.5 text-slate-500" />
+                                {tpl.creator_name || tpl.creator_username}
+                              </span>
+                            )}
                           </div>
                           <h3 className="text-base font-bold text-slate-900 mt-1">
                             {tpl.title}
@@ -473,6 +579,20 @@ export const TemplateList: React.FC<TemplateListProps> = ({
                     <p className="mt-3 text-xs text-slate-600 line-clamp-3">
                       {tpl.description || 'Pre-configured multi-file LaTeX project template.'}
                     </p>
+
+                    {/* Tags */}
+                    {tpl.tags && tpl.tags.length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap mt-3">
+                        {tpl.tags.map((t) => (
+                          <span
+                            key={t}
+                            className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 border border-slate-200 rounded"
+                          >
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Bundled Files Preview */}
                     <div className="mt-5">
@@ -509,10 +629,44 @@ export const TemplateList: React.FC<TemplateListProps> = ({
 
                   {/* Card Actions */}
                   <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                      LaTeX Ready
-                    </span>
+                    <div className="flex items-center space-x-1">
+                      {currentUser ? (
+                        <>
+                          {onEditLatexTemplate && (
+                            <button
+                              type="button"
+                              onClick={() => onEditLatexTemplate(tpl.id)}
+                              title="Edit LaTeX template blueprint"
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200 transition-colors cursor-pointer border border-transparent hover:border-slate-300"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {tplOrgId && onCopyLatexTemplate && canCopyTemplate && (
+                            <button
+                              type="button"
+                              onClick={() => onCopyLatexTemplate(tpl)}
+                              title="Copy LaTeX template to creator's other organization"
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200 transition-colors cursor-pointer border border-transparent hover:border-slate-300"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          )}
+                          {onDeleteLatexTemplate && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteLatexTemplate(tpl.id)}
+                              title="Delete LaTeX template"
+                              className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer border border-transparent hover:border-red-200"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">Read-only</span>
+                      )}
+                    </div>
 
                     <button
                       type="button"

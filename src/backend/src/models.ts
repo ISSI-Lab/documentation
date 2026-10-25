@@ -308,6 +308,8 @@ export interface Document {
   elements_data: Record<string, any>;
   compiled_markdown: string;
   format?: DocumentFormat;
+  version_tag?: string | null;
+  current_version_id?: string | null;
   latex_project?: LatexProject;
   submissions_count?: number;
   copies_count?: number;
@@ -328,6 +330,8 @@ export interface LatexProject {
   spell_check_language?: string;
   brand_variation_id?: string | null;
   image_name?: string | null;
+  version_tag?: string | null;
+  current_version_id?: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -410,7 +414,10 @@ export interface LatexTemplate {
   icon: string;
   visibility: TemplateVisibility;
   organization_id: string | null;
+  team_id?: string | null;
   created_by: string | null;
+  creator_name?: string;
+  creator_username?: string;
   tags: string[];
   template_files: LatexTemplateFileEntry[];
   thumbnail_url?: string | null;

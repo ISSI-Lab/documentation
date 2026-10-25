@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import crypto from 'crypto';
-import { pool, seedDefaultTemplates } from '../db';
+import { pool, seedDefaultTemplates, seedDefaultLatexTemplates } from '../db';
 import { DocumentElementConfig, Template, TemplateVisibility } from '../models';
 import { AuthenticatedRequest, isOrganizationCreator, isOrganizationManager, isOrganizationMember, optionalAuth, requireAuth } from '../auth';
 
@@ -137,6 +137,20 @@ templatesRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
       return res.status(404).json({ error: 'Template not found' });
     }
     const template = formatTemplateRow(rows[0]);
+    if (template.visibility === 'private') {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(403).json({ error: 'Private templates can only be viewed after signing in' });
+      }
+      if (template.organization_id) {
+        const isMember = await isOrganizationMember(userId, template.organization_id);
+        if (!isMember && template.created_by !== userId && req.user?.user_type !== 'organizer') {
+          return res.status(403).json({ error: 'You do not have permission to view this private organization template' });
+        }
+      } else if (template.created_by !== userId && req.user?.user_type !== 'organizer') {
+        return res.status(403).json({ error: 'You do not have permission to view this private personal template' });
+      }
+    }
     res.json(template);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve template', detail: err.message });
@@ -606,6 +620,7 @@ templatesRouter.post('/:id/copy', requireAuth, async (req: AuthenticatedRequest,
 templatesRouter.post('/actions/reset-seeds', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await seedDefaultTemplates();
+    await seedDefaultLatexTemplates();
     const [rows] = await pool.query<any[]>(
       `SELECT t.*, u.name as creator_name, u.username as creator_username
        FROM templates t

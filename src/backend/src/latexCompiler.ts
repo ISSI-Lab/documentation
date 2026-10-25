@@ -73,6 +73,11 @@ export interface CompileExecutionResult {
   pdfSize?: number;
 }
 
+export interface CompileProjectOptions {
+  customDocs?: Array<{ id?: string; name: string; path?: string; content?: string; is_main?: boolean }>;
+  customFiles?: Array<{ id?: string; name: string; path?: string; size?: number; mime_type?: string; data?: any; data_base64?: string }>;
+}
+
 /**
  * Compiles a LaTeX project in an isolated temporary working directory
  * using TeX Live (pdflatex, xelatex, or lualatex) and stores the result in MySQL.
@@ -80,7 +85,8 @@ export interface CompileExecutionResult {
 export async function compileLatexProject(
   projectId: string,
   compilerOverride?: CompilerType,
-  mainFileOverride?: string
+  mainFileOverride?: string,
+  options?: CompileProjectOptions
 ): Promise<CompileExecutionResult> {
   const compilationId = `comp-${crypto.randomUUID()}`;
 
@@ -96,16 +102,28 @@ export async function compileLatexProject(
   const activeCompiler: CompilerType = compilerOverride || project.compiler || 'pdflatex';
 
   // 2. Fetch all text docs
-  const [docRows] = await pool.query<any[]>(
-    'SELECT * FROM latex_docs WHERE project_id = ?',
-    [project.id]
-  );
+  let docRows: any[] = [];
+  if (options?.customDocs && options.customDocs.length > 0) {
+    docRows = options.customDocs;
+  } else {
+    const [rows] = await pool.query<any[]>(
+      'SELECT * FROM latex_docs WHERE project_id = ?',
+      [project.id]
+    );
+    docRows = rows;
+  }
 
   // 3. Fetch all binary files
-  const [fileRows] = await pool.query<any[]>(
-    'SELECT * FROM latex_files WHERE project_id = ?',
-    [project.id]
-  );
+  let fileRows: any[] = [];
+  if (options?.customFiles && options.customFiles.length > 0) {
+    fileRows = options.customFiles;
+  } else {
+    const [rows] = await pool.query<any[]>(
+      'SELECT * FROM latex_files WHERE project_id = ?',
+      [project.id]
+    );
+    fileRows = rows;
+  }
 
   // 4. Create isolated temporary working directory
   const tempDir = path.join('/tmp', `latex_build_${project.id}_${Date.now()}`);
@@ -131,11 +149,14 @@ export async function compileLatexProject(
       const relPath = (f.path || f.name).replace(/^\//, '');
       const fullPath = path.join(tempDir, relPath);
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-      const buffer = Buffer.isBuffer(f.data)
-        ? f.data
-        : typeof f.data === 'string'
-        ? Buffer.from(f.data, 'base64')
-        : Buffer.alloc(0);
+      let buffer: Buffer = Buffer.alloc(0);
+      if (Buffer.isBuffer(f.data)) {
+        buffer = f.data;
+      } else if (f.data_base64) {
+        buffer = Buffer.from(f.data_base64, 'base64');
+      } else if (typeof f.data === 'string') {
+        buffer = Buffer.from(f.data, 'base64');
+      }
       await fs.promises.writeFile(fullPath, buffer);
     }
 
@@ -268,7 +289,10 @@ export async function compileLatexProject(
 /**
  * Bundles all files of a LaTeX project into a downloadable .zip archive.
  */
-export async function bundleLatexProjectZip(projectId: string): Promise<Buffer> {
+export async function bundleLatexProjectZip(
+  projectId: string,
+  options?: CompileProjectOptions
+): Promise<Buffer> {
   const [projRows] = await pool.query<any[]>(
     'SELECT * FROM latex_projects WHERE id = ? OR document_id = ?',
     [projectId, projectId]
@@ -278,14 +302,27 @@ export async function bundleLatexProjectZip(projectId: string): Promise<Buffer> 
   }
   const project = projRows[0];
 
-  const [docRows] = await pool.query<any[]>(
-    'SELECT * FROM latex_docs WHERE project_id = ?',
-    [project.id]
-  );
-  const [fileRows] = await pool.query<any[]>(
-    'SELECT * FROM latex_files WHERE project_id = ?',
-    [project.id]
-  );
+  let docRows: any[] = [];
+  if (options?.customDocs && options.customDocs.length > 0) {
+    docRows = options.customDocs;
+  } else {
+    const [rows] = await pool.query<any[]>(
+      'SELECT * FROM latex_docs WHERE project_id = ?',
+      [project.id]
+    );
+    docRows = rows;
+  }
+
+  let fileRows: any[] = [];
+  if (options?.customFiles && options.customFiles.length > 0) {
+    fileRows = options.customFiles;
+  } else {
+    const [rows] = await pool.query<any[]>(
+      'SELECT * FROM latex_files WHERE project_id = ?',
+      [project.id]
+    );
+    fileRows = rows;
+  }
 
   const tempDir = path.join('/tmp', `latex_zip_${project.id}_${Date.now()}`);
   const zipPath = path.join('/tmp', `bundle_${project.id}_${Date.now()}.zip`);
@@ -303,11 +340,14 @@ export async function bundleLatexProjectZip(projectId: string): Promise<Buffer> 
       const relPath = (f.path || f.name).replace(/^\//, '');
       const fullPath = path.join(tempDir, relPath);
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-      const buffer = Buffer.isBuffer(f.data)
-        ? f.data
-        : typeof f.data === 'string'
-        ? Buffer.from(f.data, 'base64')
-        : Buffer.alloc(0);
+      let buffer: Buffer = Buffer.alloc(0);
+      if (Buffer.isBuffer(f.data)) {
+        buffer = f.data;
+      } else if (f.data_base64) {
+        buffer = Buffer.from(f.data_base64, 'base64');
+      } else if (typeof f.data === 'string') {
+        buffer = Buffer.from(f.data, 'base64');
+      }
       await fs.promises.writeFile(fullPath, buffer);
     }
 

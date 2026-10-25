@@ -11,20 +11,20 @@ This skill provides step-by-step procedures for distributed developers and AI as
 
 ## Scaffolding New Records
 
-Use the cross-platform CLI tool in `scripts/`:
+Use the cross-platform CLI tool in `agent_tool/`:
 
 ```bash
 # Create a new Architecture Decision Record
-python3 scripts/new_record.py adr "use-redis-cache"
+python3 agent_tool/new_record.py adr "use-redis-cache"
 
 # Create a new Request for Comments (Design Proposal)
-python3 scripts/new_record.py rfc "websocket-streaming"
+python3 agent_tool/new_record.py rfc "websocket-streaming"
 
 # Create a new Product Requirement Document
-python3 scripts/new_record.py prd "user-authentication"
+python3 agent_tool/new_record.py prd "user-authentication"
 
 # Create a new shift/machine handoff log
-python3 scripts/new_record.py handoff "auth-feature-progress"
+python3 agent_tool/new_record.py handoff "auth-feature-progress"
 ```
 
 ## Validating Documentation & Links
@@ -32,5 +32,5 @@ python3 scripts/new_record.py handoff "auth-feature-progress"
 Before pushing commits to GitHub or ending a session:
 
 ```bash
-python3 scripts/validate_docs.py
+python3 agent_tool/validate_docs.py
 ```

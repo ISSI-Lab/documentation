@@ -27,7 +27,7 @@ This project provides a multi-service web platform for structured technical docu
 - **Database**: MySQL 8.0 with persistent volume (`mysql_data`, Port `3306`)
 - **Shared Network**: Bridge network (`app-net`)
 - **Documentation**: Markdown + Mermaid diagrams under `docs/`
-- **Automation Scripts**: Cross-platform Python 3.8+ (`scripts/`)
+- **Automation & Agent Tools**: Cross-platform scripts (`scripts/`, `agent_tool/`)
 
 ---
 

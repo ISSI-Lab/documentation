@@ -3,17 +3,19 @@ import {
   X,
   FileCode,
   Sparkles,
-  BookOpen,
-  Presentation,
-  Check,
   FolderKanban,
   User as UserIcon,
+  Globe,
+  Lock,
+  Building2,
+  Settings,
 } from 'lucide-react';
 import { CompilerType, LatexTemplate, Organization, Project, User } from '../../../types';
 import { api } from '../../../api/client';
 
 interface CreateLatexDocumentModalProps {
   isOpen: boolean;
+  templates?: LatexTemplate[];
   projects: Project[];
   organizations?: Organization[];
   currentUser?: User | null;
@@ -26,7 +28,9 @@ interface CreateLatexDocumentModalProps {
 
 export const CreateLatexDocumentModal: React.FC<CreateLatexDocumentModalProps> = ({
   isOpen,
+  templates: propTemplates = [],
   projects,
+  organizations = [],
   currentUser,
   initialTemplateId,
   initialProjectId,
@@ -34,62 +38,107 @@ export const CreateLatexDocumentModal: React.FC<CreateLatexDocumentModalProps> =
   onCreated,
   showToast,
 }) => {
-  const [templates, setTemplates] = useState<LatexTemplate[]>([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(false);
-
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('blank');
+  const [fetchedTemplates, setFetchedTemplates] = useState<LatexTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(initialTemplateId || 'blank');
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState<string | null>(initialProjectId || null);
   const [author, setAuthor] = useState('');
   const [compiler, setCompiler] = useState<CompilerType>('pdflatex');
+  const [showCompilerSettings, setShowCompilerSettings] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const filterAccessibleTemplates = (list: LatexTemplate[]): LatexTemplate[] => {
+    if (!currentUser) {
+      return list.filter((t) => t.visibility === 'public');
+    }
+    return list.filter((t) => {
+      if (t.visibility === 'public') return true;
+      if (initialTemplateId && t.id === initialTemplateId) return true;
+      if (currentUser.user_type === 'organizer') return true;
+      const orgId = t.organization_id || t.team_id;
+      if (!orgId) {
+        return !t.created_by || t.created_by === currentUser.id;
+      }
+      return organizations.some((o) => o.id === orgId) || t.created_by === currentUser.id;
+    });
+  };
+
+  const templates = filterAccessibleTemplates(
+    fetchedTemplates.length > 0 ? fetchedTemplates : propTemplates
+  );
+
   useEffect(() => {
     if (isOpen) {
-      setTitle('');
+      const targetTplId = initialTemplateId || 'blank';
+      setSelectedTemplateId(targetTplId);
       setProjectId(initialProjectId || null);
-      setSelectedTemplateId(initialTemplateId || 'blank');
       setAuthor(currentUser?.name || currentUser?.username || '');
-      setCompiler('pdflatex');
+      setShowCompilerSettings(false);
       setError(null);
-      loadTemplates();
-    }
-  }, [isOpen, initialTemplateId, initialProjectId, currentUser]);
 
-  const loadTemplates = async () => {
-    try {
-      setLoadingTemplates(true);
-      const list = await api.listLatexTemplates();
-      setTemplates(list);
-      if (initialTemplateId && list.some((t) => t.id === initialTemplateId)) {
-        setSelectedTemplateId(initialTemplateId);
-        const selected = list.find((t) => t.id === initialTemplateId);
+      const initialPool = filterAccessibleTemplates(
+        propTemplates.length > 0 ? propTemplates : fetchedTemplates
+      );
+      if (targetTplId !== 'blank') {
+        const selected = initialPool.find((t) => t.id === targetTplId);
         if (selected) {
           setTitle(`${selected.title} - Draft`);
+          setCompiler(selected.compiler || 'pdflatex');
+        } else {
+          setTitle('');
+          setCompiler('pdflatex');
+        }
+      } else {
+        setTitle('');
+        setCompiler('pdflatex');
+      }
+
+      loadTemplates(targetTplId);
+    }
+  }, [isOpen, initialTemplateId]);
+
+  const loadTemplates = async (targetTplId?: string) => {
+    try {
+      const list = await api.listLatexTemplates();
+      setFetchedTemplates(list);
+      const accessible = filterAccessibleTemplates(list);
+      const idToSelect = targetTplId ?? initialTemplateId ?? 'blank';
+      if (idToSelect && idToSelect !== 'blank' && accessible.some((t) => t.id === idToSelect)) {
+        setSelectedTemplateId(idToSelect);
+        const selected = accessible.find((t) => t.id === idToSelect);
+        if (selected) {
+          setTitle((prev) => (prev.trim() ? prev : `${selected.title} - Draft`));
           setCompiler(selected.compiler || 'pdflatex');
         }
       }
     } catch (err: any) {
       console.warn('Could not load LaTeX templates:', err.message);
-    } finally {
-      setLoadingTemplates(false);
     }
   };
 
   const handleSelectTemplate = (tplId: string) => {
     setSelectedTemplateId(tplId);
     if (tplId === 'blank') {
-      setTitle('Untitled LaTeX Document');
+      setTitle((prev) => (!prev.trim() || prev.endsWith(' - Draft') ? 'Untitled LaTeX Document' : prev));
       setCompiler('pdflatex');
     } else {
       const selected = templates.find((t) => t.id === tplId);
       if (selected) {
-        setTitle(`${selected.title} - Draft`);
+        setTitle((prev) =>
+          !prev.trim() || prev === 'Untitled LaTeX Document' || prev.endsWith(' - Draft')
+            ? `${selected.title} - Draft`
+            : prev
+        );
         setCompiler(selected.compiler || 'pdflatex');
       }
     }
   };
+
+  const selectedTemplate =
+    selectedTemplateId !== 'blank' ? templates.find((t) => t.id === selectedTemplateId) || null : null;
+  const selectedTplOrgId = selectedTemplate?.organization_id || selectedTemplate?.team_id || null;
+  const selectedTplOrg = selectedTplOrgId ? organizations.find((o) => o.id === selectedTplOrgId) : null;
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -155,73 +204,93 @@ export const CreateLatexDocumentModal: React.FC<CreateLatexDocumentModalProps> =
             </div>
           )}
 
-          {/* 1. Template Selection */}
+          {/* 1. Template Selection (Dropdown Menu) */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            <label
+              htmlFor="latex-template-select"
+              className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+            >
               Select LaTeX Starter Template
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Blank Template Option */}
-              <div
-                onClick={() => handleSelectTemplate('blank')}
-                className={`p-3.5 border cursor-pointer transition-all ${
-                  selectedTemplateId === 'blank'
-                    ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
-                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center space-x-2">
-                    <Sparkles className="w-4 h-4 text-indigo-600" />
-                    <span className="text-xs font-bold text-slate-900">Blank Project</span>
-                  </div>
-                  {selectedTemplateId === 'blank' && <Check className="w-4 h-4 text-indigo-600" />}
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Start with a clean, minimal <code>main.tex</code> file and configure your own structure.
-                </p>
-              </div>
-
-              {/* Seed Templates */}
+            <select
+              id="latex-template-select"
+              data-testid="latex-template-select"
+              value={selectedTemplateId}
+              onChange={(e) => handleSelectTemplate(e.target.value)}
+              className="w-full text-xs border border-slate-300 px-3 py-2 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500 bg-white text-slate-900"
+            >
+              <option value="blank">
+                Blank Project (Clean main.tex - 1 file)
+              </option>
               {templates.map((tpl) => {
-                const isSelected = selectedTemplateId === tpl.id;
-                const isBeamer = tpl.category === 'Presentation' || tpl.title.includes('Beamer');
-                const isReport = tpl.category === 'Technical Report' || tpl.title.includes('Report');
-
+                const tplOrgId = tpl.organization_id || tpl.team_id || null;
+                const tplOrg = tplOrgId ? organizations.find((o) => o.id === tplOrgId) : null;
+                const scopeLabel =
+                  tpl.visibility === 'public'
+                    ? 'Public Pool'
+                    : tplOrgId
+                    ? tplOrg
+                      ? tplOrg.name
+                      : 'Organization Template'
+                    : 'Personal';
+                const fileCount = tpl.template_files?.length || 1;
                 return (
-                  <div
-                    key={tpl.id}
-                    onClick={() => handleSelectTemplate(tpl.id)}
-                    className={`p-3.5 border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2 truncate">
-                        {isBeamer ? (
-                          <Presentation className="w-4 h-4 text-indigo-600" />
-                        ) : isReport ? (
-                          <BookOpen className="w-4 h-4 text-indigo-600" />
-                        ) : (
-                          <FileCode className="w-4 h-4 text-indigo-600" />
-                        )}
-                        <span className="text-xs font-bold text-slate-900 truncate">{tpl.title}</span>
-                      </div>
-                      {isSelected && <Check className="w-4 h-4 text-indigo-600 flex-shrink-0" />}
-                    </div>
-                    <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">{tpl.description}</p>
-                    <div className="mt-2 flex items-center space-x-2 text-[10px] text-slate-400">
-                      <span className="uppercase px-1.5 py-0.5 bg-slate-100 text-slate-600 font-semibold border border-slate-200">
-                        {tpl.compiler}
-                      </span>
-                      <span>{tpl.template_files?.length || 1} files</span>
-                    </div>
-                  </div>
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.title} ({scopeLabel} - {(tpl.compiler || 'pdflatex').toUpperCase()} - {fileCount}{' '}
+                    {fileCount === 1 ? 'file' : 'files'})
+                  </option>
                 );
               })}
-            </div>
+            </select>
+
+            {/* Selected Template Summary */}
+            {selectedTemplate ? (
+              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 text-xs text-slate-600">
+                <div className="flex items-center justify-between gap-2 font-medium text-slate-800">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {selectedTemplate.visibility === 'public' ? (
+                      <Globe className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    ) : selectedTplOrgId ? (
+                      <Building2 className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    )}
+                    <span className="truncate">
+                      {selectedTemplate.description || 'Pre-configured multi-file LaTeX project template.'}
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="px-1.5 py-0.5 bg-white text-slate-600 font-semibold text-[10px] border border-slate-200">
+                      {selectedTemplate.visibility === 'public'
+                        ? 'Public'
+                        : selectedTplOrgId
+                        ? selectedTplOrg
+                          ? selectedTplOrg.name
+                          : 'Organization'
+                        : 'Personal'}
+                    </span>
+                    <span className="uppercase px-1.5 py-0.5 bg-slate-100 text-slate-700 font-semibold text-[10px] border border-slate-200">
+                      {selectedTemplate.compiler || 'pdflatex'}
+                    </span>
+                    <span className="text-indigo-700 font-semibold text-[10px] bg-indigo-50 px-2 py-0.5 border border-indigo-200">
+                      {selectedTemplate.template_files?.length || 1} files
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-700">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                  <span>
+                    Start with a clean, minimal <code>main.tex</code> file and configure your own structure.
+                  </span>
+                </span>
+                <span className="text-indigo-700 font-semibold text-[10px] bg-indigo-50 px-2 py-0.5 border border-indigo-200 flex-shrink-0">
+                  1 file
+                </span>
+              </div>
+            )}
           </div>
 
           {/* 2. Document Title */}
@@ -274,25 +343,57 @@ export const CreateLatexDocumentModal: React.FC<CreateLatexDocumentModalProps> =
             </div>
           </div>
 
-          {/* 4. Compiler Engine */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">TeX Compiler Engine</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['pdflatex', 'xelatex', 'lualatex'] as CompilerType[]).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCompiler(c)}
-                  className={`py-2 text-xs font-semibold border transition-colors ${
-                    compiler === c
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {c === 'pdflatex' ? 'pdfLaTeX (Standard)' : c === 'xelatex' ? 'XeLaTeX (Fonts)' : 'LuaLaTeX'}
-                </button>
-              ))}
+          {/* 4. Compiler Engine (Hidden behind Settings Icon Button) */}
+          <div className="pt-2 border-t border-slate-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-xs text-slate-600">
+                <span>Compile Engine:</span>
+                <span className="uppercase px-2 py-0.5 bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200">
+                  {compiler}
+                </span>
+              </div>
+              <button
+                type="button"
+                data-testid="modal-latex-settings-btn"
+                onClick={() => setShowCompilerSettings((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border transition-colors cursor-pointer ${
+                  showCompilerSettings
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                    : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-slate-300'
+                }`}
+                title="Configure TeX Compiler Engine"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Settings</span>
+              </button>
             </div>
+
+            {showCompilerSettings && (
+              <div
+                data-testid="modal-latex-settings-panel"
+                className="mt-3 p-3 bg-slate-50 border border-slate-200 space-y-2"
+              >
+                <label className="block text-xs font-semibold text-slate-700">
+                  TeX Compiler Engine
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['pdflatex', 'xelatex', 'lualatex'] as CompilerType[]).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCompiler(c)}
+                      className={`py-2 text-xs font-semibold border transition-colors cursor-pointer ${
+                        compiler === c
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {c === 'pdflatex' ? 'pdfLaTeX (Standard)' : c === 'xelatex' ? 'XeLaTeX (Fonts)' : 'LuaLaTeX'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

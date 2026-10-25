@@ -316,6 +316,8 @@ export interface Document {
   elements_data: Record<string, any>;
   compiled_markdown: string;
   format?: DocumentFormat;
+  version_tag?: string | null;
+  current_version_id?: string | null;
   latex_project?: LatexProject;
   submissions_count?: number;
   copies_count?: number;
@@ -365,6 +367,8 @@ export interface LatexProject {
   spell_check_language?: string;
   brand_variation_id?: string | null;
   image_name?: string | null;
+  version_tag?: string | null;
+  current_version_id?: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -443,7 +447,10 @@ export interface LatexTemplate {
   icon: string;
   visibility: TemplateVisibility;
   organization_id: string | null;
+  team_id?: string | null;
   created_by: string | null;
+  creator_name?: string;
+  creator_username?: string;
   tags: string[];
   template_files: LatexTemplateFileEntry[];
   thumbnail_url?: string | null;
@@ -451,12 +458,103 @@ export interface LatexTemplate {
   updated_at: string;
 }
 
+export interface LatexTemplateCreatePayload {
+  title: string;
+  description: string;
+  category: string;
+  compiler: CompilerType;
+  main_file: string;
+  icon: string;
+  visibility?: TemplateVisibility;
+  organization_id?: string | null;
+  team_id?: string | null;
+  tags?: string[];
+  template_files: LatexTemplateFileEntry[];
+}
+
 export interface LatexWorkspaceData {
-  project: LatexProject;
+  project: LatexProject & {
+    is_readonly?: boolean;
+    is_current?: boolean;
+    working_version_tag?: string | null;
+    working_version_id?: string | null;
+    viewing_version?: LatexVersionRecord | null;
+  };
   folders: LatexFolder[];
   docs: LatexDoc[];
   files: LatexFile[];
   main_doc?: LatexDoc | null;
   latest_compilation?: LatexCompilation | null;
+  is_readonly?: boolean;
+  version_tag?: string | null;
+  current_version_id?: string | null;
+  working_version_tag?: string | null;
+  working_version_id?: string | null;
+}
+
+export interface LatexVersionDoc {
+  id: string;
+  folder_id?: string | null;
+  name: string;
+  path: string;
+  content: string;
+  rev?: number;
+  version?: number;
+  is_main?: boolean;
+}
+
+export interface LatexVersionFile {
+  id: string;
+  folder_id?: string | null;
+  name: string;
+  path: string;
+  size: number;
+  mime_type: string;
+}
+
+export interface LatexVersionFolder {
+  id: string;
+  parent_folder_id?: string | null;
+  name: string;
+  path: string;
+}
+
+export interface LatexVersionSnapshotData {
+  compiler: CompilerType;
+  root_doc_id?: string | null;
+  folders: LatexVersionFolder[];
+  docs: LatexVersionDoc[];
+  files: LatexVersionFile[];
+}
+
+export interface LatexVersionRecord {
+  id: string;
+  project_id: string;
+  document_id: string;
+  version_number: number;
+  version_tag: string;
+  label: string;
+  comment?: string;
+  user_id?: string | null;
+  user_name?: string;
+  is_current: boolean;
+  created_at: string;
+  snapshot: LatexVersionSnapshotData;
+}
+
+export interface LatexVersionListResponse {
+  document_id: string;
+  project_id: string;
+  document_title: string;
+  version_tag?: string | null;
+  current_version_id?: string | null;
+  current_workspace: {
+    compiler: CompilerType;
+    root_doc_id?: string | null;
+    folders: LatexFolder[];
+    docs: LatexDoc[];
+    files: LatexFile[];
+  };
+  versions: LatexVersionRecord[];
 }
 

@@ -65,6 +65,8 @@ function formatDocumentRow(row: any): Document {
     elements_data: elementsData,
     compiled_markdown: row.compiled_markdown || '',
     format: row.format || 'markdown',
+    version_tag: row.version_tag || row.latex_version_tag || (row.format === 'latex' ? '0' : null),
+    current_version_id: row.current_version_id || row.latex_current_version_id || null,
     submissions_count: Number(row.submissions_count || 0),
     copies_count: Number(row.copies_count || 0),
     created_at: new Date(row.created_at).toISOString(),
@@ -164,6 +166,8 @@ documentsRouter.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Re
         u.username as creator_username,
         p.association_type as project_association_type,
         ot.name as assigned_team_name,
+        (SELECT version_tag FROM latex_projects WHERE document_id = d.id LIMIT 1) as latex_version_tag,
+        (SELECT current_version_id FROM latex_projects WHERE document_id = d.id LIMIT 1) as latex_current_version_id,
         (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
         (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count,
         (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
@@ -293,6 +297,8 @@ documentsRouter.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res:
          u.username as creator_username,
          p.association_type as project_association_type,
          ot.name as assigned_team_name,
+         (SELECT version_tag FROM latex_projects WHERE document_id = d.id LIMIT 1) as latex_version_tag,
+         (SELECT current_version_id FROM latex_projects WHERE document_id = d.id LIMIT 1) as latex_current_version_id,
          (SELECT COUNT(*) FROM document_submissions WHERE (document_id = d.id OR document_id IN (SELECT id FROM documents WHERE copied_from_id = d.id)) AND status = 'submitted') as submissions_count,
          (SELECT COUNT(*) FROM documents WHERE copied_from_id = d.id) as copies_count,
          (SELECT created_by FROM documents WHERE id = d.copied_from_id) as master_creator_id
@@ -391,6 +397,16 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       let latexTpl: any = null;
       if (latexTplRows && latexTplRows.length > 0) {
         latexTpl = latexTplRows[0];
+        if (latexTpl.visibility === 'private') {
+          if (latexTpl.organization_id) {
+            const isMember = await isOrganizationMember(user.id, latexTpl.organization_id);
+            if (!isMember && latexTpl.created_by !== user.id && user.user_type !== 'organizer') {
+              return res.status(403).json({ error: 'You do not have permission to use this private organization LaTeX template' });
+            }
+          } else if (latexTpl.created_by !== user.id && user.user_type !== 'organizer') {
+            return res.status(403).json({ error: 'You do not have permission to use this private personal LaTeX template' });
+          }
+        }
         templateTitle = latexTpl.title;
       }
 
@@ -403,8 +419,8 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         `INSERT INTO documents (
           id, title, project_id, organization_id, template_id, template_title,
           document_type, format, is_submittable, status, author, created_by, last_edited_by,
-          tags, elements_data, compiled_markdown, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'latex', ?, ?, ?, ?, ?, ?, '{}', '', NOW(), NOW())`,
+          tags, elements_data, compiled_markdown, version_tag, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'latex', ?, ?, ?, ?, ?, ?, '{}', '', '0', NOW(), NOW())`,
         [
           docId,
           title.trim(),
@@ -426,13 +442,15 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
       const projectIdForLatex = `proj-${crypto.randomUUID()}`;
       const compiler = (latexTpl && latexTpl.compiler) || req.body.compiler || 'pdflatex';
       await pool.query(
-        `INSERT INTO latex_projects (id, document_id, name, description, compiler, root_doc_id, active, created_at, updated_at)
-         VALUES (?, ?, ?, '', ?, NULL, TRUE, NOW(), NOW())`,
+        `INSERT INTO latex_projects (id, document_id, name, description, compiler, root_doc_id, version_tag, active, created_at, updated_at)
+         VALUES (?, ?, ?, '', ?, NULL, '0', TRUE, NOW(), NOW())`,
         [projectIdForLatex, docId, title.trim(), compiler]
       );
 
       // 3. Populate template files into latex_docs
       let rootDocId: string | null = null;
+      const initialDocsForSnapshot: Array<{ id: string; name: string; path: string; content: string; rev: number; version: number; is_main: boolean }> = [];
+
       if (latexTpl) {
         let tplFiles: any[] = [];
         try {
@@ -444,14 +462,24 @@ documentsRouter.post('/', requireAuth, async (req: AuthenticatedRequest, res: Re
         for (const tf of tplFiles) {
           const fileId = `doc-${crypto.randomUUID()}`;
           const isMain = Boolean(tf.is_main || tf.name === latexTpl.main_file || tf.name === 'main.tex');
+          const docContent = tf.content || '';
           await pool.query(
             `INSERT INTO latex_docs (id, project_id, folder_id, name, path, content, rev, version, created_at, updated_at)
              VALUES (?, ?, NULL, ?, ?, ?, 0, 1, NOW(), NOW())`,
-            [fileId, projectIdForLatex, tf.name, tf.path || tf.name, tf.content || '']
+            [fileId, projectIdForLatex, tf.name, tf.path || tf.name, docContent]
           );
           if (isMain && !rootDocId) {
             rootDocId = fileId;
           }
+          initialDocsForSnapshot.push({
+            id: fileId,
+            name: tf.name,
+            path: tf.path || tf.name,
+            content: docContent,
+            rev: 0,
+            version: 1,
+            is_main: isMain,
+          });
         }
       } else {
         // Default starter main.tex
@@ -479,11 +507,46 @@ Start typing your LaTeX document here...
            VALUES (?, ?, NULL, 'main.tex', 'main.tex', ?, 0, 1, NOW(), NOW())`,
           [defaultDocId, projectIdForLatex, starterContent]
         );
+        initialDocsForSnapshot.push({
+          id: defaultDocId,
+          name: 'main.tex',
+          path: 'main.tex',
+          content: starterContent,
+          rev: 0,
+          version: 1,
+          is_main: true,
+        });
       }
 
       if (rootDocId) {
         await pool.query('UPDATE latex_projects SET root_doc_id = ? WHERE id = ?', [rootDocId, projectIdForLatex]);
       }
+
+      // 4. Create initial snapshot version 0
+      const snapshot0Id = `ver-${crypto.randomUUID()}`;
+      const snapshot0Payload = {
+        compiler,
+        root_doc_id: rootDocId,
+        folders: [],
+        docs: initialDocsForSnapshot,
+        files: [],
+      };
+      const userName = user.name || user.username || cleanAuthor || 'Author';
+
+      await pool.query(
+        `INSERT INTO latex_doc_snapshots (id, project_id, user_id, user_name, label, version, comment, snapshot_data, created_at)
+         VALUES (?, ?, ?, ?, '0', 0, 'Initial version 0', ?, NOW())`,
+        [snapshot0Id, projectIdForLatex, user.id, userName, JSON.stringify(snapshot0Payload)]
+      );
+
+      await pool.query(
+        'UPDATE latex_projects SET version_tag = ?, current_version_id = ? WHERE id = ?',
+        ['0', snapshot0Id, projectIdForLatex]
+      );
+      await pool.query(
+        'UPDATE documents SET version_tag = ?, current_version_id = ? WHERE id = ?',
+        ['0', snapshot0Id, docId]
+      );
 
       const [createdDocRows] = await pool.query<any[]>('SELECT * FROM documents WHERE id = ?', [docId]);
       return res.status(201).json(formatDocumentRow(createdDocRows[0]));
@@ -774,17 +837,25 @@ documentsRouter.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: 
 
     const finalElementsData = elements_data !== undefined ? { ...currentData, ...elements_data } : currentData;
 
-    // Fetch linked template for compiling markdown
-    const template = await fetchTemplateById(currentDoc.template_id);
+    let compiledMd = currentDoc.compiled_markdown || '';
+    if (currentDoc.format !== 'latex') {
+      // Fetch linked template for compiling markdown
+      const template = await fetchTemplateById(currentDoc.template_id);
 
-    const compiledMd = compileDocumentMarkdown(
-      newTitle,
-      newStatus,
-      newAuthor,
-      newTags,
-      template,
-      finalElementsData
-    );
+      compiledMd = compileDocumentMarkdown(
+        newTitle,
+        newStatus,
+        newAuthor,
+        newTags,
+        template,
+        finalElementsData
+      );
+    } else if (newTitle !== currentDoc.title) {
+      await pool.query(
+        'UPDATE latex_projects SET name = ?, updated_at = NOW() WHERE document_id = ?',
+        [newTitle, id]
+      );
+    }
 
     await pool.query(
       `UPDATE documents 

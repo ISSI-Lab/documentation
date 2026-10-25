@@ -3,6 +3,7 @@ import {
   Users,
   FolderKanban,
   FileText,
+  FileCode,
   PlusCircle,
   Plus,
   KeyRound,
@@ -18,7 +19,7 @@ import {
   Lock,
   Trash2,
 } from 'lucide-react';
-import { Document, Organization, Project, Team, Template, User } from '../../types';
+import { Document, LatexTemplate, Organization, Project, Team, Template, User } from '../../types';
 
 interface PersonalHomepageProps {
   currentUser: User;
@@ -27,6 +28,7 @@ interface PersonalHomepageProps {
   allProjects: Project[];
   documents: Document[];
   templates: Template[];
+  latexTemplates?: LatexTemplate[];
   onNavigateToOrganizations?: () => void;
   onNavigateToTeams?: () => void; // compatibility alias
   onNavigateToProjects?: () => void;
@@ -38,6 +40,7 @@ interface PersonalHomepageProps {
   onOpenJoinTeam?: () => void; // compatibility alias
   onOpenCreateProject: (organizationId: string) => void;
   onOpenNewDocModal: (organizationId?: string | null, projectId?: string | null, templateId?: string | null) => void;
+  onOpenNewLatexDocModal?: (templateId?: string | null) => void;
   onViewDocument: (docId: string) => void;
   onEditDocument?: (docId: string) => void;
   onSelectOrganization?: (organizationId: string) => void;
@@ -53,6 +56,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   allProjects,
   documents,
   templates,
+  latexTemplates = [],
   onNavigateToOrganizations,
   onNavigateToTeams,
   onNavigateToProjects,
@@ -64,6 +68,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
   onOpenJoinTeam,
   onOpenCreateProject,
   onOpenNewDocModal,
+  onOpenNewLatexDocModal,
   onViewDocument,
   onSelectOrganization,
   onSelectTeam,
@@ -80,6 +85,8 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
     if (onSelectTeam) onSelectTeam(id);
   };
   const publicTemplates = templates.filter((t) => t.visibility === 'public');
+  const publicLatexTemplates = latexTemplates.filter((t) => t.visibility === 'public');
+  const totalPublicTemplatesCount = publicTemplates.length + publicLatexTemplates.length;
   const recentDocuments = documents.slice(0, 5);
 
   const getRoleBadge = (role?: string, isCreator?: boolean, isPersonal?: boolean) => {
@@ -217,7 +224,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
               <span className="text-xs text-blue-200 font-medium">Public Templates</span>
               <Globe className="w-4 h-4 text-blue-300" />
             </div>
-            <p className="text-2xl font-bold mt-1">{publicTemplates.length}</p>
+            <p className="text-2xl font-bold mt-1">{totalPublicTemplatesCount}</p>
           </div>
         </div>
       </div>
@@ -583,13 +590,19 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                       <span className="text-xs font-bold text-slate-800 line-clamp-1 hover:text-blue-600">
                         {doc.title}
                       </span>
-                      <span
-                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getStatusBadge(
-                          doc.status
-                        )}`}
-                      >
-                        {doc.status.replace('_', ' ')}
-                      </span>
+                      {doc.format !== 'latex' ? (
+                        <span
+                          className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getStatusBadge(
+                            doc.status
+                          )}`}
+                        >
+                          {doc.status.replace('_', ' ')}
+                        </span>
+                      ) : doc.version_tag ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">
+                          {doc.version_tag}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
                       <span>{doc.template_title}</span>
@@ -614,7 +627,7 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold">Public Template Pool</h3>
-                  <p className="text-[11px] text-slate-400">Standard reusable blueprints</p>
+                  <p className="text-[11px] text-slate-400">Standard reusable Markdown & LaTeX blueprints</p>
                 </div>
               </div>
               <button
@@ -632,8 +645,13 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                   key={tpl.id}
                   className="bg-white/10 hover:bg-white/15 p-3 rounded-xl border border-white/10 transition-colors flex items-center justify-between gap-2"
                 >
-                  <div>
-                    <h4 className="text-xs font-bold text-white line-clamp-1">{tpl.title}</h4>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 bg-blue-500/30 text-blue-200 border border-blue-400/30 rounded">
+                        Markdown
+                      </span>
+                      <h4 className="text-xs font-bold text-white truncate">{tpl.title}</h4>
+                    </div>
                     <p className="text-[10px] text-slate-300 line-clamp-1 mt-0.5">
                       {tpl.category} &bull; {(tpl.document_elements || []).length} sections
                     </p>
@@ -646,13 +664,44 @@ export const PersonalHomepage: React.FC<PersonalHomepageProps> = ({
                   </button>
                 </div>
               ))}
+
+              {publicLatexTemplates.slice(0, 3).map((tpl) => (
+                <div
+                  key={tpl.id}
+                  className="bg-white/10 hover:bg-white/15 p-3 rounded-xl border border-white/10 transition-colors flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 bg-purple-500/30 text-purple-200 border border-purple-400/30 rounded flex items-center gap-0.5">
+                        <FileCode className="w-2.5 h-2.5" /> LaTeX
+                      </span>
+                      <h4 className="text-xs font-bold text-white truncate">{tpl.title}</h4>
+                    </div>
+                    <p className="text-[10px] text-slate-300 line-clamp-1 mt-0.5">
+                      {tpl.category} &bull; {tpl.compiler || 'pdflatex'} &bull; {(tpl.template_files || []).length} files
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (onOpenNewLatexDocModal) {
+                        onOpenNewLatexDocModal(tpl.id);
+                      } else {
+                        onNavigateToTemplates();
+                      }
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-indigo-500 hover:bg-indigo-600 text-white text-[11px] font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                  >
+                    Use
+                  </button>
+                </div>
+              ))}
             </div>
 
             <button
               onClick={onNavigateToTemplates}
               className="w-full py-2 bg-white/10 hover:bg-white/20 text-indigo-200 hover:text-white text-xs font-semibold rounded-xl text-center transition-colors block cursor-pointer"
             >
-              Explore All {templates.length} Templates &rarr;
+              Explore All {templates.length + latexTemplates.length} Templates &rarr;
             </button>
           </div>
         </div>

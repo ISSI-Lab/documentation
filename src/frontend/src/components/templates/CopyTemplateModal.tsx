@@ -4,22 +4,22 @@ import {
   Copy,
   Building2,
   FileText,
+  FileCode,
   AlertCircle,
   PlusCircle,
-  CheckCircle2,
   Crown,
 } from 'lucide-react';
-import { Organization, Team, Template, User } from '../../types';
+import { LatexTemplate, Organization, Team, Template, User } from '../../types';
 import { api } from '../../api/client';
 
 interface CopyTemplateModalProps {
   isOpen: boolean;
-  template: Template | null;
+  template: Template | LatexTemplate | null;
   currentUser: User | null;
   organizations?: Organization[];
   teams?: Team[]; // compatibility alias
   onClose: () => void;
-  onSuccess: (copiedTemplate: Template, targetOrg: Organization) => void;
+  onSuccess: (copiedTemplate: Template | LatexTemplate, targetOrg: Organization, isLatex?: boolean) => void;
   onCreateOrganizationClick?: () => void;
 }
 
@@ -83,14 +83,21 @@ export const CopyTemplateModal: React.FC<CopyTemplateModalProps> = ({
       return;
     }
 
+    const isLatex = 'template_files' in template;
+
     setLoading(true);
     setError(null);
     try {
-      const copied = await api.copyTemplate(template.id, {
-        target_organization_id: targetOrgId,
-        title: targetTitle.trim(),
-      });
-      onSuccess(copied, targetOrg);
+      const copied = isLatex
+        ? await api.copyLatexTemplate(template.id, {
+            target_organization_id: targetOrgId,
+            title: targetTitle.trim(),
+          })
+        : await api.copyTemplate(template.id, {
+            target_organization_id: targetOrgId,
+            title: targetTitle.trim(),
+          });
+      onSuccess(copied, targetOrg, isLatex);
     } catch (err: any) {
       setError(err.message || 'Failed to copy template to target organization.');
     } finally {
@@ -176,13 +183,19 @@ export const CopyTemplateModal: React.FC<CopyTemplateModalProps> = ({
             {/* Source Template Card */}
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-2">
               <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider">
-                <span>Source Template Blueprint</span>
+                <span>Source {'template_files' in template ? 'LaTeX ' : ''}Template Blueprint</span>
                 <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono border border-indigo-200">
-                  {template.document_elements?.length || 0} sections
+                  {'template_files' in template
+                    ? `${template.template_files?.length || 0} files`
+                    : `${template.document_elements?.length || 0} sections`}
                 </span>
               </div>
               <div className="flex items-center gap-2.5">
-                <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                {'template_files' in template ? (
+                  <FileCode className="w-4 h-4 text-indigo-600 shrink-0" />
+                ) : (
+                  <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                )}
                 <span className="text-sm font-bold text-slate-900 truncate">
                   {template.title}
                 </span>

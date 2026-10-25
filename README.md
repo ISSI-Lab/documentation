@@ -31,7 +31,8 @@ This project uses a **Multi-Service Docker Architecture** with clean separation 
 │   └── templates/           # Scaffolding templates for ADRs, RFCs, PRDs, and Handoffs
 │
 ├── tests/                   # Cross-service E2E and integration test suites
-└── scripts/                 # Cross-platform developer automation & validation tools
+├── scripts/                 # Cross-platform developer automation & deployment tools
+└── agent_tool/              # AI agent tools for record scaffolding & doc validation
 ```
 
 ---
@@ -84,30 +85,30 @@ Regardless of whether you are running on macOS, Ubuntu/Debian, or Windows with W
 
 ## Developer Workflows & Scaffolding CLI
 
-We provide cross-platform Python CLI tools under `scripts/` that run on Windows, macOS, and Linux:
+We provide cross-platform Python CLI tools under `agent_tool/` and `scripts/` that run on Windows, macOS, and Linux:
 
 ### 1. Create a New Record
 Automatically assigns the next sequential number and applies the correct template:
 
 ```bash
 # Create an Architecture Decision Record
-python3 scripts/new_record.py adr "use-postgresql"
+python3 agent_tool/new_record.py adr "use-postgresql"
 
 # Create a Request for Comments (Design Proposal)
-python3 scripts/new_record.py rfc "caching-strategy"
+python3 agent_tool/new_record.py rfc "caching-strategy"
 
 # Create a Product Requirement Document
-python3 scripts/new_record.py prd "user-onboarding"
+python3 agent_tool/new_record.py prd "user-onboarding"
 
 # Create a Shift / Machine Handoff before switching machines
-python3 scripts/new_record.py handoff "session-wrapup"
+python3 agent_tool/new_record.py handoff "session-wrapup"
 ```
 
 ### 2. Validate Documentation & Links
 Verify all internal relative links, kebab-case file naming, and LF line endings before pushing to Git:
 
 ```bash
-python3 scripts/validate_docs.py
+python3 agent_tool/validate_docs.py
 ```
 
 ### 3. Setup & Manage Email Configuration (`email_config.json`)

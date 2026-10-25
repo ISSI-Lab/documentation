@@ -22,15 +22,20 @@ import {
   Minimize2,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   BookOpen,
   Image as ImageIcon,
-  ZoomIn,
-  ZoomOut,
   Archive,
   Code2,
   Check,
   X,
   Sigma,
+  Settings,
+  RotateCcw,
+  Tag,
+  Clock,
+  Lock,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   CompilerType,
@@ -42,20 +47,43 @@ import {
   LatexFolder,
   LatexProject,
   LatexWorkspaceData,
+  LatexVersionRecord,
 } from '../../../types';
 import { api } from '../../../api/client';
 
+// Dedicated Move to Folder Icon
+const FolderInputIcon: React.FC<{ className?: string }> = ({ className = 'w-3 h-3' }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
+    <path d="M2 13h10" />
+    <path d="m9 10 3 3-3 3" />
+  </svg>
+);
+
 interface LatexDocumentEditorProps {
   document: Document;
+  initialVersionId?: string | null;
   currentUser?: any;
   onBack: () => void;
+  onOpenVersions?: (docId: string) => void;
   showToast?: (message: string, type?: 'success' | 'error') => void;
 }
 
 export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
   document: initialDoc,
+  initialVersionId,
   currentUser,
   onBack,
+  onOpenVersions,
   showToast,
 }) => {
   const documentId = initialDoc.id;
@@ -71,6 +99,20 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
   const [openDocIds, setOpenDocIds] = useState<string[]>([]);
   const [dirtyDocs, setDirtyDocs] = useState<Record<string, boolean>>({});
 
+  // Versioning state
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(initialVersionId || 'working');
+  const [isReadOnly, setIsReadOnly] = useState<boolean>(Boolean(initialVersionId && initialVersionId !== 'working'));
+  const [viewingVersion, setViewingVersion] = useState<LatexVersionRecord | null>(null);
+  const [availableVersions, setAvailableVersions] = useState<LatexVersionRecord[]>([]);
+  const [workingVersionTag, setWorkingVersionTag] = useState<string>(initialDoc.version_tag || '0');
+  const [restoringVersion, setRestoringVersion] = useState<boolean>(false);
+
+  // Commit Modal from Editor
+  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
+  const [commitVersionInput, setCommitVersionInput] = useState('');
+  const [commitCommentInput, setCommitCommentInput] = useState('');
+  const [committing, setCommitting] = useState(false);
+
   // Compilation state
   const [compiling, setCompiling] = useState(false);
   const [latestCompilation, setLatestCompilation] = useState<LatexCompilation | null>(null);
@@ -82,17 +124,38 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
   // Layout state
   const [showFileTree, setShowFileTree] = useState(true);
   const [viewMode, setViewMode] = useState<'split' | 'editor' | 'preview'>('split');
-  const [pdfZoom, setPdfZoom] = useState<number>(100);
 
   // Modals
   const [isNewFileModalOpen, setIsNewFileModalOpen] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [newFileFolderId, setNewFileFolderId] = useState<string | null>(null);
   const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ id: string; type: 'doc' | 'file' | 'folder'; name: string } | null>(null);
   const [renameNewName, setRenameNewName] = useState('');
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<{ id: string; type: 'doc' | 'file'; name: string; currentFolderId: string | null } | null>(null);
+  const [destinationFolderId, setDestinationFolderId] = useState<string>('root');
+  const [uploadTargetFolderId, setUploadTargetFolderId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+  const folderFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isGreekModalOpen, setIsGreekModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    if (isSettingsOpen) {
+      window.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [isSettingsOpen]);
 
   // Saving indicator
   const [saving, setSaving] = useState(false);
@@ -121,19 +184,27 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
     { label: 'Omega', symbol: '\\Omega', greek: 'Ω' },
   ];
 
-  // Load workspace
-  const loadWorkspace = async (preserveActiveDoc = true) => {
+  // Load workspace (current working or specific version snapshot)
+  const loadWorkspace = async (targetVersionId = selectedVersionId, preserveActiveDoc = true) => {
     try {
       setLoading(true);
-      const data: LatexWorkspaceData = await api.getLatexWorkspace(documentId);
+      const data: LatexWorkspaceData = await api.getLatexWorkspace(documentId, targetVersionId);
       setProject(data.project);
       setFolders(data.folders || []);
       setDocs(data.docs || []);
       setFiles(data.files || []);
       setCompiler(data.project.compiler || 'pdflatex');
+      const readonlyMode = Boolean(data.is_readonly || (targetVersionId && targetVersionId !== 'working'));
+      setIsReadOnly(readonlyMode);
+      setViewingVersion(data.project.viewing_version || null);
+      if (data.working_version_tag) {
+        setWorkingVersionTag(data.working_version_tag);
+      }
 
       if (data.latest_compilation) {
         setLatestCompilation(data.latest_compilation);
+      } else {
+        setLatestCompilation(null);
       }
 
       // Set active document
@@ -158,16 +229,90 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
     }
   };
 
+  const loadVersionsList = async () => {
+    try {
+      const vData = await api.listLatexVersions(documentId);
+      setAvailableVersions(vData.versions || []);
+      if (vData.version_tag) {
+        setWorkingVersionTag(vData.version_tag);
+      }
+    } catch (err: any) {
+      console.warn('Could not load version history list:', err.message);
+    }
+  };
+
   useEffect(() => {
-    loadWorkspace(false);
-  }, [documentId]);
+    const targetVer = initialVersionId || 'working';
+    setSelectedVersionId(targetVer);
+    loadWorkspace(targetVer, false);
+    loadVersionsList();
+  }, [documentId, initialVersionId]);
+
+  // Switch versions
+  const handleSwitchVersion = async (newVersionId: string) => {
+    if (newVersionId === selectedVersionId) return;
+    if (selectedVersionId === 'working' && activeDocId && dirtyDocs[activeDocId]) {
+      await handleSaveDoc(activeDocId, activeDocContent);
+    }
+    setSelectedVersionId(newVersionId);
+    await loadWorkspace(newVersionId, false);
+  };
+
+  // Make an older version the current working version
+  const handleMakeCurrentWorking = async (versionIdToRestore = selectedVersionId) => {
+    if (!versionIdToRestore || versionIdToRestore === 'working') return;
+    try {
+      setRestoringVersion(true);
+      const res = await api.restoreLatexVersion(documentId, versionIdToRestore);
+      showToast?.(res.message || `Version "${res.version_tag}" is now the current working version.`, 'success');
+      setWorkingVersionTag(res.version_tag);
+      setSelectedVersionId('working');
+      await loadWorkspace('working', false);
+      await loadVersionsList();
+    } catch (err: any) {
+      showToast?.(err.message || 'Failed to make this version current', 'error');
+    } finally {
+      setRestoringVersion(false);
+    }
+  };
+
+  // Commit new version
+  const handleCommitVersion = async () => {
+    if (!commitVersionInput.trim()) {
+      showToast?.('Please enter a version tag (e.g. 1, v1.0, 2.0)', 'error');
+      return;
+    }
+    try {
+      setCommitting(true);
+      if (activeDocId && dirtyDocs[activeDocId]) {
+        await api.updateLatexDoc(documentId, activeDocId, { content: activeDocContent });
+        setDirtyDocs((prev) => ({ ...prev, [activeDocId]: false }));
+      }
+      const res = await api.commitLatexVersion(documentId, {
+        version_tag: commitVersionInput.trim(),
+        comment: commitCommentInput.trim() || undefined,
+      });
+      showToast?.(`Version "${res.version_tag}" committed successfully! It is now the current working version.`, 'success');
+      setIsCommitModalOpen(false);
+      setCommitVersionInput('');
+      setCommitCommentInput('');
+      setWorkingVersionTag(res.version_tag);
+      setSelectedVersionId('working');
+      await loadWorkspace('working', true);
+      await loadVersionsList();
+    } catch (err: any) {
+      showToast?.(err.message || 'Failed to commit new version', 'error');
+    } finally {
+      setCommitting(false);
+    }
+  };
 
   // Switch active document
   const handleSelectDoc = (docId: string) => {
     if (docId === activeDocId) return;
 
-    // Save current active document before switching if dirty
-    if (activeDocId && dirtyDocs[activeDocId]) {
+    // Save current active document before switching if dirty and editable
+    if (!isReadOnly && activeDocId && dirtyDocs[activeDocId]) {
       handleSaveDoc(activeDocId, activeDocContent);
     }
 
@@ -202,6 +347,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
 
   // Content change
   const handleContentChange = (val: string) => {
+    if (isReadOnly) return;
     setActiveDocContent(val);
     if (activeDocId) {
       setDirtyDocs((prev) => ({ ...prev, [activeDocId]: true }));
@@ -212,7 +358,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
 
   // Save document
   const handleSaveDoc = async (docIdToSave = activeDocId, contentToSave = activeDocContent) => {
-    if (!docIdToSave) return;
+    if (isReadOnly || !docIdToSave) return;
     try {
       setSaving(true);
       await api.updateLatexDoc(documentId, docIdToSave, { content: contentToSave });
@@ -233,13 +379,16 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
     if (compiling) return;
     try {
       setCompiling(true);
-      // Auto-save active document first
-      if (activeDocId && dirtyDocs[activeDocId]) {
+      // Auto-save active document first IF editable
+      if (!isReadOnly && activeDocId && dirtyDocs[activeDocId]) {
         await api.updateLatexDoc(documentId, activeDocId, { content: activeDocContent });
         setDirtyDocs((prev) => ({ ...prev, [activeDocId]: false }));
       }
 
-      const res = await api.compileLatexProject(documentId, { compiler });
+      const res = await api.compileLatexProject(documentId, {
+        compiler,
+        version_id: selectedVersionId,
+      });
       setLatestCompilation({
         id: res.compilation_id,
         project_id: project?.id || '',
@@ -297,13 +446,17 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
   const handleCreateFile = async () => {
     if (!newFileName.trim()) return;
     try {
-      const created = await api.createLatexDoc(documentId, { name: newFileName.trim() });
+      const created = await api.createLatexDoc(documentId, {
+        name: newFileName.trim(),
+        folder_id: newFileFolderId || null,
+      });
       setDocs((prev) => [...prev, created]);
       setActiveDocId(created.id);
       setActiveDocContent(created.content || '');
       setOpenDocIds((prev) => [...prev, created.id]);
       setIsNewFileModalOpen(false);
       setNewFileName('');
+      setNewFileFolderId(null);
       showToast?.(`File '${created.name}' created`, 'success');
     } catch (err: any) {
       showToast?.(err.message || 'Failed to create file', 'error');
@@ -324,27 +477,115 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
     }
   };
 
+  // Delete folder
+  const handleDeleteFolder = async (folderId: string, folderName: string) => {
+    if (!confirm(`Are you sure you want to delete folder '${folderName}' and all its files?`)) return;
+    try {
+      await api.deleteLatexFolder(documentId, folderId);
+      setFolders((prev) => prev.filter((f) => f.id !== folderId));
+      setDocs((prev) => prev.filter((d) => d.folder_id !== folderId));
+      setFiles((prev) => prev.filter((fl) => fl.folder_id !== folderId));
+
+      // If active doc was inside this folder, switch to first remaining doc
+      const activeDoc = docs.find((d) => d.id === activeDocId);
+      if (activeDoc && activeDoc.folder_id === folderId) {
+        const remainingDocs = docs.filter((d) => d.folder_id !== folderId);
+        if (remainingDocs.length > 0) {
+          setActiveDocId(remainingDocs[0].id);
+          setActiveDocContent(remainingDocs[0].content || '');
+        } else {
+          setActiveDocId(null);
+          setActiveDocContent('');
+        }
+      }
+      showToast?.(`Folder '${folderName}' deleted`, 'success');
+    } catch (err: any) {
+      showToast?.(err.message || 'Failed to delete folder', 'error');
+    }
+  };
+
+  // Move document or file entity
+  const handleMoveEntity = async (entityId: string, entityType: 'doc' | 'file', targetFolderId: string | null) => {
+    try {
+      const res = await api.moveLatexEntity(documentId, {
+        entity_id: entityId,
+        entity_type: entityType,
+        target_folder_id: targetFolderId,
+      });
+      if (entityType === 'doc') {
+        setDocs((prev) =>
+          prev.map((d) => (d.id === entityId ? { ...d, folder_id: res.folder_id, path: res.path } : d))
+        );
+      } else {
+        setFiles((prev) =>
+          prev.map((fl) => (fl.id === entityId ? { ...fl, folder_id: res.folder_id, path: res.path } : fl))
+        );
+      }
+      const targetName = targetFolderId
+        ? folders.find((f) => f.id === targetFolderId)?.name || 'folder'
+        : 'Project Root';
+      showToast?.(`Moved to ${targetName}`, 'success');
+      setIsMoveModalOpen(false);
+      setMoveTarget(null);
+    } catch (err: any) {
+      showToast?.(err.message || 'Failed to move file', 'error');
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, id: string, type: 'doc' | 'file', name: string) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({ id, type, name }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDropOnTarget = (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data && data.id && data.type) {
+        handleMoveEntity(data.id, data.type, targetFolderId);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleFolderCollapse = (folderId: string) => {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [folderId]: !prev[folderId],
+    }));
+  };
+
   // Upload file asset
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const targetFolder = uploadTargetFolderId;
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const base64 = (reader.result as string).split(',')[1];
         const uploaded = await api.uploadLatexFile(documentId, {
           name: file.name,
+          folder_id: targetFolder || null,
           data_base64: base64,
           mime_type: file.type,
         });
         setFiles((prev) => [...prev, uploaded]);
+        setUploadTargetFolderId(null);
         showToast?.(`Asset '${file.name}' uploaded`, 'success');
       } catch (err: any) {
         showToast?.(err.message || 'Failed to upload asset', 'error');
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   // Rename entity
@@ -410,6 +651,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
 
   // Insert helper text into editor textarea at cursor
   const insertTextAtCursor = (prefix: string, suffix = '') => {
+    if (isReadOnly) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -456,7 +698,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
     }, 50);
   };
 
-  // Keyboard shortcuts (Ctrl+S, Ctrl+Enter)
+  // Keyboard shortcuts (Ctrl+S, Ctrl+Enter, Ctrl+B)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -465,6 +707,9 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         handleCompile();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        setShowFileTree((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -486,23 +731,188 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
   }
 
   const activeDoc = docs.find((d) => d.id === activeDocId);
-  const pdfUrl = `${api.getLatexPdfUrl(documentId)}?t=${pdfTimestamp}`;
-  const zipDownloadUrl = api.getLatexZipDownloadUrl(documentId);
+  const pdfUrl = `${api.getLatexPdfUrl(documentId, {
+    versionId: selectedVersionId,
+    compilationId: latestCompilation?.id,
+  })}&t=${pdfTimestamp}`;
+  const zipDownloadUrl = api.getLatexZipDownloadUrl(documentId, selectedVersionId);
   const errorCount = latestCompilation?.errors?.filter((e) => e.type === 'error').length || 0;
   const warningCount = latestCompilation?.errors?.filter((e) => e.type === 'warning').length || 0;
+
+  // Render text doc item in tree (draggable & with move button)
+  const renderDocItem = (d: LatexDoc, currentFolderId: string | null) => {
+    const isActive = d.id === activeDocId;
+    const isMain = d.is_main || d.id === project?.root_doc_id;
+    const isBib = d.name.endsWith('.bib');
+    const isDirty = Boolean(dirtyDocs[d.id]);
+
+    return (
+      <div
+        key={d.id}
+        draggable={!isReadOnly}
+        onDragStart={(e) => handleDragStart(e, d.id, 'doc', d.name)}
+        onClick={() => handleSelectDoc(d.id)}
+        className={`flex items-center justify-between text-xs px-2 py-1.5 cursor-pointer rounded transition-colors group ${
+          isActive
+            ? 'bg-indigo-600 text-white font-medium'
+            : 'text-slate-700 hover:bg-slate-200/70'
+        }`}
+        title={isReadOnly ? d.name : `${d.name} (drag to move to a folder)`}
+      >
+        <div className="flex items-center space-x-1.5 truncate">
+          {isBib ? (
+            <BookOpen className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-200' : 'text-amber-600'}`} />
+          ) : (
+            <FileCode className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-indigo-200' : 'text-indigo-600'}`} />
+          )}
+          <span className="truncate">{d.name}</span>
+          {isDirty && <span className={`text-[10px] ${isActive ? 'text-amber-300' : 'text-amber-600'}`}>*</span>}
+          {isMain && (
+            <span
+              className={`text-[9px] uppercase px-1 py-0.2 font-bold rounded ${
+                isActive ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-600'
+              }`}
+              title="Main document compiled by engine"
+            >
+              main
+            </span>
+          )}
+        </div>
+
+        {!isReadOnly && (
+          <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5 transition-opacity">
+            {/* Move Button */}
+            <button
+              type="button"
+              data-testid={`move-doc-btn-${d.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMoveTarget({ id: d.id, type: 'doc', name: d.name, currentFolderId });
+                setDestinationFolderId(folders.find((f) => f.id !== currentFolderId)?.id || 'root');
+                setIsMoveModalOpen(true);
+              }}
+              className={`p-0.5 hover:text-indigo-400 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
+              title="Move file to folder"
+            >
+              <FolderInputIcon className="w-3 h-3" />
+            </button>
+            {!isMain && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSetRootDoc(d.id);
+                }}
+                className={`p-0.5 hover:text-amber-400 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
+                title="Set as Main Document"
+              >
+                <Star className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRenameTarget({ id: d.id, type: 'doc', name: d.name });
+                setRenameNewName(d.name);
+                setIsRenameModalOpen(true);
+              }}
+              className={`p-0.5 hover:text-slate-900 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
+              title="Rename"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+            {docs.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => handleDeleteDoc(d.id, e)}
+                className={`p-0.5 hover:text-rose-400 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
+                title="Delete"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render binary file asset in tree (draggable & with move button)
+  const renderFileItem = (fl: LatexFile, currentFolderId: string | null) => {
+    return (
+      <div
+        key={fl.id}
+        draggable={!isReadOnly}
+        onDragStart={(e) => handleDragStart(e, fl.id, 'file', fl.name)}
+        className="flex items-center justify-between text-xs px-2 py-1.5 text-slate-600 hover:bg-slate-200/60 rounded group transition-colors"
+        title={isReadOnly ? fl.name : `${fl.name} (drag to move to a folder)`}
+      >
+        <div className="flex items-center space-x-1.5 truncate">
+          <ImageIcon className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+          <span className="truncate">{fl.name}</span>
+          <span className="text-[10px] text-slate-400">({Math.round(fl.size / 1024)} KB)</span>
+        </div>
+        {!isReadOnly && (
+          <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5 transition-opacity">
+            {/* Move Button */}
+            <button
+              type="button"
+              data-testid={`move-file-btn-${fl.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMoveTarget({ id: fl.id, type: 'file', name: fl.name, currentFolderId });
+                setDestinationFolderId(folders.find((f) => f.id !== currentFolderId)?.id || 'root');
+                setIsMoveModalOpen(true);
+              }}
+              className="p-0.5 text-slate-400 hover:text-indigo-600"
+              title="Move file to folder"
+            >
+              <FolderInputIcon className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleDeleteFile(fl.id, e)}
+              className="p-0.5 text-slate-400 hover:text-rose-600"
+              title="Delete asset"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] mui-paper overflow-hidden bg-slate-50 border border-slate-300">
       {/* 1. Header Toolbar */}
-      <header className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200 shadow-sm z-20">
-        <div className="flex items-center space-x-3">
+      <header className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200 shadow-sm z-20 flex-wrap gap-2">
+        <div className="flex items-center space-x-3 flex-wrap gap-y-1">
           <button
             onClick={onBack}
-            className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300"
+            className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors px-2 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 cursor-pointer"
             title="Back to Documents"
           >
             <ArrowLeft className="w-4 h-4 mr-1" />
             Documents
+          </button>
+
+          {/* File Panel Toggle */}
+          <button
+            type="button"
+            data-testid="toggle-file-panel-btn"
+            onClick={() => setShowFileTree((prev) => !prev)}
+            className={`flex items-center text-xs font-semibold px-2.5 py-1 border transition-colors cursor-pointer ${
+              showFileTree
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+            }`}
+            title={showFileTree ? 'Hide File Panel (Ctrl+B)' : 'Expand File Panel (Ctrl+B)'}
+            aria-label={showFileTree ? 'Hide File Panel' : 'Expand File Panel'}
+          >
+            <Folder className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+            <span className="hidden sm:inline">{showFileTree ? 'Hide Files' : 'Files'}</span>
           </button>
 
           <div className="flex items-center space-x-2">
@@ -513,55 +923,101 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               {initialDoc.title}
             </h1>
           </div>
+
+          {/* Version Selector & Status */}
+          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 flex-wrap">
+            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+              <Tag className="w-3.5 h-3.5 text-indigo-600" />
+              Version:
+            </span>
+            <select
+              data-testid="editor-version-select"
+              value={selectedVersionId}
+              onChange={(e) => handleSwitchVersion(e.target.value)}
+              className={`text-xs font-semibold px-2.5 py-1 border rounded cursor-pointer transition-colors max-w-[220px] truncate ${
+                isReadOnly
+                  ? 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
+                  : 'bg-white text-slate-800 border-slate-300 hover:border-slate-400'
+              }`}
+            >
+              <option value="working">
+                Current Working (v{workingVersionTag || '0'})
+              </option>
+              {availableVersions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  v{v.version_tag} ({v.id === (project?.current_version_id) ? 'Current Working' : 'Read-Only'})
+                  {v.comment ? ` - ${v.comment}` : ''}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              data-testid="editor-header-commit-btn"
+              onClick={() => {
+                setCommitVersionInput('');
+                setCommitCommentInput('');
+                setIsCommitModalOpen(true);
+              }}
+              title="Commit current working files into a new version milestone"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded cursor-pointer transition-colors"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Commit</span>
+            </button>
+
+            {onOpenVersions && (
+              <button
+                type="button"
+                data-testid="editor-header-versions-btn"
+                onClick={() => onOpenVersions(documentId)}
+                title="Open Version History & Comparison Page"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-300 rounded cursor-pointer transition-colors"
+              >
+                <Clock className="w-3.5 h-3.5 text-violet-600" />
+                <span>History</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Center / Right Action Controls */}
         <div className="flex items-center space-x-3">
-          {/* Compiler Selector */}
-          <div className="flex items-center space-x-1.5 text-xs text-slate-600">
-            <span className="font-medium hidden sm:inline">Engine:</span>
-            <select
-              value={compiler}
-              onChange={(e) => handleCompilerChange(e.target.value as CompilerType)}
-              className="text-xs font-semibold text-slate-700 bg-white border border-slate-300 px-2 py-1 outline-none focus:border-indigo-500"
-            >
-              <option value="pdflatex">pdfLaTeX</option>
-              <option value="xelatex">XeLaTeX</option>
-              <option value="lualatex">LuaLaTeX</option>
-            </select>
-          </div>
-
-          {/* Auto Compile Toggle */}
-          <label className="flex items-center space-x-1.5 text-xs text-slate-600 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoCompile}
-              onChange={(e) => setAutoCompile(e.target.checked)}
-              className="rounded-none border-slate-300 text-indigo-600 focus:ring-0"
-            />
-            <span className="hidden md:inline">Auto-compile</span>
-          </label>
-
           {/* Save Button */}
           <button
             onClick={() => handleSaveDoc()}
-            disabled={saving}
-            className={`flex items-center text-xs font-semibold px-3 py-1.5 transition-colors border ${
-              activeDocId && dirtyDocs[activeDocId]
+            disabled={saving || isReadOnly}
+            className={`flex items-center text-xs font-semibold px-3 py-1.5 transition-colors border cursor-pointer ${
+              isReadOnly
+                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-80'
+                : activeDocId && dirtyDocs[activeDocId]
                 ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
             }`}
-            title="Save file (Ctrl+S)"
+            title={
+              isReadOnly
+                ? 'Cannot save: older versions are read-only. Switch to Current Working Version or click "Make Current Working Version" to edit.'
+                : 'Save file (Ctrl+S)'
+            }
           >
-            <Save className={`w-3.5 h-3.5 mr-1.5 ${saving ? 'animate-spin' : ''}`} />
-            {saving ? 'Saving...' : activeDocId && dirtyDocs[activeDocId] ? 'Save *' : 'Saved'}
+            {isReadOnly ? (
+              <>
+                <Lock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+                Read-Only
+              </>
+            ) : (
+              <>
+                <Save className={`w-3.5 h-3.5 mr-1.5 ${saving ? 'animate-spin' : ''}`} />
+                {saving ? 'Saving...' : activeDocId && dirtyDocs[activeDocId] ? 'Save *' : 'Saved'}
+              </>
+            )}
           </button>
 
           {/* Recompile Button */}
           <button
             onClick={handleCompile}
             disabled={compiling}
-            className="flex items-center text-xs font-bold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-sm transition-colors"
+            className="flex items-center text-xs font-bold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-sm transition-colors cursor-pointer"
             title="Compile project (Ctrl+Enter)"
           >
             <Play className={`w-3.5 h-3.5 mr-1.5 fill-current ${compiling ? 'animate-spin' : ''}`} />
@@ -613,166 +1069,380 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               <Eye className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Settings Icon Button & Popover Panel */}
+          <div className="relative" ref={settingsRef}>
+            <button
+              type="button"
+              data-testid="latex-settings-btn"
+              onClick={() => setIsSettingsOpen((prev) => !prev)}
+              className={`p-1.5 border transition-colors cursor-pointer ${
+                isSettingsOpen
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-slate-300'
+              }`}
+              title="LaTeX Compiler & Build Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {isSettingsOpen && (
+              <div
+                data-testid="latex-settings-panel"
+                className="absolute right-0 mt-2 w-72 bg-white border border-slate-300 shadow-xl z-50 p-4 space-y-4 mui-paper"
+              >
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center space-x-1.5">
+                    <Settings className="w-3.5 h-3.5 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Project Settings
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="text-slate-400 hover:text-slate-700 p-0.5"
+                    title="Close Settings"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* TeX Compiler Engine Selection */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    LaTeX Compile Engine
+                  </label>
+                  <div className="space-y-1.5">
+                    {(
+                      [
+                        {
+                          id: 'pdflatex',
+                          label: 'pdfLaTeX',
+                          desc: 'Fastest standard engine for articles & papers',
+                        },
+                        {
+                          id: 'xelatex',
+                          label: 'XeLaTeX',
+                          desc: 'Custom TTF/OTF fonts & Unicode / CJK scripts',
+                        },
+                        {
+                          id: 'lualatex',
+                          label: 'LuaLaTeX',
+                          desc: 'Lua scripting, custom fonts & large documents',
+                        },
+                      ] as { id: CompilerType; label: string; desc: string }[]
+                    ).map((item) => {
+                      const isSelected = compiler === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-testid={`compiler-option-${item.id}`}
+                          onClick={() => handleCompilerChange(item.id)}
+                          className={`w-full text-left px-3 py-2 border transition-colors flex items-start justify-between cursor-pointer ${
+                            isSelected
+                              ? 'border-indigo-600 bg-indigo-50/80 text-indigo-900'
+                              : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-bold flex items-center gap-1.5">
+                              <span>{item.label}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                              {item.desc}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Auto-compile Toggle */}
+                <div className="pt-2 border-t border-slate-200">
+                  <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer select-none">
+                    <div>
+                      <span className="font-semibold block">Auto-compile on Save</span>
+                      <span className="text-[11px] text-slate-500">
+                        Automatically build PDF when saving changes
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={autoCompile}
+                      onChange={(e) => setAutoCompile(e.target.checked)}
+                      className="rounded-none border-slate-300 text-indigo-600 focus:ring-0 w-4 h-4"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
+
+      {/* Read-Only Version Notification Banner */}
+      {isReadOnly && (
+        <div
+          data-testid="editor-readonly-banner"
+          className="bg-amber-50 border-b border-amber-300 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 z-10"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 bg-amber-200 text-amber-900 rounded uppercase text-[10px] tracking-wider border border-amber-300">
+              <Lock className="w-3 h-3" />
+              Read-Only
+            </span>
+            <span>
+              Viewing older snapshot <strong>Version {viewingVersion?.version_tag || project?.version_tag}</strong>
+              {viewingVersion?.comment ? ` ("${viewingVersion.comment}")` : ''}
+              {viewingVersion?.user_name ? ` by ${viewingVersion.user_name}` : ''}.
+              Older versions cannot be edited directly.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="editor-make-current-btn"
+              disabled={restoringVersion}
+              onClick={() => handleMakeCurrentWorking()}
+              className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded cursor-pointer shadow-xs transition-colors disabled:opacity-50"
+              title="Make this older version the current working version so you can edit it"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>{restoringVersion ? 'Restoring...' : 'Make Current Working Version'}</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="editor-return-working-btn"
+              onClick={() => handleSwitchVersion('working')}
+              className="inline-flex items-center gap-1 px-3 py-1 bg-white hover:bg-slate-100 text-slate-800 font-semibold border border-slate-300 rounded cursor-pointer transition-colors"
+            >
+              Return to Current Working (v{workingVersionTag || '0'})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Main Workspace Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Project File Tree */}
         {showFileTree && (
-          <aside className="w-64 bg-slate-100/70 border-r border-slate-200 flex flex-col flex-shrink-0 z-10">
+          <aside
+            data-testid="latex-file-panel"
+            className="w-64 bg-slate-100/70 border-r border-slate-200 flex flex-col flex-shrink-0 z-10"
+          >
             {/* File Tree Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-200/50">
               <span className="text-xs font-bold text-slate-700 tracking-wider uppercase">Project Files</span>
               <div className="flex items-center space-x-1">
+                {isReadOnly ? (
+                  <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1 bg-amber-100/80 px-1.5 py-0.5 rounded border border-amber-200 mr-0.5">
+                    <Lock className="w-3 h-3" />
+                    Locked
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setIsNewFileModalOpen(true)}
+                      className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
+                      title="New File"
+                    >
+                      <FilePlus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setIsNewFolderModalOpen(true)}
+                      className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
+                      title="New Folder"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" />
+                    </button>
+                    <label className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer" title="Upload Asset">
+                      <Upload className="w-3.5 h-3.5" />
+                      <input type="file" className="hidden" onChange={handleFileUpload} />
+                    </label>
+                    <input type="file" ref={folderFileInputRef} className="hidden" onChange={handleFileUpload} />
+                    <div className="h-3.5 w-px bg-slate-300 mx-0.5" />
+                  </>
+                )}
                 <button
-                  onClick={() => setIsNewFileModalOpen(true)}
-                  className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors"
-                  title="New File"
+                  type="button"
+                  data-testid="hide-file-panel-btn"
+                  onClick={() => setShowFileTree(false)}
+                  className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition-colors cursor-pointer"
+                  title="Hide File Panel (Ctrl+B)"
+                  aria-label="Hide File Panel"
                 >
-                  <FilePlus className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={() => setIsNewFolderModalOpen(true)}
-                  className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors"
-                  title="New Folder"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                </button>
-                <label className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer" title="Upload Asset">
-                  <Upload className="w-3.5 h-3.5" />
-                  <input type="file" className="hidden" onChange={handleFileUpload} />
-                </label>
               </div>
             </div>
 
             {/* Tree File List */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div
+              className={`flex-1 overflow-y-auto p-2 space-y-1 transition-colors ${
+                dragOverFolderId === 'root' ? 'bg-indigo-50/70 ring-2 ring-indigo-400 ring-inset' : ''
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => handleDropOnTarget(e, null)}
+            >
               {/* Folders */}
-              {folders.map((f) => (
-                <div key={f.id} className="flex items-center justify-between text-xs px-2 py-1.5 text-slate-700 hover:bg-slate-200/60 group">
-                  <div className="flex items-center space-x-1.5 truncate">
-                    <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-                    <span className="font-semibold truncate">{f.name}</span>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1">
-                    <button
-                      onClick={() => {
-                        setRenameTarget({ id: f.id, type: 'folder', name: f.name });
-                        setRenameNewName(f.name);
-                        setIsRenameModalOpen(true);
-                      }}
-                      className="p-0.5 text-slate-500 hover:text-slate-800"
-                      title="Rename"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => api.deleteLatexFolder(documentId, f.id).then(() => setFolders((prev) => prev.filter((x) => x.id !== f.id)))}
-                      className="p-0.5 text-slate-500 hover:text-rose-600"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {/* Text Documents */}
-              {docs.map((d) => {
-                const isActive = d.id === activeDocId;
-                const isMain = d.is_main || d.id === project?.root_doc_id;
-                const isBib = d.name.endsWith('.bib');
-                const isDirty = Boolean(dirtyDocs[d.id]);
+              {folders.map((f) => {
+                const isCollapsed = Boolean(collapsedFolders[f.id]);
+                const folderDocs = docs.filter((d) => d.folder_id === f.id);
+                const folderFiles = files.filter((fl) => fl.folder_id === f.id);
+                const totalItems = folderDocs.length + folderFiles.length;
+                const isDragOver = dragOverFolderId === f.id;
 
                 return (
-                  <div
-                    key={d.id}
-                    onClick={() => handleSelectDoc(d.id)}
-                    className={`flex items-center justify-between text-xs px-2 py-1.5 cursor-pointer transition-colors group ${
-                      isActive
-                        ? 'bg-indigo-600 text-white font-medium'
-                        : 'text-slate-700 hover:bg-slate-200/70'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-1.5 truncate">
-                      {isBib ? (
-                        <BookOpen className={`w-3.5 h-3.5 ${isActive ? 'text-amber-200' : 'text-amber-600'}`} />
-                      ) : (
-                        <FileCode className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-200' : 'text-indigo-600'}`} />
-                      )}
-                      <span className="truncate">{d.name}</span>
-                      {isDirty && <span className={`text-[10px] ${isActive ? 'text-amber-300' : 'text-amber-600'}`}>*</span>}
-                      {isMain && (
-                        <span
-                          className={`text-[9px] uppercase px-1 py-0.2 font-bold ${
-                            isActive ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-600'
-                          }`}
-                          title="Main document compiled by engine"
-                        >
-                          main
+                  <div key={f.id} className="space-y-0.5">
+                    {/* Folder Row */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverFolderId !== f.id) setDragOverFolderId(f.id);
+                      }}
+                      onDragLeave={(e) => {
+                        e.stopPropagation();
+                        if (dragOverFolderId === f.id) setDragOverFolderId(null);
+                      }}
+                      onDrop={(e) => handleDropOnTarget(e, f.id)}
+                      className={`flex items-center justify-between text-xs px-2 py-1.5 rounded transition-all group ${
+                        isDragOver
+                          ? 'bg-indigo-100/90 ring-2 ring-indigo-500 font-medium text-indigo-900'
+                          : 'text-slate-700 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <div
+                        onClick={() => toggleFolderCollapse(f.id)}
+                        className="flex items-center space-x-1.5 truncate cursor-pointer flex-1 select-none"
+                      >
+                        <span className="text-slate-400 hover:text-slate-600 p-0.5">
+                          <ChevronRight
+                            className={`w-3 h-3 transition-transform duration-150 ${
+                              !isCollapsed ? 'rotate-90' : ''
+                            }`}
+                          />
                         </span>
+                        <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20 shrink-0" />
+                        <span className="font-semibold truncate">{f.name}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">({totalItems})</span>
+                      </div>
+
+                      {!isReadOnly && (
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-0.5 transition-opacity">
+                          <button
+                            type="button"
+                            data-testid={`add-file-to-folder-btn-${f.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNewFileFolderId(f.id);
+                              setIsNewFileModalOpen(true);
+                            }}
+                            className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-300/50 rounded transition-colors cursor-pointer"
+                            title={`Add file under '${f.name}'`}
+                          >
+                            <FilePlus className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`upload-to-folder-btn-${f.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUploadTargetFolderId(f.id);
+                              folderFileInputRef.current?.click();
+                            }}
+                            className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-300/50 rounded transition-colors cursor-pointer"
+                            title={`Upload asset to '${f.name}'`}
+                          >
+                            <Upload className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`rename-folder-btn-${f.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenameTarget({ id: f.id, type: 'folder', name: f.name });
+                              setRenameNewName(f.name);
+                              setIsRenameModalOpen(true);
+                            }}
+                            className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-300/50 rounded transition-colors cursor-pointer"
+                            title="Rename folder"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`delete-folder-btn-${f.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFolder(f.id, f.name);
+                            }}
+                            className="p-1 text-slate-500 hover:text-rose-600 hover:bg-slate-300/50 rounded transition-colors cursor-pointer"
+                            title="Delete folder"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1">
-                      {!isMain && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSetRootDoc(d.id);
-                          }}
-                          className={`p-0.5 hover:text-amber-400 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
-                          title="Set as Main Document"
-                        >
-                          <Star className="w-3 h-3" />
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRenameTarget({ id: d.id, type: 'doc', name: d.name });
-                          setRenameNewName(d.name);
-                          setIsRenameModalOpen(true);
-                        }}
-                        className={`p-0.5 hover:text-slate-900 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
-                        title="Rename"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      {docs.length > 1 && (
-                        <button
-                          onClick={(e) => handleDeleteDoc(d.id, e)}
-                          className={`p-0.5 hover:text-rose-400 ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
+                    {/* Folder Child Items */}
+                    {!isCollapsed && (
+                      <div className="pl-4 ml-2.5 border-l border-slate-200/90 space-y-0.5">
+                        {folderDocs.map((d) => renderDocItem(d, f.id))}
+                        {folderFiles.map((fl) => renderFileItem(fl, f.id))}
+                        {totalItems === 0 && (
+                          <div className="text-[11px] text-slate-400 italic py-1 pl-2">
+                            No files yet (drag files here or click +)
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
 
-              {/* Uploaded Binary Assets */}
-              {files.map((f) => (
-                <div key={f.id} className="flex items-center justify-between text-xs px-2 py-1.5 text-slate-600 hover:bg-slate-200/60 group">
-                  <div className="flex items-center space-x-1.5 truncate">
-                    <ImageIcon className="w-3.5 h-3.5 text-purple-500" />
-                    <span className="truncate">{f.name}</span>
-                    <span className="text-[10px] text-slate-400">({Math.round(f.size / 1024)} KB)</span>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1">
-                    <button
-                      onClick={(e) => handleDeleteFile(f.id, e)}
-                      className="p-0.5 text-slate-400 hover:text-rose-600"
-                      title="Delete asset"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
+              {/* Root Files Section Header if folders exist */}
+              {folders.length > 0 && (
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverFolderId !== 'root') setDragOverFolderId('root');
+                  }}
+                  onDragLeave={(e) => {
+                    e.stopPropagation();
+                    if (dragOverFolderId === 'root') setDragOverFolderId(null);
+                  }}
+                  onDrop={(e) => handleDropOnTarget(e, null)}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 pt-2 pb-0.5 rounded transition-colors ${
+                    dragOverFolderId === 'root'
+                      ? 'text-indigo-600 bg-indigo-50 ring-1 ring-indigo-400'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  Root Files
                 </div>
-              ))}
+              )}
+
+              {/* Root Text Documents */}
+              {docs.filter((d) => !d.folder_id).map((d) => renderDocItem(d, null))}
+
+              {/* Root Binary Assets */}
+              {files.filter((fl) => !fl.folder_id).map((fl) => renderFileItem(fl, null))}
             </div>
 
             {/* Bottom Project Info */}
@@ -780,6 +1450,35 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               <span>{docs.length} docs, {files.length} assets</span>
               {lastSaved && <span>Saved {lastSaved}</span>}
             </div>
+          </aside>
+        )}
+
+        {/* Collapsed File Panel Strip (when hidden) */}
+        {!showFileTree && (
+          <aside
+            data-testid="collapsed-file-panel-strip"
+            className="w-10 bg-slate-100/80 border-r border-slate-200 flex flex-col items-center py-2 flex-shrink-0 z-10 select-none group"
+          >
+            <button
+              type="button"
+              data-testid="expand-file-panel-btn"
+              onClick={() => setShowFileTree(true)}
+              className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-200 rounded transition-colors flex flex-col items-center gap-1 cursor-pointer"
+              title="Expand File Panel (Ctrl+B)"
+              aria-label="Expand File Panel"
+            >
+              <Folder className="w-4 h-4 text-amber-500" />
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
+            </button>
+            <button
+              type="button"
+              data-testid="expand-file-panel-label-btn"
+              onClick={() => setShowFileTree(true)}
+              className="mt-4 text-[11px] font-semibold tracking-wider uppercase text-slate-500 hover:text-indigo-600 cursor-pointer [writing-mode:vertical-rl] rotate-180 py-2 select-none"
+              title="Expand File Panel"
+            >
+              Files ({docs.length + files.length})
+            </button>
           </aside>
         )}
 
@@ -823,11 +1522,14 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
 
               {/* Sidebar toggle */}
               <button
+                type="button"
+                data-testid="tab-toggle-file-panel-btn"
                 onClick={() => setShowFileTree(!showFileTree)}
-                className="text-slate-500 hover:text-slate-800 p-1 text-xs"
-                title={showFileTree ? 'Hide File Tree' : 'Show File Tree'}
+                className="text-slate-500 hover:text-slate-800 p-1 text-xs rounded hover:bg-slate-200 transition-colors cursor-pointer"
+                title={showFileTree ? 'Hide File Panel (Ctrl+B)' : 'Expand File Panel (Ctrl+B)'}
+                aria-label={showFileTree ? 'Hide File Panel' : 'Expand File Panel'}
               >
-                {showFileTree ? <Minimize2 className="w-3.5 h-3.5" /> : <Columns className="w-3.5 h-3.5" />}
+                {showFileTree ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </button>
             </div>
 
@@ -984,10 +1686,13 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               <textarea
                 ref={textareaRef}
                 value={activeDocContent}
-                onChange={(e) => handleContentChange(e.target.value)}
-                placeholder="Write your LaTeX code here..."
+                readOnly={isReadOnly}
+                onChange={(e) => !isReadOnly && handleContentChange(e.target.value)}
+                placeholder={isReadOnly ? 'Viewing older version snapshot (read-only)...' : 'Write your LaTeX code here...'}
                 spellCheck={false}
-                className="flex-1 p-3 font-mono text-sm text-slate-900 bg-white outline-none resize-none leading-6 overflow-y-auto whitespace-pre tab-4"
+                className={`flex-1 p-3 font-mono text-sm leading-6 outline-none resize-none overflow-y-auto whitespace-pre tab-4 ${
+                  isReadOnly ? 'bg-slate-50 text-slate-800 cursor-default' : 'bg-white text-slate-900'
+                }`}
               />
             </div>
 
@@ -998,6 +1703,11 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                 <span>Lines: {lineCount}</span>
                 <span>Words: {wordCount}</span>
                 <span>Chars: {charCount}</span>
+                {isReadOnly && (
+                  <span className="font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-200 uppercase text-[10px]">
+                    Read-Only (v{project?.version_tag})
+                  </span>
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 <span>Compiler: <strong className="uppercase">{compiler}</strong></span>
@@ -1047,27 +1757,6 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                   )}
                 </button>
               </div>
-
-              {/* Zoom Controls for PDF */}
-              {activeRightTab === 'preview' && (
-                <div className="flex items-center space-x-1 text-xs text-slate-600">
-                  <button
-                    onClick={() => setPdfZoom((prev) => Math.max(50, prev - 15))}
-                    className="p-1 hover:bg-slate-300 text-slate-700"
-                    title="Zoom Out"
-                  >
-                    <ZoomOut className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="w-10 text-center font-mono text-[11px]">{pdfZoom}%</span>
-                  <button
-                    onClick={() => setPdfZoom((prev) => Math.min(200, prev + 15))}
-                    className="p-1 hover:bg-slate-300 text-slate-700"
-                    title="Zoom In"
-                  >
-                    <ZoomIn className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Preview Tab Content */}
@@ -1082,7 +1771,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                 ) : latestCompilation?.status === 'success' ? (
                   <iframe
                     key={pdfTimestamp}
-                    src={`${pdfUrl}#zoom=${pdfZoom}`}
+                    src={pdfUrl}
                     className="w-full h-full border-none"
                     title="Compiled PDF Preview"
                   />
@@ -1185,19 +1874,45 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateFile()}
-              placeholder="e.g. sections/methods.tex"
-              className="w-full text-xs font-mono border border-slate-300 px-3 py-2 mb-4 outline-none focus:border-indigo-600"
+              placeholder="e.g. methods.tex"
+              className="w-full text-xs font-mono border border-slate-300 px-3 py-2 mb-3 outline-none focus:border-indigo-600"
             />
+
+            {folders.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Folder Location</label>
+                <select
+                  data-testid="new-file-folder-select"
+                  value={newFileFolderId || ''}
+                  onChange={(e) => setNewFileFolderId(e.target.value || null)}
+                  className="w-full text-xs border border-slate-300 px-2.5 py-1.5 rounded bg-white text-slate-800 outline-none focus:border-indigo-600"
+                >
+                  <option value="">Project Root (/)</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      📁 {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="flex justify-end space-x-2">
               <button
-                onClick={() => setIsNewFileModalOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 border border-slate-300"
+                type="button"
+                onClick={() => {
+                  setIsNewFileModalOpen(false);
+                  setNewFileName('');
+                  setNewFileFolderId(null);
+                }}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 border border-slate-300 rounded cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleCreateFile}
-                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded cursor-pointer transition-colors"
               >
                 Create File
               </button>
@@ -1256,16 +1971,77 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
             />
             <div className="flex justify-end space-x-2">
               <button
+                type="button"
                 onClick={() => setIsRenameModalOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 border border-slate-300"
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 border border-slate-300 rounded cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleRename}
-                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded cursor-pointer transition-colors"
               >
                 Rename
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move File Modal */}
+      {isMoveModalOpen && moveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
+          <div className="bg-white p-5 max-w-sm w-full border border-slate-300 shadow-xl mui-paper" data-testid="latex-move-modal">
+            <h3 className="text-sm font-bold text-slate-900 mb-2 flex items-center">
+              <FolderInputIcon className="w-4 h-4 text-indigo-600 mr-2" />
+              Move {moveTarget.type === 'doc' ? 'Document' : 'File'}
+            </h3>
+            <p className="text-xs text-slate-600 mb-3">
+              Select destination folder for <span className="font-semibold text-slate-800 font-mono">{moveTarget.name}</span>:
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Destination Folder</label>
+              <select
+                data-testid="move-destination-select"
+                value={destinationFolderId}
+                onChange={(e) => setDestinationFolderId(e.target.value)}
+                className="w-full text-xs border border-slate-300 px-3 py-2 rounded bg-white text-slate-800 outline-none focus:border-indigo-600"
+              >
+                <option value="root">Project Root (/)</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    📁 {f.name} {f.id === moveTarget.currentFolderId ? '(current location)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMoveModalOpen(false);
+                  setMoveTarget(null);
+                }}
+                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 border border-slate-300 rounded cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="confirm-move-btn"
+                onClick={() =>
+                  handleMoveEntity(
+                    moveTarget.id,
+                    moveTarget.type,
+                    destinationFolderId === 'root' ? null : destinationFolderId
+                  )
+                }
+                className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded cursor-pointer transition-colors shadow-xs"
+              >
+                Move
               </button>
             </div>
           </div>
@@ -1308,6 +2084,89 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Modal: Commit New Version from Editor */}
+      {isCommitModalOpen && (
+        <div
+          data-testid="editor-commit-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+        >
+          <div className="bg-white max-w-md w-full border border-slate-300 shadow-2xl p-6 mui-paper">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">Commit LaTeX Version</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCommitModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-4">
+              Snapshot current working files as a milestone version. Once committed, the new version becomes the current working version.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCommitVersion();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Version Tag / Label <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  data-testid="editor-commit-version-input"
+                  value={commitVersionInput}
+                  onChange={(e) => setCommitVersionInput(e.target.value)}
+                  placeholder="e.g. 1, v1.0, 2.0"
+                  className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-600 font-medium"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Version Note / Description (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  data-testid="editor-commit-comment-input"
+                  value={commitCommentInput}
+                  onChange={(e) => setCommitCommentInput(e.target.value)}
+                  placeholder="Briefly describe what changed in this version..."
+                  className="w-full px-3 py-2 border border-slate-300 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-600 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsCommitModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={committing || !commitVersionInput.trim()}
+                  data-testid="editor-commit-submit-btn"
+                  className="px-4 py-2 border border-emerald-700 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {committing ? 'Committing...' : 'Commit Version'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -10,7 +10,8 @@ Welcome to this repository. This project is structured to enable distributed dev
 │   ├── frontend/ # Web client application (Dockerfile, UI code)
 │   └── backend/  # API backend service (Dockerfile, endpoints, models)
 ├── tests/      # Automated integration and end-to-end test suites
-└── scripts/    # Cross-platform developer automation and verification tools
+├── scripts/    # Cross-platform developer automation and verification tools
+└── agent_tool/ # AI agent tools for scaffolding records and validating docs
 ```
 
 ## AI Agent Directives

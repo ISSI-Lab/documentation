@@ -2,10 +2,10 @@
 """Cross-platform scaffolding CLI for new ADRs, RFCs, PRDs, and Handoffs.
 
 Usage:
-    python3 scripts/new_record.py adr "use-postgresql"
-    python3 scripts/new_record.py rfc "caching-layer"
-    python3 scripts/new_record.py prd "billing-flow"
-    python3 scripts/new_record.py handoff "end-of-day-wrapup"
+    python3 agent_tool/new_record.py adr "use-postgresql"
+    python3 agent_tool/new_record.py rfc "caching-layer"
+    python3 agent_tool/new_record.py prd "billing-flow"
+    python3 agent_tool/new_record.py handoff "end-of-day-wrapup"
 """
 
 import argparse

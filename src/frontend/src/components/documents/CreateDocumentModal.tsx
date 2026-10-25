@@ -60,8 +60,15 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   // Initialize form state when opened or props change
   useEffect(() => {
     if (isOpen) {
+      const initTpl = initialSelectedTemplateId
+        ? templates.find((t) => t.id === initialSelectedTemplateId)
+        : null;
+      const initTplOrgId = initTpl ? (initTpl.organization_id || initTpl.team_id || null) : null;
+
       let targetOrgId = '';
-      if (initialSelectedProjectId) {
+      if (initTpl && initTpl.visibility === 'private') {
+        targetOrgId = initTplOrgId || '';
+      } else if (initialSelectedProjectId) {
         const p = projects.find((proj) => proj.id === initialSelectedProjectId);
         if (p?.organization_id || p?.team_id) {
           targetOrgId = (p.organization_id || p.team_id)!;
@@ -151,11 +158,12 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   // Filter templates based on current organization
   const availableTemplates = templates.filter((t) => {
     if (t.visibility === 'public') return true;
+    if (initialSelectedTemplateId && t.id === initialSelectedTemplateId) return true;
     const tOrgId = t.organization_id || t.team_id;
-    if (!selectedOrgId) {
-      return !tOrgId;
+    if (!selectedOrgId || isPersonalOrg) {
+      return !tOrgId || tOrgId === selectedOrgId;
     } else {
-      return tOrgId === selectedOrgId;
+      return tOrgId === selectedOrgId || !tOrgId;
     }
   });
 

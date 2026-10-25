@@ -15,4 +15,4 @@ This workspace uses the Antigravity Customization System to maintain project mem
 1. **Separation of Concerns**: Never place loose documentation or memory files at root or inside `src/`. All documentation, design, requirements, and decisions belong under `docs/`.
 2. **Cross-Platform Compatibility**: Always use relative paths with forward slashes (`/`), normalize line endings (LF), and name files using kebab-case.
 3. **Docker Readiness**: Keep container images lightweight by excluding `docs/` and test suites via `.dockerignore`.
-4. **Scaffolding Automation**: Use `python3 scripts/new_record.py` to create numbered ADRs, RFCs, PRDs, and Handoffs.
+4. **Scaffolding Automation**: Use `python3 agent_tool/new_record.py` to create numbered ADRs, RFCs, PRDs, and Handoffs.

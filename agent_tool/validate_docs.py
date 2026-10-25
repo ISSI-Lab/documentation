@@ -7,7 +7,7 @@ Checks:
 3. Text files have normalized LF line endings.
 
 Usage:
-    python3 scripts/validate_docs.py
+    python3 agent_tool/validate_docs.py
 """
 
 import os

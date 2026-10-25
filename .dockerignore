@@ -9,9 +9,10 @@ docs/
 *.md
 !src/**/README.md
 
-# Exclude tests and development scripts from runtime images
+# Exclude tests, agent tools, and development scripts from runtime images
 tests/
 scripts/
+agent_tool/
 
 # Exclude developer-private scratchpads and environment files
 *.local.*
