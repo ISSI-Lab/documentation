@@ -556,6 +556,7 @@ CREATE TABLE IF NOT EXISTS latex_compilations (
     errors JSON NULL,
     pdf_data LONGBLOB NULL,
     pdf_size BIGINT NULL,
+    synctex_data LONGBLOB NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_project_id (project_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

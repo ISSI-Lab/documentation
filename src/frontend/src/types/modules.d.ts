@@ -104,6 +104,25 @@ declare module 'lucide-react' {
   export const Code2: IconComponent;
   export const Sigma: IconComponent;
   export const Settings: IconComponent;
+  export const Crosshair: IconComponent;
+  export const ArrowLeft: IconComponent;
+  export const ArrowRight: IconComponent;
+  export const ArrowLeftRight: IconComponent;
+}
+
+declare module 'pdfjs-dist/build/pdf.worker.min.js?url' {
+  const src: string;
+  export default src;
+}
+
+declare module 'pdfjs-dist' {
+  export const GlobalWorkerOptions: {
+    workerSrc: string;
+  };
+  export function getDocument(src: any): {
+    promise: Promise<any>;
+  };
+  export const version: string;
 }
 
 declare module 'marked' {

@@ -44,6 +44,7 @@ This file tracks the current sprint state, active workstreams, and recent change
 | Public & Private LaTeX Template Scoping | AI Agent | Completed | Implemented Public, Personal, and Organization scopes for LaTeX templates with strict unauthenticated public-only filtering, full CRUD (`LatexTemplateBuilder.tsx`), cross-organization copy, and unified category filtering ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
 | LaTeX Document Version Control (Commit & Version Page) | AI Agent | Completed | Added version tag display, Commit button (with version input popup modal), and Version button on every LaTeX document in the document list, plus a dedicated Version Page (`LatexVersionPage.tsx`) to inspect each version, compare against current working files, and restore any previous version as the current working one ([ADR-0013](../decisions/0013-latex-multi-file-editing-and-compilation-integration.md)) |
 | LaTeX File Move & Folder Management | AI Agent | Completed | Move button modal & HTML5 drag-and-drop to relocate files and binary assets into folders or root, direct file creation and upload buttons on folders, target folder selector in new file modal, hierarchical tree visualization, and backend move/path cascading APIs |
+| LaTeX SyncTeX Bidirectional Mapping | AI Agent | Completed | Overleaf-style bidirectional navigation: Source-to-PDF (`->`) jump with animated highlight overlay, and PDF-to-Source (`<-`) jump with cursor placement and line highlighting across single and multi-file projects ([ADR-0014](../decisions/0014-latex-synctex-bidirectional-mapping.md)) |
 
 ---
 
@@ -175,6 +176,19 @@ This file tracks the current sprint state, active workstreams, and recent change
      - Added Folder target dropdown (`[data-testid="new-file-folder-select"]`) in the New File modal allowing destination folder selection upon creation.
   5. Hierarchical Tree Rendering:
      - Replaced flat lists with a structured hierarchy displaying folders with item badges, expand/collapse toggles, indented child documents and assets, and a distinct Root Files section with full move and drop support.
+- LaTeX SyncTeX Bidirectional Mapping (Overleaf-Style Left <-> Right Navigation) ([ADR-0014](../decisions/0014-latex-synctex-bidirectional-mapping.md)):
+  1. TeX Live SyncTeX Generation & Persistence:
+     - Enabled `-synctex=1` in `compileLatexProject` (`latexCompiler.ts`) across `pdflatex`, `xelatex`, and `lualatex`.
+     - Saved compressed synchronization files (`output.synctex.gz`) to MySQL table `latex_compilations.synctex_data` (`LONGBLOB`) and maintained a local fast workspace cache in `/tmp/latex_synctex_cache/${projectId}`.
+  2. Backend SyncTeX CLI Services & Endpoints (`latexCompiler.ts`, `latexRoutes.ts`):
+     - `POST /api/v1/documents/:id/latex/sync/source-to-pdf`: Executes `synctex view` to resolve the current LaTeX source line/column into PDF `{ page, x, y, h, v, width, height }`.
+     - `POST /api/v1/documents/:id/latex/sync/pdf-to-source`: Executes `synctex edit` to map PDF click coordinates back to source code `{ file, doc_id, line, column }`.
+  3. Interactive PDF.js Viewer & Overleaf UI Controls (`LatexPdfViewer.tsx`, `LatexDocumentEditor.tsx`):
+     - Integrated `pdfjs-dist` to render PDF pages onto high-DPI canvases with interactive click overlay layers.
+     - Added target pin marker when clicking anywhere on the PDF and converted mouse coordinates to 72 DPI PDF points.
+     - Built Overleaf-style central SyncTeX Divider Bar with **Right Arrow** (`[data-testid="synctex-source-to-pdf-btn"]`) and **Left Arrow** (`[data-testid="synctex-pdf-to-source-btn"]`).
+     - Added animated amber pulse highlight box over mapped PDF bounding boxes, line number highlighting in editor, cursor repositioning and smooth scrolling, keyboard shortcuts (`Ctrl+Alt+Right` and `Ctrl+Alt+Left`), and PDF double-click reverse sync.
+     - Fully verified across both single-file documents and multi-file projects with included sub-documents.
 
 ---
 

@@ -425,3 +425,20 @@ export interface LatexTemplate {
   updated_at: string;
 }
 
+export interface SynctexPdfLocation {
+  page: number;
+  x: number;
+  y: number;
+  h: number;
+  v: number;
+  width: number;
+  height: number;
+}
+
+export interface SynctexSourceLocation {
+  file: string;
+  doc_id?: string | null;
+  line: number;
+  column: number;
+}
+

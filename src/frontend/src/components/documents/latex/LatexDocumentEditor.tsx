@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
+  Crosshair,
   Save,
   Play,
   Download,
@@ -48,7 +50,10 @@ import {
   LatexProject,
   LatexWorkspaceData,
   LatexVersionRecord,
+  SynctexPdfLocation,
+  SynctexSourceLocation,
 } from '../../../types';
+import { LatexPdfViewer, PdfClickPoint } from './LatexPdfViewer';
 import { api } from '../../../api/client';
 
 // Dedicated Move to Folder Icon
@@ -163,6 +168,25 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
 
   // Editor textarea ref
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // SyncTeX Mapping State (Left <-> Right)
+  const [selectedPdfPoint, setSelectedPdfPoint] = useState<PdfClickPoint | null>(null);
+  const [highlightTarget, setHighlightTarget] = useState<SynctexPdfLocation | null>(null);
+  const [highlightedEditorLine, setHighlightedEditorLine] = useState<number | null>(null);
+  const [editorCursorLine, setEditorCursorLine] = useState(1);
+  const [editorCursorCol, setEditorCursorCol] = useState(1);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Track cursor position in editor textarea
+  const updateCursorPosition = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const pos = textarea.selectionStart;
+    const textBefore = textarea.value.substring(0, pos);
+    const lines = textBefore.split('\n');
+    setEditorCursorLine(lines.length);
+    setEditorCursorCol(lines[lines.length - 1].length + 1);
+  };
 
   // Greek letters palette
   const greekLetters = [
@@ -425,6 +449,107 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
       showToast?.(`Compiler set to ${newCompiler}`, 'success');
     } catch {
       // ignore
+    }
+  };
+
+  // Forward sync: Source line to PDF (Left -> Right)
+  const handleSyncSourceToPdf = async () => {
+    if (!project) return;
+    try {
+      setIsSyncing(true);
+      const activeFile = activeDoc?.name || 'main.tex';
+      const res = await api.syncSourceToPdf(documentId, {
+        file: activeFile,
+        line: editorCursorLine,
+        column: editorCursorCol,
+        compilation_id: latestCompilation?.id,
+      });
+
+      if (res.success && res.location) {
+        setHighlightTarget(res.location);
+        setActiveRightTab('preview');
+        showToast?.(`Mapped Line ${editorCursorLine} → PDF Page ${res.location.page}`, 'success');
+
+        // Automatically clear highlight pulse after 6 seconds
+        setTimeout(() => {
+          setHighlightTarget((curr) => (curr === res.location ? null : curr));
+        }, 6000);
+      }
+    } catch (err: any) {
+      showToast?.(err.message || 'No corresponding PDF location found for this line. Try compiling first.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Reverse sync: PDF coordinates to Source line (Right -> Left)
+  const handleSyncPdfToSource = async (customPoint?: PdfClickPoint) => {
+    if (!project) return;
+    const point = customPoint || selectedPdfPoint;
+    if (!point) {
+      showToast?.('Click text on the PDF preview first, then click ← to jump to source.');
+      return;
+    }
+    try {
+      setIsSyncing(true);
+      const res = await api.syncPdfToSource(documentId, {
+        page: point.page,
+        x: point.x,
+        y: point.y,
+        compilation_id: latestCompilation?.id,
+      });
+
+      if (res.success && res.location) {
+        const { file, doc_id, line } = res.location;
+
+        // 1. Switch active document tab if in a different file
+        let targetDocId = doc_id;
+        if (!targetDocId) {
+          const matched = docs.find(
+            (d) =>
+              d.name.toLowerCase() === file.toLowerCase() ||
+              (d.path && d.path.toLowerCase().endsWith(file.toLowerCase()))
+          );
+          if (matched) targetDocId = matched.id;
+        }
+
+        if (targetDocId && targetDocId !== activeDocId) {
+          setActiveDocId(targetDocId);
+        }
+
+        // 2. Set cursor and scroll in textarea
+        setTimeout(() => {
+          const textarea = textareaRef.current;
+          if (textarea) {
+            const val = textarea.value;
+            const lines = val.split('\n');
+            let charOffset = 0;
+            for (let i = 0; i < Math.min(line - 1, lines.length); i++) {
+              charOffset += lines[i].length + 1;
+            }
+
+            textarea.focus();
+            textarea.setSelectionRange(charOffset, charOffset + (lines[line - 1]?.length || 0));
+
+            // Smooth scroll to line
+            const lineHeight = 24; // leading-6
+            textarea.scrollTop = Math.max(0, (line - 4) * lineHeight);
+          }
+        }, 60);
+
+        // 3. Highlight line number in editor for visual feedback
+        setHighlightedEditorLine(line);
+        setEditorCursorLine(line);
+        showToast?.(`Mapped PDF Page ${point.page} → Source Line ${line} (${file})`, 'success');
+
+        setTimeout(() => {
+          setHighlightedEditorLine((curr) => (curr === line ? null : curr));
+        }, 4000);
+      }
+    } catch (err: any) {
+      showToast?.(err.message || 'No corresponding source code found for this PDF location.', 'error');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -710,11 +835,17 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault();
         setShowFileTree((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSyncSourceToPdf();
+      } else if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleSyncPdfToSource();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeDocId, activeDocContent, compiler, dirtyDocs]);
+  }, [activeDocId, activeDocContent, compiler, dirtyDocs, editorCursorLine, editorCursorCol, selectedPdfPoint, latestCompilation]);
 
   // Statistics
   const wordCount = activeDocContent ? activeDocContent.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -1486,7 +1617,7 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
         {(viewMode === 'split' || viewMode === 'editor') && (
           <main className="flex-1 flex flex-col min-w-0 bg-white border-r border-slate-200">
             {/* Tabs Bar */}
-            <div className="flex items-center justify-between bg-slate-100 border-b border-slate-200 px-2 overflow-x-auto">
+            <div className="flex items-center bg-slate-100 border-b border-slate-200 px-2 overflow-x-auto">
               <div className="flex items-center space-x-1 overflow-x-auto py-1">
                 {openDocIds.map((id) => {
                   const d = docs.find((x) => x.id === id);
@@ -1519,167 +1650,193 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                   );
                 })}
               </div>
-
-              {/* Sidebar toggle */}
-              <button
-                type="button"
-                data-testid="tab-toggle-file-panel-btn"
-                onClick={() => setShowFileTree(!showFileTree)}
-                className="text-slate-500 hover:text-slate-800 p-1 text-xs rounded hover:bg-slate-200 transition-colors cursor-pointer"
-                title={showFileTree ? 'Hide File Panel (Ctrl+B)' : 'Expand File Panel (Ctrl+B)'}
-                aria-label={showFileTree ? 'Hide File Panel' : 'Expand File Panel'}
-              >
-                {showFileTree ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              </button>
             </div>
 
             {/* LaTeX Quick Insertion Toolbar */}
-            <div className="flex items-center space-x-1 px-3 py-1.5 bg-slate-50 border-b border-slate-200 overflow-x-auto text-xs text-slate-700">
-              {/* Text formatting */}
-              <button
-                onClick={() => insertTextAtCursor('\\textbf{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-bold bg-white"
-                title="Bold (\textbf{})"
-              >
-                B
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\textit{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 italic bg-white"
-                title="Italic (\textit{})"
-              >
-                I
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\texttt{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
-                title="Monospace (\texttt{})"
-              >
-                Code
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\underline{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 underline bg-white"
-                title="Underline (\underline{})"
-              >
-                U
-              </button>
+            <div className="flex flex-col bg-slate-50 border-b border-slate-200 text-xs text-slate-700">
+              {/* Row 1: Text formatting, Sections, and Math */}
+              <div className="flex items-center space-x-1 px-3 py-1 border-b border-slate-200/70 overflow-x-auto">
+                {/* Text formatting */}
+                <button
+                  onClick={() => insertTextAtCursor('\\textbf{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-bold bg-white"
+                  title="Bold (\textbf{})"
+                >
+                  B
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\textit{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 italic bg-white"
+                  title="Italic (\textit{})"
+                >
+                  I
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\texttt{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
+                  title="Monospace (\texttt{})"
+                >
+                  Code
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\underline{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 underline bg-white"
+                  title="Underline (\underline{})"
+                >
+                  U
+                </button>
 
-              <div className="h-4 w-px bg-slate-300 mx-1" />
+                <div className="h-4 w-px bg-slate-300 mx-1" />
 
-              {/* Sections */}
-              <button
-                onClick={() => insertTextAtCursor('\\section{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Section"
-              >
-                Section
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\subsection{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Subsection"
-              >
-                SubSec
-              </button>
+                {/* Sections */}
+                <button
+                  onClick={() => insertTextAtCursor('\\section{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Section"
+                >
+                  Section
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\subsection{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Subsection"
+                >
+                  SubSec
+                </button>
 
-              <div className="h-4 w-px bg-slate-300 mx-1" />
+                <div className="h-4 w-px bg-slate-300 mx-1" />
 
-              {/* Math symbols & environments */}
-              <button
-                onClick={() => insertTextAtCursor('$ ', ' $')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
-                title="Inline Math ($ ... $)"
-              >
-                $x$
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\[\n  ', '\n\\]')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
-                title="Display Math (\[ ... \])"
-              >
-                $$
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\begin{equation}\n  ', '\n\\end{equation}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Equation environment"
-              >
-                Eq
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\frac{', '}{}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white font-serif"
-                title="Fraction (\frac{}{})"
-              >
-                a/b
-              </button>
-              <button
-                onClick={() => setIsGreekModalOpen(true)}
-                className="flex items-center space-x-1 px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Greek Symbols Palette"
-              >
-                <Sigma className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Greek</span>
-              </button>
+                {/* Math symbols & environments */}
+                <button
+                  onClick={() => insertTextAtCursor('$ ', ' $')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
+                  title="Inline Math ($ ... $)"
+                >
+                  $x$
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\[\n  ', '\n\\]')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 font-mono bg-white"
+                  title="Display Math (\\[ ... \\])"
+                >
+                  $$
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\begin{equation}\n  ', '\n\\end{equation}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Equation environment"
+                >
+                  Eq
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\frac{', '}{}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white font-serif"
+                  title="Fraction (\\frac{}{})"
+                >
+                  a/b
+                </button>
+                <button
+                  onClick={() => setIsGreekModalOpen(true)}
+                  className="flex items-center space-x-1 px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Greek Symbols Palette"
+                >
+                  <Sigma className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Greek</span>
+                </button>
+              </div>
 
-              <div className="h-4 w-px bg-slate-300 mx-1" />
+              {/* Row 2: Lists, Environments & Sync */}
+              <div className="flex items-center space-x-1 px-3 py-1 overflow-x-auto">
+                {/* Lists and Tables */}
+                <button
+                  onClick={() => insertTextAtCursor('\\begin{itemize}\n  \\item ', '\n\\end{itemize}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Bullet List"
+                >
+                  Itemize
+                </button>
+                <button
+                  onClick={() => insertTextAtCursor('\\begin{enumerate}\n  \\item ', '\n\\end{enumerate}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Numbered List"
+                >
+                  Enum
+                </button>
 
-              {/* Lists and Tables */}
-              <button
-                onClick={() => insertTextAtCursor('\\begin{itemize}\n  \\item ', '\n\\end{itemize}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Bullet List"
-              >
-                Itemize
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\begin{enumerate}\n  \\item ', '\n\\end{enumerate}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Numbered List"
-              >
-                Enum
-              </button>
-              <button
-                onClick={() =>
-                  insertTextAtCursor(
-                    '\\begin{table}[htbp]\n\\centering\n\\begin{tabular}{|c|c|}\n\\hline\nCol 1 & Col 2 \\\\\n\\hline\nData 1 & Data 2 \\\\\n\\hline\n\\end{tabular}\n\\caption{Table Caption}\n\\label{tab:sample}\n\\end{table}\n'
-                  )
-                }
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Table Template"
-              >
-                Table
-              </button>
-              <button
-                onClick={() =>
-                  insertTextAtCursor(
-                    '\\begin{figure}[htbp]\n\\centering\n% \\includegraphics[width=0.8\\linewidth]{filename}\n\\caption{Figure Caption}\n\\label{fig:sample}\n\\end{figure}\n'
-                  )
-                }
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Figure Template"
-              >
-                Figure
-              </button>
-              <button
-                onClick={() => insertTextAtCursor('\\cite{', '}')}
-                className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
-                title="Citation (\cite{})"
-              >
-                Cite
-              </button>
+                <div className="h-4 w-px bg-slate-300 mx-1" />
+
+                <button
+                  onClick={() =>
+                    insertTextAtCursor(
+                      '\\begin{table}[htbp]\n\\centering\n\\begin{tabular}{|c|c|}\n\\hline\nCol 1 & Col 2 \\\\\n\\hline\nData 1 & Data 2 \\\\\n\\hline\n\\end{tabular}\n\\caption{Table Caption}\n\\label{tab:sample}\n\\end{table}\n'
+                    )
+                  }
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Table Template"
+                >
+                  Table
+                </button>
+                <button
+                  onClick={() =>
+                    insertTextAtCursor(
+                      '\\begin{figure}[htbp]\n\\centering\n% \\includegraphics[width=0.8\\linewidth]{filename}\n\\caption{Figure Caption}\n\\label{fig:sample}\n\\end{figure}\n'
+                    )
+                  }
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Figure Template"
+                >
+                  Figure
+                </button>
+
+                <div className="h-4 w-px bg-slate-300 mx-1" />
+
+                <button
+                  onClick={() => insertTextAtCursor('\\cite{', '}')}
+                  className="px-2 py-0.5 hover:bg-slate-200 border border-slate-300 bg-white"
+                  title="Citation (\\cite{})"
+                >
+                  Cite
+                </button>
+
+                <div className="h-4 w-px bg-slate-300 mx-1" />
+
+                {/* Overleaf-style SyncTeX Quick Action (Left -> Right) */}
+                <button
+                  onClick={handleSyncSourceToPdf}
+                  disabled={isSyncing}
+                  data-testid="editor-sync-to-pdf-btn"
+                  className="flex items-center space-x-1 px-2 py-0.5 hover:bg-indigo-50 border border-indigo-200 text-indigo-700 bg-white font-semibold text-xs shadow-xs transition-colors"
+                  title={`Sync to PDF (from Line ${editorCursorLine}) [Ctrl+Alt+Right]`}
+                >
+                  <span>Sync to PDF</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                </button>
+              </div>
             </div>
 
             {/* Code Textarea with line numbers */}
             <div className="flex-1 flex overflow-hidden relative">
               {/* Line Numbers Bar */}
               <div className="w-12 py-3 bg-slate-50 border-r border-slate-200 select-none text-right pr-2 text-xs font-mono text-slate-400 overflow-hidden">
-                {Array.from({ length: Math.max(lineCount, 1) }).map((_, i) => (
-                  <div key={i} className="leading-6">
-                    {i + 1}
-                  </div>
-                ))}
+                {Array.from({ length: Math.max(lineCount, 1) }).map((_, i) => {
+                  const lineNum = i + 1;
+                  const isHighlighted = lineNum === highlightedEditorLine;
+                  const isCurrent = lineNum === editorCursorLine;
+                  return (
+                    <div
+                      key={i}
+                      className={`leading-6 transition-all ${
+                        isHighlighted
+                          ? 'bg-amber-300 text-amber-950 font-bold px-1 rounded shadow-xs'
+                          : isCurrent
+                          ? 'text-slate-900 font-bold'
+                          : ''
+                      }`}
+                    >
+                      {lineNum}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Textarea */}
@@ -1687,7 +1844,13 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                 ref={textareaRef}
                 value={activeDocContent}
                 readOnly={isReadOnly}
-                onChange={(e) => !isReadOnly && handleContentChange(e.target.value)}
+                onChange={(e) => {
+                  if (!isReadOnly) handleContentChange(e.target.value);
+                  updateCursorPosition();
+                }}
+                onClick={updateCursorPosition}
+                onKeyUp={updateCursorPosition}
+                onSelect={updateCursorPosition}
                 placeholder={isReadOnly ? 'Viewing older version snapshot (read-only)...' : 'Write your LaTeX code here...'}
                 spellCheck={false}
                 className={`flex-1 p-3 font-mono text-sm leading-6 outline-none resize-none overflow-y-auto whitespace-pre tab-4 ${
@@ -1700,6 +1863,9 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
             <footer className="flex items-center justify-between px-3 py-1 bg-slate-100 border-t border-slate-200 text-xs text-slate-500">
               <div className="flex items-center space-x-3">
                 <span>File: <strong>{activeDoc?.name || 'none'}</strong></span>
+                <span className="font-mono text-slate-700 bg-white px-1.5 py-0.5 border border-slate-200 rounded">
+                  Ln {editorCursorLine}, Col {editorCursorCol}
+                </span>
                 <span>Lines: {lineCount}</span>
                 <span>Words: {wordCount}</span>
                 <span>Chars: {charCount}</span>
@@ -1716,6 +1882,47 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
               </div>
             </footer>
           </main>
+        )}
+
+        {/* Overleaf-style SyncTeX Central Mapping Divider (Left <-> Right) */}
+        {viewMode === 'split' && (
+          <div
+            data-testid="synctex-divider-bar"
+            className="w-5 bg-slate-200/90 border-l border-r border-slate-300 flex flex-col items-center justify-center py-2 space-y-2 select-none z-10 shrink-0"
+            title="SyncTeX Mapping (Left ↔ Right)"
+          >
+            {/* Right Triangle: Left source line -> Right PDF */}
+            <button
+              onClick={handleSyncSourceToPdf}
+              disabled={isSyncing}
+              data-testid="synctex-source-to-pdf-btn"
+              className="group relative flex items-center justify-center w-3.5 h-4.5 rounded-xs bg-white hover:bg-indigo-600 border border-slate-300 hover:border-indigo-600 text-slate-700 hover:text-white shadow-xs transition-colors active:scale-95"
+              title={`Source → PDF (Line ${editorCursorLine}) [Ctrl+Alt+Right]`}
+            >
+              <svg className="w-2 h-2.5 fill-current transition-transform group-hover:translate-x-0.5" viewBox="0 0 10 12">
+                <path d="M1.5 1.5L8.5 6L1.5 10.5V1.5Z" />
+              </svg>
+              <div className="absolute left-full ml-1.5 px-2 py-0.5 bg-slate-900 text-white text-[11px] font-medium rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                Source &rarr; PDF (Line {editorCursorLine})
+              </div>
+            </button>
+
+            {/* Left Triangle: Right PDF text -> Left source */}
+            <button
+              onClick={() => handleSyncPdfToSource()}
+              disabled={isSyncing}
+              data-testid="synctex-pdf-to-source-btn"
+              className="group relative flex items-center justify-center w-3.5 h-4.5 rounded-xs bg-white hover:bg-indigo-600 border border-slate-300 hover:border-indigo-600 text-slate-700 hover:text-white shadow-xs transition-colors active:scale-95"
+              title="PDF → Source [Ctrl+Alt+Left]"
+            >
+              <svg className="w-2 h-2.5 fill-current transition-transform group-hover:-translate-x-0.5" viewBox="0 0 10 12">
+                <path d="M8.5 1.5L1.5 6L8.5 10.5V1.5Z" />
+              </svg>
+              <div className="absolute left-full ml-1.5 px-2 py-0.5 bg-slate-900 text-white text-[11px] font-medium rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                PDF &rarr; Source
+              </div>
+            </button>
+          </div>
         )}
 
         {/* Right Pane: PDF Preview & Compilation Logs */}
@@ -1757,6 +1964,22 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                   )}
                 </button>
               </div>
+
+              {/* Sync Actions on Toolbar */}
+              <div className="flex items-center space-x-1">
+                {activeRightTab === 'preview' && latestCompilation?.status === 'success' && (
+                  <button
+                    onClick={() => handleSyncPdfToSource()}
+                    disabled={isSyncing}
+                    data-testid="preview-sync-to-source-btn"
+                    className="flex items-center space-x-1 px-2.5 py-1 text-xs font-bold bg-white hover:bg-indigo-50 border border-slate-300 text-indigo-700 rounded shadow-xs transition-colors"
+                    title="Jump to source code corresponding to selected PDF text"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Sync to Source</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Preview Tab Content */}
@@ -1769,11 +1992,14 @@ export const LatexDocumentEditor: React.FC<LatexDocumentEditorProps> = ({
                     <p className="text-xs text-slate-400 mt-1">Executing {compiler} engine</p>
                   </div>
                 ) : latestCompilation?.status === 'success' ? (
-                  <iframe
-                    key={pdfTimestamp}
-                    src={pdfUrl}
-                    className="w-full h-full border-none"
-                    title="Compiled PDF Preview"
+                  <LatexPdfViewer
+                    key={`${latestCompilation.id}-${pdfTimestamp}`}
+                    pdfUrl={pdfUrl}
+                    highlightTarget={highlightTarget}
+                    selectedPoint={selectedPdfPoint}
+                    onPdfClick={(pt) => setSelectedPdfPoint(pt)}
+                    onPdfDoubleClick={(pt) => handleSyncPdfToSource(pt)}
+                    onSyncToSource={() => handleSyncPdfToSource()}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center p-8 text-center max-w-md">

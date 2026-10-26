@@ -10,7 +10,7 @@ import {
   requireAuth,
 } from '../auth';
 import { CompilerType, LatexDoc, LatexFolder, LatexProject, LatexTemplate, TemplateVisibility } from '../models';
-import { compileLatexProject, bundleLatexProjectZip } from '../latexCompiler';
+import { compileLatexProject, bundleLatexProjectZip, runSynctexView, runSynctexEdit } from '../latexCompiler';
 
 export const latexRoutes = Router();
 
@@ -1269,6 +1269,56 @@ latexRoutes.get('/documents/:id/latex/pdf', optionalAuth, async (req: Authentica
     res.send(pdfBuffer);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve PDF', detail: err.message });
+  }
+});
+
+// POST /api/v1/documents/:id/latex/sync/source-to-pdf - SyncTeX Forward Sync (Left -> Right)
+latexRoutes.post('/documents/:id/latex/sync/source-to-pdf', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const documentId = req.params.id;
+    const project = await ensureLatexProject(documentId);
+    const { file, line, column, compilation_id } = req.body;
+
+    const location = await runSynctexView(
+      project.id,
+      file || 'main.tex',
+      parseInt(line, 10) || 1,
+      parseInt(column, 10) || 1,
+      compilation_id
+    );
+
+    if (!location) {
+      return res.status(404).json({ error: 'No matching location found in compiled PDF for this line.' });
+    }
+
+    res.json({ success: true, location });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to perform forward SyncTeX mapping', detail: err.message });
+  }
+});
+
+// POST /api/v1/documents/:id/latex/sync/pdf-to-source - SyncTeX Backward / Reverse Sync (Right -> Left)
+latexRoutes.post('/documents/:id/latex/sync/pdf-to-source', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const documentId = req.params.id;
+    const project = await ensureLatexProject(documentId);
+    const { page, x, y, compilation_id } = req.body;
+
+    const location = await runSynctexEdit(
+      project.id,
+      parseInt(page, 10) || 1,
+      parseFloat(x) || 0,
+      parseFloat(y) || 0,
+      compilation_id
+    );
+
+    if (!location) {
+      return res.status(404).json({ error: 'No matching LaTeX source code line found for this PDF position.' });
+    }
+
+    res.json({ success: true, location });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to perform reverse SyncTeX mapping', detail: err.message });
   }
 });
 

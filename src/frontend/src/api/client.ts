@@ -30,6 +30,8 @@ import {
   LatexVersionListResponse,
   LatexVersionRecord,
   LatexWorkspaceData,
+  SynctexPdfLocation,
+  SynctexSourceLocation,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -1175,6 +1177,33 @@ export const api = {
       `/documents/${encodeURIComponent(documentId)}/latex/versions/${encodeURIComponent(versionId)}/restore`,
       {
         method: 'POST',
+      }
+    );
+  },
+
+  // SyncTeX Mapping APIs (Left <-> Right)
+  async syncSourceToPdf(
+    documentId: string,
+    payload: { file: string; line: number; column?: number; compilation_id?: string }
+  ): Promise<{ success: boolean; location: SynctexPdfLocation }> {
+    return request<{ success: boolean; location: SynctexPdfLocation }>(
+      `/documents/${encodeURIComponent(documentId)}/latex/sync/source-to-pdf`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async syncPdfToSource(
+    documentId: string,
+    payload: { page: number; x: number; y: number; compilation_id?: string }
+  ): Promise<{ success: boolean; location: SynctexSourceLocation }> {
+    return request<{ success: boolean; location: SynctexSourceLocation }>(
+      `/documents/${encodeURIComponent(documentId)}/latex/sync/pdf-to-source`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
       }
     );
   },
